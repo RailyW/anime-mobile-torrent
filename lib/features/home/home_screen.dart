@@ -10,41 +10,44 @@ import '../torrent_handoff/presentation/torrent_handoff_tab.dart';
 /// 首页只承担顶层导航职责，不直接访问 Bangumi、DMHY 或 Android 平台能力。
 /// 每个底部导航项都对应一个独立 feature，后续可以按模块逐步替换为真实页面。
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    this.initialTabIndex = 0,
+    this.initialDmhyKeyword,
+    super.key,
+  });
+
+  /// 初次打开首页时选中的底部导航项。
+  ///
+  /// 目前用于 Bangumi 条目详情页跳回首页并直接展示 DMHY 搜索结果。
+  final int initialTabIndex;
+
+  /// 初次打开 DMHY 标签页时自动填入并搜索的关键词。
+  final String? initialDmhyKeyword;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  static const _tabs = [
-    _HomeTab(
-      icon: Icons.account_circle_outlined,
-      selectedIcon: Icons.account_circle,
-      label: 'Bangumi',
-      child: BangumiTab(),
-    ),
-    _HomeTab(
-      icon: Icons.rss_feed_outlined,
-      selectedIcon: Icons.rss_feed,
-      label: 'DMHY',
-      child: DmhyTab(),
-    ),
-    _HomeTab(
-      icon: Icons.open_in_new_outlined,
-      selectedIcon: Icons.open_in_new,
-      label: '种子',
-      child: TorrentHandoffTab(),
-    ),
-    _HomeTab(
-      icon: Icons.play_circle_outline,
-      selectedIcon: Icons.play_circle,
-      label: '播放',
-      child: PlaybackTab(),
-    ),
-  ];
+  late int _selectedIndex;
 
-  int _selectedIndex = 0;
+  @override
+  void initState() {
+    super.initState();
+    _selectedIndex = _normalizeTabIndex(widget.initialTabIndex);
+  }
+
+  @override
+  void didUpdateWidget(covariant HomeScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.initialTabIndex != widget.initialTabIndex ||
+        oldWidget.initialDmhyKeyword != widget.initialDmhyKeyword) {
+      setState(() {
+        _selectedIndex = _normalizeTabIndex(widget.initialTabIndex);
+      });
+    }
+  }
 
   /// 切换首页模块。
   ///
@@ -58,6 +61,33 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final tabs = [
+      const _HomeTab(
+        icon: Icons.account_circle_outlined,
+        selectedIcon: Icons.account_circle,
+        label: 'Bangumi',
+        child: BangumiTab(),
+      ),
+      _HomeTab(
+        icon: Icons.rss_feed_outlined,
+        selectedIcon: Icons.rss_feed,
+        label: 'DMHY',
+        child: DmhyTab(initialKeyword: widget.initialDmhyKeyword),
+      ),
+      const _HomeTab(
+        icon: Icons.open_in_new_outlined,
+        selectedIcon: Icons.open_in_new,
+        label: '种子',
+        child: TorrentHandoffTab(),
+      ),
+      const _HomeTab(
+        icon: Icons.play_circle_outline,
+        selectedIcon: Icons.play_circle,
+        label: '播放',
+        child: PlaybackTab(),
+      ),
+    ];
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Anime Mobile Torrent'),
@@ -72,13 +102,13 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: IndexedStack(
           index: _selectedIndex,
-          children: _tabs.map((tab) => tab.child).toList(),
+          children: tabs.map((tab) => tab.child).toList(),
         ),
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: _selectTab,
-        destinations: _tabs.map((tab) {
+        destinations: tabs.map((tab) {
           return NavigationDestination(
             icon: Icon(tab.icon),
             selectedIcon: Icon(tab.selectedIcon),
@@ -88,6 +118,18 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+}
+
+int _normalizeTabIndex(int value) {
+  if (value < 0) {
+    return 0;
+  }
+
+  if (value > 3) {
+    return 3;
+  }
+
+  return value;
 }
 
 class _HomeTab {

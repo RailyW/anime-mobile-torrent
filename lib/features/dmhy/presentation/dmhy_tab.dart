@@ -14,7 +14,10 @@ import '../domain/dmhy_resource.dart';
 /// 种子文件显式交给用户操作。模块不下载 BT 视频内容，也不管理外部客户端
 /// 的下载进度。
 class DmhyTab extends ConsumerStatefulWidget {
-  const DmhyTab({super.key});
+  const DmhyTab({this.initialKeyword, super.key});
+
+  /// 从其他模块跳转过来时预填并自动搜索的关键词。
+  final String? initialKeyword;
 
   @override
   ConsumerState<DmhyTab> createState() => _DmhyTabState();
@@ -27,9 +30,47 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
   bool _animeOnly = true;
 
   @override
+  void initState() {
+    super.initState();
+    _applyInitialKeyword(widget.initialKeyword, notify: false);
+  }
+
+  @override
+  void didUpdateWidget(covariant DmhyTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.initialKeyword != widget.initialKeyword) {
+      _applyInitialKeyword(widget.initialKeyword, notify: true);
+    }
+  }
+
+  @override
   void dispose() {
     _keywordController.dispose();
     super.dispose();
+  }
+
+  /// 应用来自 Bangumi 等外部入口的初始搜索关键词。
+  ///
+  /// 空关键词不覆盖用户当前输入；非空关键词会同步输入框并触发一次动画分类
+  /// RSS 搜索，保持跨模块跳转后用户能直接看到候选资源。
+  void _applyInitialKeyword(String? value, {required bool notify}) {
+    final keyword = value?.trim();
+    if (keyword == null || keyword.isEmpty) {
+      return;
+    }
+
+    void apply() {
+      _keywordController.text = keyword;
+      _searchRequest = DmhySearchRequest(keyword: keyword, animeOnly: true);
+      _animeOnly = true;
+    }
+
+    if (notify && mounted) {
+      setState(apply);
+    } else {
+      apply();
+    }
   }
 
   /// 提交 RSS 搜索关键词。

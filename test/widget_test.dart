@@ -84,10 +84,20 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Bangumi 条目详情'), findsOneWidget);
+    expect(find.text('资源搜索'), findsOneWidget);
+    expect(find.text('搜索 DMHY'), findsOneWidget);
     expect(find.text('我的收藏'), findsOneWidget);
     expect(find.textContaining('登录 Bangumi 后'), findsOneWidget);
     expect(find.text('收藏统计'), findsOneWidget);
     expect(find.text('合计'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('维基信息'),
+      220,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
     expect(find.text('维基信息'), findsOneWidget);
     expect(find.text('导演'), findsOneWidget);
     expect(find.text('测试监督'), findsOneWidget);
@@ -101,6 +111,33 @@ void main() {
 
     expect(find.text('用户标签'), findsOneWidget);
     expect(find.text('治愈 128'), findsOneWidget);
+  });
+
+  testWidgets('Bangumi 条目详情可以带关键词跳转到 DMHY 搜索', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          bangumiRepositoryProvider.overrideWithValue(_FakeBangumiRepository()),
+          dmhyRepositoryProvider.overrideWithValue(_FakeDmhyRepository()),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '测试动画');
+    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('测试动画 中文名'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, '搜索 DMHY'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('RSS 可用'), findsOneWidget);
+    expect(find.text('“测试动画 中文名” 在动画分类找到 1 条 RSS 资源'), findsOneWidget);
+    expect(find.text('[字幕组] 测试动画 01 1080p'), findsOneWidget);
   });
 
   testWidgets('DMHY 可以渲染 RSS 搜索结果', (tester) async {

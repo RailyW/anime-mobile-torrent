@@ -1,6 +1,6 @@
 # dmhy 模块说明
 
-`lib/features/dmhy` 负责 DMHY 资源发现：RSS 搜索、资源结果展示、详情页解析、`.torrent` 种子文件下载和外部客户端交接入口。当前已接入 DMHY RSS 关键词搜索，支持从 RSS 结果复制/打开 magnet，并可按用户点击解析详情页、下载种子文件后优先直开外部 BT 客户端，直开失败时自动降级到系统分享面板。
+`lib/features/dmhy` 负责 DMHY 资源发现：RSS 搜索、资源结果展示、详情页解析、`.torrent` 种子文件下载和外部客户端交接入口。当前已接入 DMHY RSS 关键词搜索，支持从 Bangumi 条目详情接收初始关键词自动搜索，支持从 RSS 结果复制/打开 magnet，并可按用户点击解析详情页、下载种子文件后优先直开外部 BT 客户端，直开失败时自动降级到系统分享面板。
 
 ## 当前包含文件
 
@@ -11,7 +11,7 @@
 - `data/dmhy_torrent_page_parser.dart`：DMHY 详情页 HTML 解析器，负责从 `<a href>` 中定位 `.torrent` 链接，并兼容协议相对链接。
 - `data/dmhy_torrent_client.dart`：DMHY 种子文件客户端，负责读取详情页、下载种子文件到 APP 临时目录，并将网络/文件错误映射为中文业务异常。
 - `application/dmhy_providers.dart`：DMHY Repository 抽象、RSS 实现、种子文件客户端编排、搜索请求值对象和 Riverpod 搜索 Provider。
-- `presentation/dmhy_tab.dart`：DMHY 首页入口，提供 RSS 关键词搜索、动画分类开关、结果列表、magnet 复制/外部打开和 `.torrent` 下载后外部客户端直开/分享兜底动作。
+- `presentation/dmhy_tab.dart`：DMHY 首页入口，提供初始关键词自动搜索、RSS 关键词搜索、动画分类开关、结果列表、magnet 复制/外部打开和 `.torrent` 下载后外部客户端直开/分享兜底动作。
 
 ## 后续文件规划
 

@@ -16,7 +16,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/',
         name: 'home',
-        builder: (context, state) => const HomeScreen(),
+        builder: (context, state) {
+          final tab = state.uri.queryParameters['tab'];
+          final initialTabIndex = tab == 'dmhy' ? 1 : 0;
+          final dmhyKeyword = state.uri.queryParameters['keyword'];
+
+          return HomeScreen(
+            initialTabIndex: initialTabIndex,
+            initialDmhyKeyword: dmhyKeyword,
+          );
+        },
       ),
       GoRoute(
         path: '/bangumi/subjects/:subjectId',

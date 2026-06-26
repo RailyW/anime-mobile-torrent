@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../application/bangumi_auth_providers.dart';
 import '../application/bangumi_collection_providers.dart';
 import '../application/bangumi_providers.dart';
 import '../domain/bangumi_collection.dart';
+import '../domain/bangumi_dmhy_keyword.dart';
 import '../domain/bangumi_subject.dart';
 import 'widgets/bangumi_info_chip.dart';
 import 'widgets/bangumi_rating_line.dart';
@@ -54,6 +56,8 @@ class _SubjectDetailBody extends ConsumerWidget {
         _SubjectHeader(subject: subject),
         const SizedBox(height: 20),
         _SubjectSummarySection(summary: subject.summary),
+        const SizedBox(height: 20),
+        _DmhyLinkSection(subject: subject),
         const SizedBox(height: 20),
         _MyCollectionSection(subject: subject),
         const SizedBox(height: 20),
@@ -154,6 +158,65 @@ class _SubjectHeader extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _DmhyLinkSection extends StatelessWidget {
+  const _DmhyLinkSection({required this.subject});
+
+  final BangumiSubject subject;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final keyword = buildBangumiDmhyKeyword(subject);
+
+    return _DetailSection(
+      title: '资源搜索',
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.rss_feed_outlined, color: scheme.secondary),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      keyword.isEmpty ? '当前条目缺少可搜索标题。' : '使用“$keyword”搜索动画资源。',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              FilledButton.icon(
+                onPressed: keyword.isEmpty
+                    ? null
+                    : () {
+                        context.goNamed(
+                          'home',
+                          queryParameters: {'tab': 'dmhy', 'keyword': keyword},
+                        );
+                      },
+                icon: const Icon(Icons.manage_search_outlined),
+                label: const Text('搜索 DMHY'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
