@@ -4,7 +4,7 @@
 
 ## 当前包含文件
 
-- `widget_test.dart`：首页烟测，验证 APP 可以加载并切换 Bangumi、DMHY、种子交接和播放四个主要模块。
+- `widget_test.dart`：首页烟测，验证 APP 可以加载并切换 Bangumi、DMHY、种子交接和播放四个主要模块；同时用 fake repository 验证 Bangumi 搜索结果渲染。
 
 ## 设计边界
 

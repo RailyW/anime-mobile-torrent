@@ -78,6 +78,13 @@ flowchart LR
 4. 支持搜索动画条目和查看条目详情。
 5. 支持用户收藏条目。
 
+当前落地情况：
+
+1. 已接入公开动画条目搜索，使用 `POST /v0/search/subjects` 和 `filter.type: [2]`。
+2. 已建立 Bangumi 条目模型、Dio API 客户端、Repository 抽象和 Riverpod 搜索 Provider。
+3. 已在 Bangumi 首页提供关键词搜索 UI 和结果列表。
+4. OAuth 登录、`/v0/me`、条目详情和收藏修改仍是后续工作。
+
 推荐实现：
 
 1. 使用官方 OpenAPI 生成 `dart-dio` 客户端。
