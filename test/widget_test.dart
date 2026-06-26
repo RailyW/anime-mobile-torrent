@@ -1,6 +1,8 @@
 import 'package:anime_mobile_torrent/app/anime_mobile_torrent_app.dart';
 import 'package:anime_mobile_torrent/features/bangumi/application/bangumi_providers.dart';
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_subject.dart';
+import 'package:anime_mobile_torrent/features/dmhy/application/dmhy_providers.dart';
+import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_resource.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,7 +25,7 @@ void main() {
 
     await tester.tap(find.text('DMHY').last);
     await tester.pumpAndSettle();
-    expect(find.text('待接入'), findsOneWidget);
+    expect(find.text('RSS 可用'), findsOneWidget);
 
     await tester.tap(find.text('种子').last);
     await tester.pumpAndSettle();
@@ -90,6 +92,31 @@ void main() {
     expect(find.text('用户标签'), findsOneWidget);
     expect(find.text('治愈 128'), findsOneWidget);
   });
+
+  testWidgets('DMHY 可以渲染 RSS 搜索结果', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          dmhyRepositoryProvider.overrideWithValue(_FakeDmhyRepository()),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('DMHY').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '测试动画 1080');
+    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('“测试动画 1080” 在动画分类找到 1 条 RSS 资源'), findsOneWidget);
+    expect(find.text('[字幕组] 测试动画 01 1080p'), findsOneWidget);
+    expect(find.text('動畫'), findsOneWidget);
+    expect(find.text('test_team'), findsOneWidget);
+    expect(find.text('复制'), findsOneWidget);
+    expect(find.text('打开'), findsOneWidget);
+  });
 }
 
 class _FakeBangumiRepository implements BangumiRepository {
@@ -146,5 +173,23 @@ class _FakeBangumiRepository implements BangumiRepository {
         BangumiInfoBoxItem(key: '导演', values: ['测试监督']),
       ],
     );
+  }
+}
+
+class _FakeDmhyRepository implements DmhyRepository {
+  @override
+  Future<List<DmhyResource>> searchResources(DmhySearchRequest request) async {
+    return [
+      DmhyResource(
+        title: '[字幕组] 测试动画 01 1080p',
+        detailUri: Uri.parse('http://share.dmhy.org/topics/view/1_test.html'),
+        magnetUri: Uri.parse('magnet:?xt=urn:btih:ABCDEF'),
+        publishedAt: DateTime.utc(2026, 4, 23, 2, 29, 30),
+        author: 'test_team',
+        categoryName: '動畫',
+        categoryUri: Uri.parse('http://share.dmhy.org/topics/list/sort_id/2'),
+        descriptionText: '测试简介 第一集',
+      ),
+    ];
   }
 }

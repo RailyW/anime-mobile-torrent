@@ -115,6 +115,14 @@ flowchart LR
 3. 默认在关键词里附加 `sort_id:2` 搜索动画资源。
 4. 所有下载动作都由用户显式点击触发。
 
+当前落地情况：
+
+1. 已接入 DMHY RSS 关键词搜索，默认使用动画分类 RSS `topics/rss/sort_id/2/rss.xml?keyword=...`。
+2. 已建立 DMHY 资源模型、RSS XML 解析器、Dio RSS 客户端、Repository 抽象和 Riverpod 搜索 Provider。
+3. 已在 DMHY 首页提供关键词搜索 UI、动画分类开关和 RSS 结果列表。
+4. 已支持从 RSS 结果复制 magnet 或通过系统外部应用打开 magnet。
+5. 详情页 `.torrent` 链接解析和种子文件下载仍是后续工作。
+
 待确认：
 
 1. 首期是否需要展示资源大小、种子数、下载数和完成数。
