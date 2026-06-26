@@ -8,7 +8,7 @@
 - `dmhy_torrent_page_parser_test.dart`：DMHY 详情页种子链接解析器单元测试，验证协议相对链接、相对路径链接和无种子链接兜底。
 - `torrent_handoff_test.dart`：Torrent 交接模型单元测试，验证通用种子文件模型、文件大小格式化和交接结果中文提示。
 - `bangumi_auth_test.dart`：Bangumi OAuth token 与配置单元测试，验证 secure storage 字段恢复、刷新 token 合并、过期判断和默认未配置状态。
-- `bangumi_collection_test.dart`：Bangumi 收藏模型单元测试，验证收藏状态枚举、单条收藏解析和收藏修改请求序列化。
+- `bangumi_collection_test.dart`：Bangumi 收藏模型单元测试，验证收藏状态枚举、单条收藏解析、收藏列表条目摘要解析、收藏分页解析和收藏修改请求序列化。
 - `bangumi_dmhy_keyword_test.dart`：Bangumi 到 DMHY 搜索联动的关键词单元测试，验证中文名优先、原名兜底和空白归一化。
 - `bangumi_user_test.dart`：Bangumi 当前用户模型单元测试，验证 `/v0/me` 用户字段、头像字段和展示名称解析。
 - `playback_file_test.dart`：播放模块本地视频模型单元测试，验证文件名提取、视频 MIME 推断、文件大小格式化和最小文件信息保留。

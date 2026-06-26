@@ -45,6 +45,7 @@ class BangumiSubjectCollection {
     required this.volStatus,
     required this.updatedAt,
     required this.isPrivate,
+    this.subject,
   });
 
   final int subjectId;
@@ -57,6 +58,7 @@ class BangumiSubjectCollection {
   final int volStatus;
   final DateTime? updatedAt;
   final bool isPrivate;
+  final BangumiCollectionSubject? subject;
 
   /// 从 Bangumi API JSON 中解析当前用户收藏信息。
   factory BangumiSubjectCollection.fromJson(Map<String, dynamic> json) {
@@ -73,6 +75,117 @@ class BangumiSubjectCollection {
       volStatus: _readInt(json['vol_status']),
       updatedAt: _readDateTime(json['updated_at']),
       isPrivate: _readBool(json['private']),
+      subject: BangumiCollectionSubject.fromJsonOrNull(json['subject']),
+    );
+  }
+}
+
+/// 收藏列表中随收藏返回的条目摘要。
+///
+/// Bangumi 收藏列表接口返回的是 `SlimSubject`，字段比完整条目少，但足够
+/// 支撑收藏列表展示和跳转详情页。完整条目仍由详情页单独读取。
+class BangumiCollectionSubject {
+  const BangumiCollectionSubject({
+    required this.id,
+    required this.type,
+    required this.name,
+    required this.nameCn,
+    required this.shortSummary,
+    required this.airDate,
+    required this.images,
+    required this.eps,
+    required this.volumes,
+    required this.collectionTotal,
+    required this.score,
+    required this.rank,
+    required this.tags,
+  });
+
+  final int id;
+  final BangumiSubjectType type;
+  final String name;
+  final String nameCn;
+  final String shortSummary;
+  final String? airDate;
+  final BangumiSubjectImages images;
+  final int eps;
+  final int volumes;
+  final int collectionTotal;
+  final double score;
+  final int rank;
+  final List<BangumiSubjectTag> tags;
+
+  /// 从收藏列表的 `subject` 字段解析条目摘要。
+  static BangumiCollectionSubject? fromJsonOrNull(Object? json) {
+    if (json is! Map<String, dynamic>) {
+      return null;
+    }
+
+    return BangumiCollectionSubject(
+      id: _readInt(json['id']),
+      type: BangumiSubjectType.fromApiValue(_readInt(json['type'])),
+      name: _readString(json['name']) ?? '',
+      nameCn: _readString(json['name_cn']) ?? '',
+      shortSummary: _readString(json['short_summary']) ?? '',
+      airDate: _readString(json['date']),
+      images: BangumiSubjectImages.fromJson(json['images']),
+      eps: _readInt(json['eps']),
+      volumes: _readInt(json['volumes']),
+      collectionTotal: _readInt(json['collection_total']),
+      score: _readDouble(json['score']),
+      rank: _readInt(json['rank']),
+      tags: _readTags(json['tags']),
+    );
+  }
+
+  /// 用户优先看到的标题。
+  String get displayName => nameCn.isNotEmpty ? nameCn : name;
+
+  /// 用于补充展示的原名。
+  String? get subtitleName {
+    if (name.isEmpty || name == displayName) {
+      return null;
+    }
+
+    return name;
+  }
+
+  /// 收藏列表中展示的集数摘要。
+  String get episodeLabel => eps > 0 ? '$eps 话' : '集数未知';
+}
+
+/// 当前用户收藏分页。
+class BangumiSubjectCollectionPage {
+  const BangumiSubjectCollectionPage({
+    required this.total,
+    required this.limit,
+    required this.offset,
+    required this.collections,
+  });
+
+  final int total;
+  final int limit;
+  final int offset;
+  final List<BangumiSubjectCollection> collections;
+
+  /// 从 `Paged_UserCollection` JSON 中解析收藏分页。
+  factory BangumiSubjectCollectionPage.fromJson(Map<String, dynamic> json) {
+    final rawData = json['data'];
+    final collections = <BangumiSubjectCollection>[];
+
+    if (rawData is List) {
+      for (final item in rawData) {
+        if (item is Map<String, dynamic>) {
+          collections.add(BangumiSubjectCollection.fromJson(item));
+        }
+      }
+    }
+
+    return BangumiSubjectCollectionPage(
+      total: _readInt(json['total']),
+      limit: _readInt(json['limit']),
+      offset: _readInt(json['offset']),
+      collections: List.unmodifiable(collections),
     );
   }
 }
@@ -129,6 +242,22 @@ int _readInt(Object? value) {
   return 0;
 }
 
+double _readDouble(Object? value) {
+  if (value is double) {
+    return value;
+  }
+
+  if (value is num) {
+    return value.toDouble();
+  }
+
+  if (value is String) {
+    return double.tryParse(value) ?? 0;
+  }
+
+  return 0;
+}
+
 bool _readBool(Object? value) {
   if (value is bool) {
     return value;
@@ -169,4 +298,22 @@ List<String> _readStringList(Object? value) {
   }
 
   return List.unmodifiable(items);
+}
+
+List<BangumiSubjectTag> _readTags(Object? value) {
+  if (value is! List) {
+    return const [];
+  }
+
+  final tags = <BangumiSubjectTag>[];
+  for (final item in value) {
+    if (item is Map<String, dynamic>) {
+      final tag = BangumiSubjectTag.fromJson(item);
+      if (tag.name.isNotEmpty) {
+        tags.add(tag);
+      }
+    }
+  }
+
+  return List.unmodifiable(tags);
 }

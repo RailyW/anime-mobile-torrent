@@ -206,6 +206,53 @@ class BangumiApiClient {
     }
   }
 
+  /// 获取指定用户的收藏列表。
+  ///
+  /// 收藏列表接口返回分页数据。查看当前用户自己的私有收藏时需要传入
+  /// access token；首期 UI 只读取动画收藏，因此调用方会传入
+  /// `subjectType: BangumiSubjectType.anime`。
+  Future<BangumiSubjectCollectionPage> getUserCollections({
+    required String username,
+    BangumiSubjectType? subjectType,
+    BangumiCollectionType? type,
+    int limit = 20,
+    int offset = 0,
+    String? accessToken,
+  }) async {
+    final normalizedUsername = username.trim();
+    if (normalizedUsername.isEmpty) {
+      throw const BangumiApiException('Bangumi 用户名为空');
+    }
+
+    final queryParameters = <String, Object>{
+      'limit': limit.clamp(1, 50),
+      'offset': offset < 0 ? 0 : offset,
+    };
+    if (subjectType != null) {
+      queryParameters['subject_type'] = subjectType.apiValue;
+    }
+    if (type != null) {
+      queryParameters['type'] = type.apiValue;
+    }
+
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/v0/users/${Uri.encodeComponent(normalizedUsername)}/collections',
+        queryParameters: queryParameters,
+        options: _authorizationOptions(accessToken),
+      );
+
+      final data = response.data;
+      if (data == null) {
+        throw const BangumiApiException('Bangumi 返回了空收藏列表');
+      }
+
+      return BangumiSubjectCollectionPage.fromJson(data);
+    } on DioException catch (error) {
+      throw _mapDioException(error);
+    }
+  }
+
   /// 新增或修改当前用户对单个条目的收藏信息。
   ///
   /// 官方接口要求 `write:collection` scope。这里使用 POST，因为该接口在

@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../application/bangumi_auth_providers.dart';
+import '../application/bangumi_collection_providers.dart';
 import '../application/bangumi_providers.dart';
 import '../domain/bangumi_auth.dart';
+import '../domain/bangumi_collection.dart';
 import '../domain/bangumi_subject.dart';
 import '../domain/bangumi_user.dart';
 import 'widgets/bangumi_info_chip.dart';
@@ -66,10 +68,15 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
           onSubmitted: _submitSearch,
         ),
         const SizedBox(height: 16),
-        if (request == null)
-          const _BangumiEmptyState()
-        else
+        if (request == null) ...[
+          const _BangumiMyCollectionsPanel(),
+          const SizedBox(height: 16),
+          const _BangumiEmptyState(),
+        ] else ...[
           _BangumiSearchResult(request: request),
+          const SizedBox(height: 16),
+          const _BangumiMyCollectionsPanel(),
+        ],
       ],
     );
   }
@@ -474,6 +481,299 @@ class _BangumiAccountError extends StatelessWidget {
   }
 }
 
+class _BangumiMyCollectionsPanel extends ConsumerWidget {
+  const _BangumiMyCollectionsPanel();
+
+  static const _request = BangumiMyCollectionsRequest(limit: 12);
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final userState = ref.watch(bangumiCurrentUserProvider);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: userState.when(
+          loading: () => const _BangumiCollectionLoading(label: '正在读取登录状态...'),
+          error: (error, stackTrace) => _BangumiCollectionError(
+            title: '登录状态读取失败',
+            message: error.toString(),
+            onRetry: () => ref.invalidate(bangumiCurrentUserProvider),
+          ),
+          data: (user) {
+            if (user == null) {
+              return const _BangumiCollectionsLoggedOut();
+            }
+
+            final collectionsState = ref.watch(
+              bangumiMyAnimeCollectionsProvider(_request),
+            );
+
+            return collectionsState.when(
+              loading: () =>
+                  const _BangumiCollectionLoading(label: '正在读取我的动画收藏...'),
+              error: (error, stackTrace) => _BangumiCollectionError(
+                title: '收藏列表读取失败',
+                message: error.toString(),
+                onRetry: () =>
+                    ref.invalidate(bangumiMyAnimeCollectionsProvider(_request)),
+              ),
+              data: (page) {
+                if (page == null) {
+                  return const _BangumiCollectionsLoggedOut();
+                }
+
+                return _BangumiCollectionsContent(
+                  page: page,
+                  onRefresh: () => ref.invalidate(
+                    bangumiMyAnimeCollectionsProvider(_request),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _BangumiCollectionsLoggedOut extends StatelessWidget {
+  const _BangumiCollectionsLoggedOut();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.collections_bookmark_outlined, color: scheme.secondary),
+            const SizedBox(width: 12),
+            Expanded(child: Text('我的动画收藏', style: theme.textTheme.titleMedium)),
+            const _BangumiStatusBadge(label: '需登录'),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          '登录 Bangumi 后，可以在这里预览自己的动画收藏列表，并快速进入条目详情或继续搜索资源。',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BangumiCollectionsContent extends StatelessWidget {
+  const _BangumiCollectionsContent({
+    required this.page,
+    required this.onRefresh,
+  });
+
+  final BangumiSubjectCollectionPage page;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final collections = page.collections;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.collections_bookmark_outlined, color: scheme.secondary),
+            const SizedBox(width: 12),
+            Expanded(child: Text('我的动画收藏', style: theme.textTheme.titleMedium)),
+            _BangumiStatusBadge(label: '共 ${page.total} 条'),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (collections.isEmpty)
+          Text(
+            '还没有动画收藏，可以先搜索条目并添加收藏。',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          )
+        else
+          Column(
+            children: [
+              for (final collection in collections.take(6))
+                _BangumiCollectionListItem(collection: collection),
+            ],
+          ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: onRefresh,
+          icon: const Icon(Icons.refresh_outlined),
+          label: const Text('刷新收藏'),
+        ),
+      ],
+    );
+  }
+}
+
+class _BangumiCollectionListItem extends StatelessWidget {
+  const _BangumiCollectionListItem({required this.collection});
+
+  final BangumiSubjectCollection collection;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final subject = collection.subject;
+    final title = subject?.displayName ?? '条目 ID ${collection.subjectId}';
+    final subtitle = subject?.subtitleName;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () {
+        context.pushNamed(
+          'bangumi-subject-detail',
+          pathParameters: {'subjectId': collection.subjectId.toString()},
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(
+              width: 48,
+              height: 68,
+              child: BangumiSubjectCover(
+                imageUrl: subject?.images.preferredListUrl,
+                width: 48,
+                height: 68,
+                borderRadius: 6,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      BangumiInfoChip(
+                        label: collection.type.label,
+                        icon: Icons.bookmark_outlined,
+                        emphasized: true,
+                      ),
+                      if (collection.rate > 0)
+                        BangumiInfoChip(label: '${collection.rate} 分'),
+                      if (collection.epStatus > 0)
+                        BangumiInfoChip(label: '进度 ${collection.epStatus} 话'),
+                      if (subject != null && subject.score > 0)
+                        BangumiInfoChip(
+                          label: subject.rank > 0
+                              ? '${subject.score.toStringAsFixed(1)} · Rank ${subject.rank}'
+                              : subject.score.toStringAsFixed(1),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right, color: scheme.onSurfaceVariant, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BangumiCollectionLoading extends StatelessWidget {
+  const _BangumiCollectionLoading({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        const SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: Text(label)),
+      ],
+    );
+  }
+}
+
+class _BangumiCollectionError extends StatelessWidget {
+  const _BangumiCollectionError({
+    required this.title,
+    required this.message,
+    required this.onRetry,
+  });
+
+  final String title;
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.error_outline, color: scheme.error),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title, style: theme.textTheme.titleMedium)),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(message),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: onRetry,
+          icon: const Icon(Icons.refresh_outlined),
+          label: const Text('重试'),
+        ),
+      ],
+    );
+  }
+}
+
 class _BangumiSearchBar extends StatelessWidget {
   const _BangumiSearchBar({
     required this.controller,
@@ -543,8 +843,8 @@ class _BangumiEmptyState extends ConsumerWidget {
             ),
             const _CapabilityLine(
               icon: Icons.bookmark_border_outlined,
-              title: '收藏状态同步',
-              status: '后续',
+              title: '收藏读写与列表',
+              status: '已接入',
             ),
           ],
         ),
