@@ -1,16 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../application/dmhy_providers.dart';
 import '../domain/dmhy_resource.dart';
+import '../domain/dmhy_torrent_file.dart';
 
 /// DMHY 资源搜索首页入口。
 ///
-/// 该模块首期接入 RSS 搜索，并把 RSS 中的 magnet 显式交给用户操作：
-/// 可以复制到剪贴板，也可以尝试交给外部 BT 客户端打开。模块不下载 BT
-/// 视频内容，也不管理外部客户端的下载进度。
+/// 该模块首期接入 RSS 搜索，并把 RSS 中的 magnet 和详情页中的 `.torrent`
+/// 种子文件显式交给用户操作。模块不下载 BT 视频内容，也不管理外部客户端
+/// 的下载进度。
 class DmhyTab extends ConsumerStatefulWidget {
   const DmhyTab({super.key});
 
@@ -129,7 +131,7 @@ class _DmhyHeader extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              '使用 DMHY RSS 搜索动画资源，并把 magnet 交给用户手机上的外部 BT 客户端。',
+              '使用 DMHY RSS 搜索动画资源，并把 magnet 或 .torrent 种子文件交给外部 BT 客户端。',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: scheme.onPrimaryContainer,
               ),
@@ -226,8 +228,8 @@ class _DmhyEmptyState extends StatelessWidget {
             ),
             const _CapabilityLine(
               icon: Icons.description_outlined,
-              title: '详情页种子解析',
-              status: '后续',
+              title: '详情页种子解析与下载',
+              status: '已接入',
             ),
           ],
         ),
@@ -277,15 +279,23 @@ class _DmhySearchResult extends ConsumerWidget {
   }
 }
 
-class _DmhyResourceCard extends StatelessWidget {
+class _DmhyResourceCard extends ConsumerStatefulWidget {
   const _DmhyResourceCard({required this.resource});
 
   final DmhyResource resource;
 
   @override
+  ConsumerState<_DmhyResourceCard> createState() => _DmhyResourceCardState();
+}
+
+class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
+  bool _isDownloadingTorrent = false;
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final resource = widget.resource;
 
     return Card(
       child: Padding(
@@ -339,7 +349,9 @@ class _DmhyResourceCard extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 10),
-            Row(
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 OutlinedButton.icon(
                   onPressed: () => _copyMagnet(context),
@@ -351,6 +363,19 @@ class _DmhyResourceCard extends StatelessWidget {
                   onPressed: () => _openMagnet(context),
                   icon: const Icon(Icons.open_in_new_outlined),
                   label: const Text('打开'),
+                ),
+                FilledButton.icon(
+                  onPressed: _isDownloadingTorrent
+                      ? null
+                      : () => _downloadAndShareTorrent(context),
+                  icon: _isDownloadingTorrent
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.description_outlined),
+                  label: Text(_isDownloadingTorrent ? '下载中' : '种子'),
                 ),
               ],
             ),
@@ -365,7 +390,9 @@ class _DmhyResourceCard extends StatelessWidget {
   /// 这是最稳妥的兜底路径：即使 Android 没有可响应 `magnet:` 的外部
   /// BT 客户端，用户也可以把链接粘贴到自己选择的客户端中。
   Future<void> _copyMagnet(BuildContext context) async {
-    await Clipboard.setData(ClipboardData(text: resource.magnetUri.toString()));
+    await Clipboard.setData(
+      ClipboardData(text: widget.resource.magnetUri.toString()),
+    );
     if (!context.mounted) {
       return;
     }
@@ -382,7 +409,7 @@ class _DmhyResourceCard extends StatelessWidget {
   Future<void> _openMagnet(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
     final ok = await launchUrl(
-      resource.magnetUri,
+      widget.resource.magnetUri,
       mode: LaunchMode.externalApplication,
     );
 
@@ -393,6 +420,53 @@ class _DmhyResourceCard extends StatelessWidget {
     messenger.showSnackBar(
       const SnackBar(content: Text('无法打开 magnet，可以先复制链接')),
     );
+  }
+
+  /// 下载 `.torrent` 种子文件并调起系统分享面板。
+  ///
+  /// 这里的“下载”只保存种子文件本身，不下载种子指向的视频文件。分享面板
+  /// 允许用户选择手机里已安装的 BT 客户端继续处理。
+  Future<void> _downloadAndShareTorrent(BuildContext context) async {
+    setState(() {
+      _isDownloadingTorrent = true;
+    });
+
+    try {
+      final repository = ref.read(dmhyRepositoryProvider);
+      final torrentFile = await repository.downloadTorrentFile(widget.resource);
+
+      if (!context.mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已下载种子文件 ${_formatBytes(torrentFile.length)}')),
+      );
+
+      await SharePlus.instance.share(
+        ShareParams(
+          title: '分享 .torrent 种子文件',
+          files: [
+            XFile(torrentFile.localPath, mimeType: DmhyTorrentFile.mimeType),
+          ],
+          fileNameOverrides: [torrentFile.fileName],
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isDownloadingTorrent = false;
+        });
+      }
+    }
   }
 }
 
@@ -610,4 +684,18 @@ String _formatDateTime(DateTime value) {
   final minute = local.minute.toString().padLeft(2, '0');
 
   return '${local.year}-$month-$day $hour:$minute';
+}
+
+String _formatBytes(int bytes) {
+  if (bytes < 1024) {
+    return '$bytes B';
+  }
+
+  final kib = bytes / 1024;
+  if (kib < 1024) {
+    return '${kib.toStringAsFixed(1)} KB';
+  }
+
+  final mib = kib / 1024;
+  return '${mib.toStringAsFixed(1)} MB';
 }

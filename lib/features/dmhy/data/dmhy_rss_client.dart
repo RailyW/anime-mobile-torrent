@@ -38,6 +38,11 @@ class DmhyRssClient {
   final Dio _dio;
   final DmhyRssParser _parser = const DmhyRssParser();
 
+  /// 复用同一套 DMHY HTTP 配置给详情页和种子文件下载客户端。
+  ///
+  /// 该 getter 只在 data/application 层组合客户端时使用，UI 不应直接访问。
+  Dio get dio => _dio;
+
   /// 创建默认 RSS 客户端。
   ///
   /// RSS 返回的是 XML 文本，因此这里把 `responseType` 固定为 `plain`，

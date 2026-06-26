@@ -36,7 +36,7 @@ flowchart LR
 1. Flutter 负责页面、状态编排、Bangumi/DMHY 的业务入口和用户操作。
 2. Bangumi 模块使用官方 OpenAPI 生成客户端，并由 Repository 封装业务语义。
 3. DMHY 模块首期使用 RSS 搜索，按需解析详情页种子链接。
-4. Torrent 交接模块只负责 magnet 打开、magnet 复制、`.torrent` 种子文件下载、FileProvider 暴露和 Intent/分享交接。
+4. Torrent 交接模块只负责 magnet 打开、magnet 复制、`.torrent` 种子文件下载、FileProvider 暴露和 Intent/分享交接；当前已先落地系统分享交接。
 5. BT 视频内容下载由用户手机自己的外部 BT 客户端负责，APP 不管理下载进度、暂停恢复、做种、限速和下载目录。
 6. 播放模块首期可以只调起系统/第三方播放器；如果视频由外部客户端下载完成，APP 需要用户手动选择本地视频后才能播放。
 7. 如果未来明确要在 APP 内管理 BT 下载，再新增 Android 原生 Foreground Service 加 `libtorrent4j` 的后续阶段。
@@ -121,7 +121,7 @@ flowchart LR
 2. 已建立 DMHY 资源模型、RSS XML 解析器、Dio RSS 客户端、Repository 抽象和 Riverpod 搜索 Provider。
 3. 已在 DMHY 首页提供关键词搜索 UI、动画分类开关和 RSS 结果列表。
 4. 已支持从 RSS 结果复制 magnet 或通过系统外部应用打开 magnet。
-5. 详情页 `.torrent` 链接解析和种子文件下载仍是后续工作。
+5. 已支持按用户点击解析 DMHY 详情页 `.torrent` 链接，并把种子文件下载到 APP 临时目录后交给系统分享面板。
 
 待确认：
 
@@ -135,7 +135,7 @@ flowchart LR
 1. 支持通过系统 Intent 打开 `magnet:` 链接。
 2. 支持复制 magnet，作为无外部客户端或用户手动处理时的兜底。
 3. 支持从 DMHY 详情页下载 `.torrent` 种子文件。
-4. 支持通过 FileProvider `content://` URI 打开或分享 `.torrent` 种子文件。
+4. 支持通过系统分享面板交接 `.torrent` 种子文件，并后续补齐 FileProvider `content://` URI 的直接打开路径。
 5. 支持检测无可用外部 BT 客户端时的错误提示和降级入口。
 6. 明确不下载 BT 视频内容，不管理下载任务、下载进度、暂停恢复、做种、限速和下载目录。
 
@@ -152,6 +152,7 @@ flowchart LR
 
 1. 首期是否需要主动推荐或引导安装外部 BT 客户端。
 2. 不同 BT 客户端对 magnet、`.torrent`、`ACTION_VIEW` 和 `ACTION_SEND` 的兼容差异是否需要建立兼容性清单。
+3. 当前 `.torrent` 文件通过 `share_plus` 交给系统分享面板；是否需要优先新增原生 `ACTION_VIEW` 直开外部 BT 客户端。
 
 ### 阶段 3B：可选内置 Torrent 下载器
 

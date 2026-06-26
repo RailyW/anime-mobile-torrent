@@ -3,6 +3,7 @@ import 'package:anime_mobile_torrent/features/bangumi/application/bangumi_provid
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_subject.dart';
 import 'package:anime_mobile_torrent/features/dmhy/application/dmhy_providers.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_resource.dart';
+import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_torrent_file.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -191,5 +192,20 @@ class _FakeDmhyRepository implements DmhyRepository {
         descriptionText: '测试简介 第一集',
       ),
     ];
+  }
+
+  @override
+  Future<Uri> findTorrentUri(DmhyResource resource) async {
+    return Uri.parse('https://dl.dmhy.org/2026/04/23/test.torrent');
+  }
+
+  @override
+  Future<DmhyTorrentFile> downloadTorrentFile(DmhyResource resource) async {
+    return DmhyTorrentFile(
+      sourceUri: Uri.parse('https://dl.dmhy.org/2026/04/23/test.torrent'),
+      localPath: 'test.torrent',
+      fileName: 'test.torrent',
+      length: 128,
+    );
   }
 }

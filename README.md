@@ -20,7 +20,7 @@
 1. 安卓前端使用 Flutter。
 2. Bangumi 接入优先使用官方 OpenAPI，并生成 Dart API 客户端。
 3. 首期不内置 BT 下载器，只负责 DMHY 磁力链接、`.torrent` 种子文件获取，以及交给外部 BT 客户端处理。
-4. DMHY 首期优先使用官方 RSS，必要时按需解析详情页获取 `.torrent` 文件链接。
+4. DMHY 首期优先使用官方 RSS，并已按需解析详情页获取 `.torrent` 文件链接。
 5. 如果未来确实需要内置 BT 下载器，再把 Android Foreground Service 和成熟原生 Torrent 引擎作为独立后续阶段评估。
 
 ## 文档结构
@@ -57,4 +57,4 @@ flutter build apk --debug
 
 ## 当前状态
 
-本仓库目前包含项目规则、调研文档、Android Flutter 工程骨架、首页导航壳、功能模块 README、Bangumi 公开动画条目搜索与条目详情、DMHY RSS 关键词搜索，以及 RSS 结果中的 magnet 复制/打开入口。下一步应优先实现 Bangumi OAuth 登录、当前用户信息和收藏同步，并继续补齐 DMHY 详情页 `.torrent` 种子文件解析与交接。
+本仓库目前包含项目规则、调研文档、Android Flutter 工程骨架、首页导航壳、功能模块 README、Bangumi 公开动画条目搜索与条目详情、DMHY RSS 关键词搜索、RSS 结果中的 magnet 复制/打开入口，以及 DMHY 详情页 `.torrent` 种子文件解析、下载和系统分享交接。下一步应优先实现 Bangumi OAuth 登录、当前用户信息和收藏同步，并继续补齐更直接的 Android FileProvider `ACTION_VIEW` 种子文件打开路径。

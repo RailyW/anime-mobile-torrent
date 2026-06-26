@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/dmhy_rss_client.dart';
+import '../data/dmhy_torrent_client.dart';
 import '../domain/dmhy_resource.dart';
+import '../domain/dmhy_torrent_file.dart';
 
 /// DMHY 资源仓库接口。
 ///
@@ -11,13 +13,20 @@ import '../domain/dmhy_resource.dart';
 abstract class DmhyRepository {
   /// 按关键词搜索 DMHY 资源。
   Future<List<DmhyResource>> searchResources(DmhySearchRequest request);
+
+  /// 解析 RSS 资源详情页中的 `.torrent` 下载链接。
+  Future<Uri> findTorrentUri(DmhyResource resource);
+
+  /// 下载 RSS 资源对应的 `.torrent` 种子文件到本地缓存。
+  Future<DmhyTorrentFile> downloadTorrentFile(DmhyResource resource);
 }
 
 /// 基于 DMHY RSS 的仓库实现。
 class DmhyRssRepository implements DmhyRepository {
-  const DmhyRssRepository(this._rssClient);
+  const DmhyRssRepository(this._rssClient, this._torrentClient);
 
   final DmhyRssClient _rssClient;
+  final DmhyTorrentClient _torrentClient;
 
   @override
   Future<List<DmhyResource>> searchResources(DmhySearchRequest request) {
@@ -26,6 +35,16 @@ class DmhyRssRepository implements DmhyRepository {
       animeOnly: request.animeOnly,
       limit: request.limit,
     );
+  }
+
+  @override
+  Future<Uri> findTorrentUri(DmhyResource resource) {
+    return _torrentClient.findTorrentUri(resource);
+  }
+
+  @override
+  Future<DmhyTorrentFile> downloadTorrentFile(DmhyResource resource) {
+    return _torrentClient.downloadTorrentFile(resource);
   }
 }
 
@@ -64,10 +83,17 @@ final dmhyRssClientProvider = Provider<DmhyRssClient>((ref) {
   return DmhyRssClient.createDefault();
 });
 
+/// DMHY `.torrent` 种子文件客户端 Provider。
+final dmhyTorrentClientProvider = Provider<DmhyTorrentClient>((ref) {
+  final rssClient = ref.watch(dmhyRssClientProvider);
+  return DmhyTorrentClient(rssClient.dio);
+});
+
 /// DMHY Repository Provider。
 final dmhyRepositoryProvider = Provider<DmhyRepository>((ref) {
   final rssClient = ref.watch(dmhyRssClientProvider);
-  return DmhyRssRepository(rssClient);
+  final torrentClient = ref.watch(dmhyTorrentClientProvider);
+  return DmhyRssRepository(rssClient, torrentClient);
 });
 
 /// DMHY RSS 搜索 Provider。

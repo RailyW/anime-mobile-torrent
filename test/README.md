@@ -5,6 +5,7 @@
 ## 当前包含文件
 
 - `dmhy_rss_parser_test.dart`：DMHY RSS 解析器单元测试，验证 RSS item 的标题、详情页、发布时间、作者、分类、简介和 magnet 解析。
+- `dmhy_torrent_page_parser_test.dart`：DMHY 详情页种子链接解析器单元测试，验证协议相对链接、相对路径链接和无种子链接兜底。
 - `widget_test.dart`：首页烟测，验证 APP 可以加载并切换 Bangumi、DMHY、种子交接和播放四个主要模块；同时用 fake repository 验证 Bangumi 搜索结果渲染、Bangumi 搜索结果进入条目详情页和 DMHY RSS 搜索结果渲染。
 
 ## 设计边界
