@@ -84,10 +84,11 @@ flowchart LR
 2. 已通过 `flutter_secure_storage` 保存 access token、refresh token、过期时间、token 类型和 scope。
 3. 已接入 `/v0/me` 当前用户信息读取，并在 Bangumi 首页展示登录状态、用户昵称、用户名、头像、签名、刷新和退出入口。
 4. 已接入公开动画条目搜索，使用 `POST /v0/search/subjects` 和 `filter.type: [2]`。
-5. 已建立 Bangumi 条目模型、用户模型、OAuth token 模型、Dio API 客户端、Repository 抽象、Riverpod 搜索 Provider、详情 Provider 和当前用户 Provider。
+5. 已建立 Bangumi 条目模型、用户模型、OAuth token 模型、收藏模型、Dio API 客户端、Repository 抽象、Riverpod 搜索 Provider、详情 Provider、当前用户 Provider 和当前用户收藏 Provider。
 6. 已在 Bangumi 首页提供关键词搜索 UI 和结果列表。
 7. 已接入公开条目详情，使用 `GET /v0/subjects/{subject_id}`，支持从搜索结果进入详情页。
-8. 收藏读取/修改仍是后续工作。
+8. 已接入条目详情页个人收藏读取和修改，支持想看、看过、在看、搁置、抛弃、评分、短评和私有标记。
+9. 收藏列表、章节进度同步和批量管理仍是后续工作。
 
 推荐实现：
 
@@ -201,13 +202,13 @@ flowchart LR
 为了尽快形成可验证闭环，建议首个开发里程碑只做：
 
 1. Flutter 工程骨架。
-2. Bangumi 登录、当前用户信息、搜索和条目详情。
+2. Bangumi 登录、当前用户信息、搜索、条目详情和单条收藏读写。
 3. DMHY RSS 搜索并复制/打开磁力链接。
 4. 按需解析 DMHY 详情页并下载 `.torrent` 种子文件。
 5. 通过系统 Intent、分享或复制，把 magnet 或 `.torrent` 种子文件交给外部 BT 客户端。
 6. 提供手动选择本地视频并调用播放器的入口，不自动追踪外部 BT 客户端的下载结果。
 
-收藏、进度、复杂过滤、RSS 自动订阅、外部客户端兼容性清单、公共目录导出和内置下载器可以在闭环跑通后逐步补齐。
+收藏列表、进度、复杂过滤、RSS 自动订阅、外部客户端兼容性清单、公共目录导出和内置下载器可以在闭环跑通后逐步补齐。
 
 ## 关键风险
 

@@ -69,4 +69,4 @@ com.railyw.anime_mobile_torrent:/oauth/bangumi
 
 ## 当前状态
 
-本仓库目前包含项目规则、调研文档、Android Flutter 工程骨架、首页导航壳、功能模块 README、Bangumi 可配置 OAuth 登录、当前用户信息读取、公开动画条目搜索与条目详情、DMHY RSS 关键词搜索、RSS 结果中的 magnet 复制/打开入口，以及 DMHY 详情页 `.torrent` 种子文件解析、下载和系统分享交接。下一步应优先实现 Bangumi 收藏读取/修改，并继续补齐更直接的 Android FileProvider `ACTION_VIEW` 种子文件打开路径。
+本仓库目前包含项目规则、调研文档、Android Flutter 工程骨架、首页导航壳、功能模块 README、Bangumi 可配置 OAuth 登录、当前用户信息读取、公开动画条目搜索与条目详情、条目详情页个人收藏读取/修改、DMHY RSS 关键词搜索、RSS 结果中的 magnet 复制/打开入口，以及 DMHY 详情页 `.torrent` 种子文件解析、下载和系统分享交接。下一步应优先补齐 Bangumi 收藏列表/进度同步或详情页 DMHY 联动，并继续补齐更直接的 Android FileProvider `ACTION_VIEW` 种子文件打开路径。

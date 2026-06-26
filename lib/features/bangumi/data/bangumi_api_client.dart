@@ -1,5 +1,6 @@
 import 'package:dio/dio.dart';
 
+import '../domain/bangumi_collection.dart';
 import '../domain/bangumi_subject.dart';
 import '../domain/bangumi_user.dart';
 
@@ -170,6 +171,70 @@ class BangumiApiClient {
     }
   }
 
+  /// 获取指定用户对单个条目的收藏信息。
+  ///
+  /// 当前用户查看自己的私有收藏时需要传入 access token。`username` 会做
+  /// URI 编码，避免用户名中出现特殊字符时破坏路径。
+  Future<BangumiSubjectCollection> getUserCollection({
+    required String username,
+    required int subjectId,
+    String? accessToken,
+  }) async {
+    final normalizedUsername = username.trim();
+    if (normalizedUsername.isEmpty) {
+      throw const BangumiApiException('Bangumi 用户名为空');
+    }
+
+    if (subjectId <= 0) {
+      throw const BangumiApiException('Bangumi 条目 ID 不合法');
+    }
+
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/v0/users/${Uri.encodeComponent(normalizedUsername)}/collections/$subjectId',
+        options: _authorizationOptions(accessToken),
+      );
+
+      final data = response.data;
+      if (data == null) {
+        throw const BangumiApiException('Bangumi 返回了空收藏信息');
+      }
+
+      return BangumiSubjectCollection.fromJson(data);
+    } on DioException catch (error) {
+      throw _mapDioException(error);
+    }
+  }
+
+  /// 新增或修改当前用户对单个条目的收藏信息。
+  ///
+  /// 官方接口要求 `write:collection` scope。这里使用 POST，因为该接口在
+  /// 收藏不存在时会创建，存在时会修改，正好符合“保存我的收藏”的 UI 语义。
+  Future<void> saveMyCollection({
+    required int subjectId,
+    required BangumiSubjectCollectionUpdate update,
+    required String accessToken,
+  }) async {
+    final normalizedToken = accessToken.trim();
+    if (normalizedToken.isEmpty) {
+      throw const BangumiApiException('Bangumi access token 为空');
+    }
+
+    if (subjectId <= 0) {
+      throw const BangumiApiException('Bangumi 条目 ID 不合法');
+    }
+
+    try {
+      await _dio.post<void>(
+        '/v0/users/-/collections/$subjectId',
+        data: update.toJson(),
+        options: _authorizationOptions(normalizedToken),
+      );
+    } on DioException catch (error) {
+      throw _mapDioException(error);
+    }
+  }
+
   BangumiApiException _mapDioException(DioException error) {
     final statusCode = error.response?.statusCode;
 
@@ -206,5 +271,14 @@ class BangumiApiClient {
       error.message ?? '连接 Bangumi 失败',
       statusCode: statusCode,
     );
+  }
+
+  Options? _authorizationOptions(String? accessToken) {
+    final normalizedToken = accessToken?.trim();
+    if (normalizedToken == null || normalizedToken.isEmpty) {
+      return null;
+    }
+
+    return Options(headers: {'Authorization': 'Bearer $normalizedToken'});
   }
 }

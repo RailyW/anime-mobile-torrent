@@ -78,6 +78,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Bangumi 条目详情'), findsOneWidget);
+    expect(find.text('我的收藏'), findsOneWidget);
+    expect(find.textContaining('登录 Bangumi 后'), findsOneWidget);
     expect(find.text('收藏统计'), findsOneWidget);
     expect(find.text('合计'), findsOneWidget);
     expect(find.text('维基信息'), findsOneWidget);
