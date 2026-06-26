@@ -4,7 +4,7 @@
 
 ## 当前包含文件与目录
 
-- `app/src/main/AndroidManifest.xml`：声明网络权限、启动 Activity、Flutter embedding、Bangumi OAuth 回跳兼容设置和外部 BT 客户端查询能力。
+- `app/src/main/AndroidManifest.xml`：声明网络权限、启动 Activity、Flutter embedding、Bangumi OAuth 回跳兼容设置、外部 BT 客户端查询能力和 `video/*` 播放器查询能力。
 - `app/src/main/kotlin/com/railyw/anime_mobile_torrent/MainActivity.kt`：Flutter 安卓宿主 Activity，后续可扩展 MethodChannel。
 - `app/src/main/res/`：启动背景、图标和主题资源。
 - `build.gradle.kts`、`settings.gradle.kts`、`gradle.properties`：Android Gradle 构建配置，其中 app 模块通过 `appAuthRedirectScheme` manifest placeholder 注册 Bangumi OAuth 自定义 scheme。
@@ -12,7 +12,7 @@
 
 ## 设计边界
 
-1. 首期 Android 原生侧只承载 Flutter UI、网络权限、Bangumi OAuth 回跳声明和外部应用交接查询声明。
+1. 首期 Android 原生侧只承载 Flutter UI、网络权限、Bangumi OAuth 回跳声明、外部 BT 客户端交接查询声明和外部播放器查询声明。
 2. 如果 `url_launcher`、`share_plus` 或 `file_selector` 不能满足 magnet、`.torrent` 或播放 Intent 的兼容性，再在 `MainActivity.kt` 或独立平台桥接类中扩展 MethodChannel。
 3. 不在首期加入 Torrent 下载 Foreground Service、下载通知或 BT 引擎依赖。
 

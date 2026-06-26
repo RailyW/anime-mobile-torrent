@@ -11,6 +11,6 @@
 
 ## 设计边界
 
-1. `lib` 目录不直接保存平台私有实现细节；Android Intent、FileProvider 和播放器调起逻辑优先放在 `android/` 原生侧或平台桥接层。
+1. `lib` 目录不直接保存平台私有实现细节；Android Intent、FileProvider 和播放器调起逻辑优先通过成熟 Flutter 插件、`android/` 原生侧或平台桥接层封装。
 2. Bangumi、DMHY、种子交接和播放能力必须保持模块边界清晰，避免把外部 API、页面状态和平台通道揉在首页。
 3. 新增功能时应同步更新对应子目录 README，记录模块职责、文件清单和边界变化。

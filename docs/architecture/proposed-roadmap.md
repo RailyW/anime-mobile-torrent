@@ -65,8 +65,8 @@ flowchart LR
 1. 已生成 Android-only Flutter 工程，包名前缀为 `com.railyw`。
 2. 已建立 `lib/app`、`lib/features`、`lib/shared`、`android` 和 `test` 模块 README。
 3. 已增加首页导航壳，覆盖 Bangumi、DMHY、种子交接和播放四个入口。
-4. 已在 Android Manifest 中声明网络权限、magnet 查询和 `.torrent` MIME 查询。
-5. 已加入 `go_router`、`flutter_riverpod`、`dio`、`flutter_secure_storage`、`url_launcher`、`path_provider`、`share_plus`、`file_selector`、`xml` 和 `html` 作为后续阶段基础依赖。
+4. 已在 Android Manifest 中声明网络权限、magnet 查询、`.torrent` MIME 查询和 `video/*` 播放器查询。
+5. 已加入 `go_router`、`flutter_riverpod`、`dio`、`flutter_secure_storage`、`url_launcher`、`path_provider`、`share_plus`、`file_selector`、`open_filex`、`xml` 和 `html` 作为后续阶段基础依赖。
 
 ### 阶段 1：Bangumi 登录与条目浏览
 
@@ -191,11 +191,20 @@ flowchart LR
 3. 通过播放器 Intent 打开用户选择的视频文件。
 4. 如果后续做内置下载器，再支持下载完成后自动识别多个视频文件候选。
 
+当前落地情况：
+
+1. 已接入 `file_selector`，通过系统文件选择器让用户显式选择本地视频文件。
+2. 已接入 `open_filex`，把用户选择的视频文件交给系统或第三方播放器打开。
+3. 已建立本地视频文件模型、视频 MIME 推断、播放器打开结果模型、播放仓库接口和 Riverpod Provider。
+4. 已在播放首页展示已选视频文件名、路径、MIME 类型、大小、播放按钮和打开结果反馈。
+5. 已在 Android Manifest `<queries>` 中声明 `ACTION_VIEW video/*`，支持 Android 11+ 包可见性查询。
+6. 当前不扫描外部 BT 客户端下载目录，不申请全文件访问权限，不实现内嵌播放器。
+
 推荐实现：
 
-1. 原生 Kotlin 播放桥接负责 MIME 判断、URI 授权和 Intent 调起。
-2. Flutter 侧首期只提供手动选择视频和播放入口。
-3. 首期不使用裸 `file://`，不申请 `MANAGE_EXTERNAL_STORAGE`，也不扫描外部 BT 客户端的下载目录。
+1. 首期继续使用 `file_selector` 和 `open_filex` 作为成熟插件方案，避免自行手写文件选择器和播放 Intent。
+2. 如果后续发现部分 Android 设备或播放器兼容性不足，再补 Kotlin 播放桥接，负责更细粒度的 MIME 判断、URI 授权和 Intent 调起。
+3. 首期不申请 `MANAGE_EXTERNAL_STORAGE`，也不扫描外部 BT 客户端的下载目录。
 
 ## 首期最小闭环建议
 
@@ -206,7 +215,7 @@ flowchart LR
 3. DMHY RSS 搜索并复制/打开磁力链接。
 4. 按需解析 DMHY 详情页并下载 `.torrent` 种子文件。
 5. 通过系统 Intent、分享或复制，把 magnet 或 `.torrent` 种子文件交给外部 BT 客户端。
-6. 提供手动选择本地视频并调用播放器的入口，不自动追踪外部 BT 客户端的下载结果。
+6. 已提供手动选择本地视频并调用播放器的入口，不自动追踪外部 BT 客户端的下载结果。
 
 收藏列表、进度、复杂过滤、RSS 自动订阅、外部客户端兼容性清单、公共目录导出和内置下载器可以在闭环跑通后逐步补齐。
 

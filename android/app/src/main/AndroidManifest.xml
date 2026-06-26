@@ -55,5 +55,11 @@
             <action android:name="android.intent.action.SEND" />
             <data android:mimeType="application/x-bittorrent" />
         </intent>
+
+        <!-- 本地视频文件交给系统或第三方播放器处理。 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="video/*" />
+        </intent>
     </queries>
 </manifest>

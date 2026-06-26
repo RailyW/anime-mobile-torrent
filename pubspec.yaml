@@ -24,11 +24,12 @@ dependencies:
   xml: ^7.0.1
   html: ^0.15.6
 
-  # magnet 打开、种子文件缓存、分享交接和用户手动选择视频文件。
+  # magnet 打开、种子文件缓存、分享交接、用户手动选择视频文件和外部播放器打开。
   url_launcher: ^6.3.2
   path_provider: ^2.1.6
   share_plus: ^13.1.0
   file_selector: ^1.1.0
+  open_filex: ^4.7.0
 
 dev_dependencies:
   flutter_test:
