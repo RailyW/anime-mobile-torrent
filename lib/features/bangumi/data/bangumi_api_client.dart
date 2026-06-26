@@ -115,6 +115,32 @@ class BangumiApiClient {
     }
   }
 
+  /// 根据 Bangumi 条目 ID 获取完整条目详情。
+  ///
+  /// 官方 OpenAPI 将该接口标记为 Optional Bearer：未登录也可以访问公开
+  /// 条目，但未来如果用户登录，可以通过同一个客户端自动附带 access token
+  /// 以获取更完整的可见范围。
+  Future<BangumiSubject> getSubjectById(int subjectId) async {
+    if (subjectId <= 0) {
+      throw const BangumiApiException('Bangumi 条目 ID 不合法');
+    }
+
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/v0/subjects/$subjectId',
+      );
+
+      final data = response.data;
+      if (data == null) {
+        throw const BangumiApiException('Bangumi 返回了空响应');
+      }
+
+      return BangumiSubject.fromJson(data);
+    } on DioException catch (error) {
+      throw _mapDioException(error);
+    }
+  }
+
   BangumiApiException _mapDioException(DioException error) {
     final statusCode = error.response?.statusCode;
 
@@ -131,6 +157,10 @@ class BangumiApiClient {
         'Bangumi 请求过于频繁，请稍后再试',
         statusCode: statusCode,
       );
+    }
+
+    if (statusCode == 404) {
+      return BangumiApiException('Bangumi 条目不存在或当前不可见', statusCode: statusCode);
     }
 
     if (statusCode != null && statusCode >= 500) {

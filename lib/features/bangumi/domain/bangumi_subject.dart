@@ -98,10 +98,101 @@ class BangumiSubjectRating {
   }
 }
 
+/// Bangumi 条目的收藏人数统计。
+///
+/// 该对象来自官方 `Subject.collection` 字段，表示不同收藏状态下的人数。
+/// 它不是当前登录用户自己的收藏状态；后续接入 OAuth 后，用户自己的收藏
+/// 需要通过 `/v0/users/-/collections/{subject_id}` 或相关接口单独获取。
+class BangumiSubjectCollectionStats {
+  const BangumiSubjectCollectionStats({
+    required this.wish,
+    required this.collect,
+    required this.doing,
+    required this.onHold,
+    required this.dropped,
+  });
+
+  /// 当接口缺失 `collection` 字段时使用的空统计。
+  static const empty = BangumiSubjectCollectionStats(
+    wish: 0,
+    collect: 0,
+    doing: 0,
+    onHold: 0,
+    dropped: 0,
+  );
+
+  final int wish;
+  final int collect;
+  final int doing;
+  final int onHold;
+  final int dropped;
+
+  /// 所有收藏状态的人数总和。
+  int get total => wish + collect + doing + onHold + dropped;
+
+  /// 从 API 的 `collection` 对象中解析收藏统计。
+  factory BangumiSubjectCollectionStats.fromJson(Object? json) {
+    if (json is! Map<String, dynamic>) {
+      return BangumiSubjectCollectionStats.empty;
+    }
+
+    return BangumiSubjectCollectionStats(
+      wish: _readInt(json['wish']),
+      collect: _readInt(json['collect']),
+      doing: _readInt(json['doing']),
+      onHold: _readInt(json['on_hold']),
+      dropped: _readInt(json['dropped']),
+    );
+  }
+}
+
+/// Bangumi 用户标签。
+///
+/// 官方 `Subject.tags` 字段会返回标签名称和使用人数。详情页只需要展示
+/// 前若干个标签，因此模型保持轻量，不承载搜索过滤或排序逻辑。
+class BangumiSubjectTag {
+  const BangumiSubjectTag({required this.name, required this.count});
+
+  final String name;
+  final int count;
+
+  /// 从 API 的 tag 对象中解析标签。
+  factory BangumiSubjectTag.fromJson(Map<String, dynamic> json) {
+    return BangumiSubjectTag(
+      name: _readString(json['name']) ?? '',
+      count: _readInt(json['count']),
+    );
+  }
+}
+
+/// Bangumi 维基信息框条目。
+///
+/// 官方 `infobox` 的 `value` 可能是字符串，也可能是包含 `{v}` 或
+/// `{k, v}` 的数组。这里统一转换成可展示字符串列表，避免 UI 层直接处理
+/// 动态 JSON 结构。
+class BangumiInfoBoxItem {
+  const BangumiInfoBoxItem({required this.key, required this.values});
+
+  final String key;
+  final List<String> values;
+
+  /// 多值信息框的单行摘要。
+  String get valueLabel => values.join('、');
+
+  /// 从 API 的 infobox item 中解析展示项。
+  factory BangumiInfoBoxItem.fromJson(Map<String, dynamic> json) {
+    return BangumiInfoBoxItem(
+      key: _readString(json['key']) ?? '',
+      values: _readInfoBoxValues(json['value']),
+    );
+  }
+}
+
 /// Bangumi 条目搜索结果中的核心条目信息。
 ///
-/// 这个模型只保留首期搜索列表和后续 DMHY 关键词联动需要的字段。
-/// 如果后续接入详情页，可以在不破坏列表模型的前提下新增更完整的详情模型。
+/// 官方搜索和详情接口都返回 `Subject` schema。本模型以列表页必需字段为
+/// 核心，同时承载详情页需要的收藏统计、标签和 infobox。构造函数把详情
+/// 字段设为默认值，保证测试和搜索列表可以只传入核心字段。
 class BangumiSubject {
   const BangumiSubject({
     required this.id,
@@ -115,6 +206,14 @@ class BangumiSubject {
     required this.totalEpisodes,
     required this.rating,
     required this.images,
+    this.series = false,
+    this.nsfw = false,
+    this.locked = false,
+    this.volumes = 0,
+    this.collection = BangumiSubjectCollectionStats.empty,
+    this.metaTags = const [],
+    this.tags = const [],
+    this.infobox = const [],
   });
 
   final int id;
@@ -128,6 +227,14 @@ class BangumiSubject {
   final int totalEpisodes;
   final BangumiSubjectRating rating;
   final BangumiSubjectImages images;
+  final bool series;
+  final bool nsfw;
+  final bool locked;
+  final int volumes;
+  final BangumiSubjectCollectionStats collection;
+  final List<String> metaTags;
+  final List<BangumiSubjectTag> tags;
+  final List<BangumiInfoBoxItem> infobox;
 
   /// 从 Bangumi API JSON 中解析条目。
   ///
@@ -146,6 +253,14 @@ class BangumiSubject {
       totalEpisodes: _readInt(json['total_episodes']),
       rating: BangumiSubjectRating.fromJson(json['rating']),
       images: BangumiSubjectImages.fromJson(json['images']),
+      series: _readBool(json['series']),
+      nsfw: _readBool(json['nsfw']),
+      locked: _readBool(json['locked']),
+      volumes: _readInt(json['volumes']),
+      collection: BangumiSubjectCollectionStats.fromJson(json['collection']),
+      metaTags: _readStringList(json['meta_tags']),
+      tags: _readTags(json['tags']),
+      infobox: _readInfoBox(json['infobox']),
     );
   }
 
@@ -165,6 +280,18 @@ class BangumiSubject {
   String get episodeLabel {
     final count = totalEpisodes > 0 ? totalEpisodes : eps;
     return count > 0 ? '$count 话' : '集数未知';
+  }
+
+  /// 详情页标题下方可展示的基础信息。
+  String get detailMetaLine {
+    final parts = <String>[
+      type.label,
+      if (platform.isNotEmpty) platform,
+      episodeLabel,
+      ?airDate,
+    ];
+
+    return parts.join(' · ');
   }
 }
 
@@ -242,4 +369,104 @@ double _readDouble(Object? value) {
   }
 
   return 0;
+}
+
+bool _readBool(Object? value) {
+  if (value is bool) {
+    return value;
+  }
+
+  if (value is num) {
+    return value != 0;
+  }
+
+  if (value is String) {
+    final normalized = value.trim().toLowerCase();
+    return normalized == 'true' || normalized == '1';
+  }
+
+  return false;
+}
+
+List<String> _readStringList(Object? value) {
+  if (value is! List) {
+    return const [];
+  }
+
+  final items = <String>[];
+  for (final item in value) {
+    final text = _readString(item);
+    if (text != null) {
+      items.add(text);
+    }
+  }
+
+  return List.unmodifiable(items);
+}
+
+List<BangumiSubjectTag> _readTags(Object? value) {
+  if (value is! List) {
+    return const [];
+  }
+
+  final tags = <BangumiSubjectTag>[];
+  for (final item in value) {
+    if (item is Map<String, dynamic>) {
+      final tag = BangumiSubjectTag.fromJson(item);
+      if (tag.name.isNotEmpty) {
+        tags.add(tag);
+      }
+    }
+  }
+
+  return List.unmodifiable(tags);
+}
+
+List<BangumiInfoBoxItem> _readInfoBox(Object? value) {
+  if (value is! List) {
+    return const [];
+  }
+
+  final items = <BangumiInfoBoxItem>[];
+  for (final item in value) {
+    if (item is Map<String, dynamic>) {
+      final info = BangumiInfoBoxItem.fromJson(item);
+      if (info.key.isNotEmpty && info.values.isNotEmpty) {
+        items.add(info);
+      }
+    }
+  }
+
+  return List.unmodifiable(items);
+}
+
+List<String> _readInfoBoxValues(Object? value) {
+  final stringValue = _readString(value);
+  if (stringValue != null) {
+    return [stringValue];
+  }
+
+  if (value is! List) {
+    return const [];
+  }
+
+  final values = <String>[];
+  for (final item in value) {
+    if (item is Map<String, dynamic>) {
+      final label = _readString(item['k']);
+      final text = _readString(item['v']);
+      if (text == null) {
+        continue;
+      }
+
+      values.add(label == null ? text : '$label：$text');
+    } else {
+      final text = _readString(item);
+      if (text != null) {
+        values.add(text);
+      }
+    }
+  }
+
+  return List.unmodifiable(values);
 }

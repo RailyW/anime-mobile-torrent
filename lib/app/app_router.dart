@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/bangumi/presentation/bangumi_subject_detail_page.dart';
 import '../features/home/home_screen.dart';
 
 /// GoRouter 路由表 Provider。
@@ -16,6 +17,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/',
         name: 'home',
         builder: (context, state) => const HomeScreen(),
+      ),
+      GoRoute(
+        path: '/bangumi/subjects/:subjectId',
+        name: 'bangumi-subject-detail',
+        builder: (context, state) {
+          final rawSubjectId = state.pathParameters['subjectId'];
+          final subjectId = int.tryParse(rawSubjectId ?? '') ?? 0;
+
+          return BangumiSubjectDetailPage(subjectId: subjectId);
+        },
       ),
     ],
   );

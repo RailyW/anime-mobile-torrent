@@ -5,7 +5,7 @@
 ## 当前包含文件
 
 - `anime_mobile_torrent_app.dart`：Material APP 根组件，挂载 GoRouter、亮色主题和暗色主题。
-- `app_router.dart`：应用路由表 Provider，目前注册首页路由。
+- `app_router.dart`：应用路由表 Provider，目前注册首页路由和 Bangumi 条目详情命名路由。
 - `app_theme.dart`：Material 3 主题配置，定义品牌色、强调色、圆角、导航和按钮样式。
 
 ## 设计边界

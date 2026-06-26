@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../application/bangumi_providers.dart';
 import '../domain/bangumi_subject.dart';
+import 'widgets/bangumi_info_chip.dart';
+import 'widgets/bangumi_rating_line.dart';
+import 'widgets/bangumi_subject_cover.dart';
 
 /// Bangumi 功能首页入口。
 ///
@@ -249,160 +253,82 @@ class _BangumiSubjectCard extends StatelessWidget {
     final scheme = theme.colorScheme;
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _SubjectCover(imageUrl: subject.images.preferredListUrl),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    subject.displayName,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (subject.subtitleName != null) ...[
-                    const SizedBox(height: 2),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          context.pushNamed(
+            'bangumi-subject-detail',
+            pathParameters: {'subjectId': subject.id.toString()},
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              BangumiSubjectCover(imageUrl: subject.images.preferredListUrl),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      subject.subtitleName!,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
+                      subject.displayName,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
-                  ],
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      _InfoChip(label: subject.type.label),
-                      _InfoChip(
-                        label: subject.platform.isEmpty
-                            ? '平台未知'
-                            : subject.platform,
+                    if (subject.subtitleName != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subject.subtitleName!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
                       ),
-                      _InfoChip(label: subject.episodeLabel),
-                      if (subject.airDate != null)
-                        _InfoChip(label: subject.airDate!),
                     ],
-                  ),
-                  const SizedBox(height: 8),
-                  _RatingLine(rating: subject.rating),
-                  if (subject.summary.isNotEmpty) ...[
                     const SizedBox(height: 8),
-                    Text(
-                      subject.summary,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall,
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        BangumiInfoChip(label: subject.type.label),
+                        BangumiInfoChip(
+                          label: subject.platform.isEmpty
+                              ? '平台未知'
+                              : subject.platform,
+                        ),
+                        BangumiInfoChip(label: subject.episodeLabel),
+                        if (subject.airDate != null)
+                          BangumiInfoChip(label: subject.airDate!),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    BangumiRatingLine(rating: subject.rating),
+                    if (subject.summary.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        subject.summary,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Icon(
+                          Icons.chevron_right,
+                          color: scheme.onSurfaceVariant,
+                          size: 20,
+                        ),
+                      ],
                     ),
                   ],
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SubjectCover extends StatelessWidget {
-  const _SubjectCover({required this.imageUrl});
-
-  final String? imageUrl;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
-      child: SizedBox(
-        width: 72,
-        height: 102,
-        child: imageUrl == null
-            ? ColoredBox(
-                color: scheme.surfaceContainerHighest,
-                child: Icon(
-                  Icons.image_not_supported_outlined,
-                  color: scheme.onSurfaceVariant,
                 ),
-              )
-            : Image.network(
-                imageUrl!,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return ColoredBox(
-                    color: scheme.surfaceContainerHighest,
-                    child: Icon(
-                      Icons.broken_image_outlined,
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  );
-                },
               ),
-      ),
-    );
-  }
-}
-
-class _RatingLine extends StatelessWidget {
-  const _RatingLine({required this.rating});
-
-  final BangumiSubjectRating rating;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final score = rating.score > 0 ? rating.score.toStringAsFixed(1) : '暂无';
-    final rank = rating.rank > 0 ? 'Rank ${rating.rank}' : '暂无排名';
-    final total = rating.total > 0 ? '${rating.total} 人评分' : '评分人数未知';
-
-    return Row(
-      children: [
-        Icon(Icons.star_rounded, color: scheme.secondary, size: 18),
-        const SizedBox(width: 4),
-        Text(
-          '$score · $rank · $total',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: scheme.onSurfaceVariant,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _InfoChip extends StatelessWidget {
-  const _InfoChip({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: scheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: scheme.onSecondaryContainer,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
+            ],
           ),
         ),
       ),

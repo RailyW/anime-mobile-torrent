@@ -57,4 +57,4 @@ flutter build apk --debug
 
 ## 当前状态
 
-本仓库目前包含项目规则、调研文档、Android Flutter 工程骨架、首页导航壳、功能模块 README 和 Bangumi 公开动画条目搜索。下一步应优先实现 Bangumi OAuth 登录、当前用户信息、条目详情和收藏同步，然后接入 DMHY RSS 搜索与种子文件交接。
+本仓库目前包含项目规则、调研文档、Android Flutter 工程骨架、首页导航壳、功能模块 README、Bangumi 公开动画条目搜索和 Bangumi 公开条目详情。下一步应优先实现 Bangumi OAuth 登录、当前用户信息和收藏同步，然后接入 DMHY RSS 搜索与种子文件交接。

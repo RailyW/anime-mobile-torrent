@@ -12,6 +12,9 @@ abstract class BangumiRepository {
   Future<BangumiSubjectPage> searchAnimeSubjects(
     BangumiSubjectSearchRequest request,
   );
+
+  /// 根据 Bangumi 条目 ID 获取完整条目详情。
+  Future<BangumiSubject> getSubjectById(int subjectId);
 }
 
 /// 基于 Bangumi HTTP API 的仓库实现。
@@ -30,6 +33,11 @@ class BangumiHttpRepository implements BangumiRepository {
       offset: request.offset,
       sort: request.sort,
     );
+  }
+
+  @override
+  Future<BangumiSubject> getSubjectById(int subjectId) {
+    return _apiClient.getSubjectById(subjectId);
   }
 }
 
@@ -103,4 +111,18 @@ final bangumiSubjectSearchProvider = FutureProvider.autoDispose
           sort: request.sort,
         ),
       );
+    });
+
+/// Bangumi 条目详情 Provider。
+///
+/// 详情页通过路由参数传入条目 ID。无效 ID 直接抛出参数错误，避免请求
+/// `/v0/subjects/0` 这类必然失败的地址。
+final bangumiSubjectDetailProvider = FutureProvider.autoDispose
+    .family<BangumiSubject, int>((ref, subjectId) {
+      if (subjectId <= 0) {
+        throw ArgumentError.value(subjectId, 'subjectId', 'Bangumi 条目 ID 不合法');
+      }
+
+      final repository = ref.watch(bangumiRepositoryProvider);
+      return repository.getSubjectById(subjectId);
     });
