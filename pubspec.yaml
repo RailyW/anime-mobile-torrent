@@ -17,8 +17,9 @@ dependencies:
   go_router: ^17.3.0
   flutter_riverpod: ^3.3.2
 
-  # Bangumi API、OAuth token 存储、DMHY RSS/HTML 解析。
+  # Bangumi API、OAuth 登录、OAuth token 存储、DMHY RSS/HTML 解析。
   dio: ^5.9.2
+  flutter_appauth: ^12.0.1
   flutter_secure_storage: ^10.3.1
   xml: ^7.0.1
   html: ^0.15.6

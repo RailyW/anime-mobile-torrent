@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../domain/bangumi_subject.dart';
+import '../domain/bangumi_user.dart';
 
 /// Bangumi 搜索排序方式。
 ///
@@ -136,6 +137,34 @@ class BangumiApiClient {
       }
 
       return BangumiSubject.fromJson(data);
+    } on DioException catch (error) {
+      throw _mapDioException(error);
+    }
+  }
+
+  /// 获取当前 access token 对应的 Bangumi 用户信息。
+  ///
+  /// `/v0/me` 必须携带 `Authorization: Bearer <token>`。方法只接受本次
+  /// 请求使用的 token，不把 token 长期保存在 Dio 实例里，避免退出登录后
+  /// 旧 token 被后续公开接口误用。
+  Future<BangumiUser> getMyself({required String accessToken}) async {
+    final normalizedToken = accessToken.trim();
+    if (normalizedToken.isEmpty) {
+      throw const BangumiApiException('Bangumi access token 为空');
+    }
+
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/v0/me',
+        options: Options(headers: {'Authorization': 'Bearer $normalizedToken'}),
+      );
+
+      final data = response.data;
+      if (data == null) {
+        throw const BangumiApiException('Bangumi 返回了空用户信息');
+      }
+
+      return BangumiUser.fromJson(data);
     } on DioException catch (error) {
       throw _mapDioException(error);
     }

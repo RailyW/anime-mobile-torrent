@@ -22,7 +22,8 @@ void main() {
 
     expect(find.text('Anime Mobile Torrent'), findsOneWidget);
     expect(find.text('Bangumi'), findsWidgets);
-    expect(find.text('搜索可用'), findsOneWidget);
+    expect(find.text('登录/搜索'), findsOneWidget);
+    expect(find.text('OAuth 客户端未配置'), findsOneWidget);
 
     await tester.tap(find.text('DMHY').last);
     await tester.pumpAndSettle();

@@ -80,11 +80,14 @@ flowchart LR
 
 当前落地情况：
 
-1. 已接入公开动画条目搜索，使用 `POST /v0/search/subjects` 和 `filter.type: [2]`。
-2. 已建立 Bangumi 条目模型、Dio API 客户端、Repository 抽象和 Riverpod 搜索 Provider。
-3. 已在 Bangumi 首页提供关键词搜索 UI 和结果列表。
-4. 已接入公开条目详情，使用 `GET /v0/subjects/{subject_id}`，支持从搜索结果进入详情页。
-5. OAuth 登录、`/v0/me` 和收藏修改仍是后续工作。
+1. 已接入可配置 OAuth 登录，使用 `flutter_appauth` 调用 Bangumi `/oauth/authorize` 和 `/oauth/access_token`。
+2. 已通过 `flutter_secure_storage` 保存 access token、refresh token、过期时间、token 类型和 scope。
+3. 已接入 `/v0/me` 当前用户信息读取，并在 Bangumi 首页展示登录状态、用户昵称、用户名、头像、签名、刷新和退出入口。
+4. 已接入公开动画条目搜索，使用 `POST /v0/search/subjects` 和 `filter.type: [2]`。
+5. 已建立 Bangumi 条目模型、用户模型、OAuth token 模型、Dio API 客户端、Repository 抽象、Riverpod 搜索 Provider、详情 Provider 和当前用户 Provider。
+6. 已在 Bangumi 首页提供关键词搜索 UI 和结果列表。
+7. 已接入公开条目详情，使用 `GET /v0/subjects/{subject_id}`，支持从搜索结果进入详情页。
+8. 收藏读取/修改仍是后续工作。
 
 推荐实现：
 
@@ -95,8 +98,8 @@ flowchart LR
 
 待确认：
 
-1. OAuth `client_secret` 是否由移动端保存，还是需要后端 token broker。
-2. Bangumi OAuth 回调使用自定义 scheme 还是 App Links。
+1. 当前移动端通过 `--dart-define` 注入 OAuth `client_secret`；发布前仍需确认是否改为后端 token broker。
+2. 当前 Bangumi OAuth 回调使用自定义 scheme `com.railyw.anime_mobile_torrent:/oauth/bangumi`；发布前可继续评估 App Links。
 
 ### 阶段 2：DMHY 搜索与资源选择
 
@@ -198,7 +201,7 @@ flowchart LR
 为了尽快形成可验证闭环，建议首个开发里程碑只做：
 
 1. Flutter 工程骨架。
-2. Bangumi 登录、搜索和条目详情。
+2. Bangumi 登录、当前用户信息、搜索和条目详情。
 3. DMHY RSS 搜索并复制/打开磁力链接。
 4. 按需解析 DMHY 详情页并下载 `.torrent` 种子文件。
 5. 通过系统 Intent、分享或复制，把 magnet 或 `.torrent` 种子文件交给外部 BT 客户端。

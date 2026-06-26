@@ -2,17 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../application/bangumi_auth_providers.dart';
 import '../application/bangumi_providers.dart';
+import '../domain/bangumi_auth.dart';
 import '../domain/bangumi_subject.dart';
+import '../domain/bangumi_user.dart';
 import 'widgets/bangumi_info_chip.dart';
 import 'widgets/bangumi_rating_line.dart';
 import 'widgets/bangumi_subject_cover.dart';
 
 /// Bangumi 功能首页入口。
 ///
-/// 当前阶段先落地公开动画条目搜索，不依赖 OAuth client 配置。后续登录授权、
-/// 收藏同步和进度修改会继续放在 `features/bangumi` 模块内，并复用本页
-/// 已经接入的 Repository 与 Provider 边界。
+/// 当前阶段已落地公开动画条目搜索和可配置 OAuth 登录。OAuth 客户端信息
+/// 通过 `--dart-define` 注入；未配置时，公开搜索仍可正常使用。
 class BangumiTab extends ConsumerStatefulWidget {
   const BangumiTab({super.key});
 
@@ -56,6 +58,8 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
         const _BangumiHeader(),
+        const SizedBox(height: 12),
+        const _BangumiAccountPanel(),
         const SizedBox(height: 16),
         _BangumiSearchBar(
           controller: _keywordController,
@@ -106,12 +110,12 @@ class _BangumiHeader extends StatelessWidget {
                     ),
                   ),
                 ),
-                const _BangumiStatusBadge(label: '搜索可用'),
+                const _BangumiStatusBadge(label: '登录/搜索'),
               ],
             ),
             const SizedBox(height: 12),
             Text(
-              '先接入公开动画条目搜索。登录授权和收藏同步会在 OAuth 配置确认后继续接上。',
+              '搜索公开动画条目；配置 OAuth 后可登录 Bangumi，并读取当前用户信息。',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: scheme.onPrimaryContainer,
               ),
@@ -119,6 +123,353 @@ class _BangumiHeader extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _BangumiAccountPanel extends ConsumerStatefulWidget {
+  const _BangumiAccountPanel();
+
+  @override
+  ConsumerState<_BangumiAccountPanel> createState() =>
+      _BangumiAccountPanelState();
+}
+
+class _BangumiAccountPanelState extends ConsumerState<_BangumiAccountPanel> {
+  bool _isBusy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final config = ref.watch(bangumiOAuthConfigProvider);
+    final userState = ref.watch(bangumiCurrentUserProvider);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: userState.when(
+          loading: () => const _BangumiAccountLoading(),
+          error: (error, stackTrace) {
+            return _BangumiAccountError(
+              message: error.toString(),
+              isBusy: _isBusy,
+              canLogin: config.isConfigured,
+              onLogin: () => _login(context),
+              onRefresh: _refresh,
+            );
+          },
+          data: (user) {
+            if (user == null) {
+              return _BangumiLoggedOutAccount(
+                config: config,
+                isBusy: _isBusy,
+                onLogin: () => _login(context),
+              );
+            }
+
+            return _BangumiLoggedInAccount(
+              user: user,
+              isBusy: _isBusy,
+              onRefresh: _refresh,
+              onLogout: () => _logout(context),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  /// 发起 Bangumi OAuth 登录。
+  ///
+  /// AppAuth 会打开系统浏览器或 Custom Tabs。登录成功后 token 已由
+  /// Repository 写入 secure storage，这里只需要刷新当前用户 Provider。
+  Future<void> _login(BuildContext context) async {
+    setState(() {
+      _isBusy = true;
+    });
+
+    try {
+      final repository = ref.read(bangumiAuthRepositoryProvider);
+      await repository.login();
+      ref.invalidate(bangumiCurrentUserProvider);
+
+      if (!context.mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bangumi 登录成功')));
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBusy = false;
+        });
+      }
+    }
+  }
+
+  /// 清理本地 token 并刷新账号状态。
+  Future<void> _logout(BuildContext context) async {
+    setState(() {
+      _isBusy = true;
+    });
+
+    try {
+      final repository = ref.read(bangumiAuthRepositoryProvider);
+      await repository.logout();
+      ref.invalidate(bangumiCurrentUserProvider);
+
+      if (!context.mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已退出 Bangumi')));
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isBusy = false;
+        });
+      }
+    }
+  }
+
+  /// 重新读取 `/v0/me`。
+  void _refresh() {
+    ref.invalidate(bangumiCurrentUserProvider);
+  }
+}
+
+class _BangumiAccountLoading extends StatelessWidget {
+  const _BangumiAccountLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        SizedBox(width: 12),
+        Text('正在读取 Bangumi 登录状态...'),
+      ],
+    );
+  }
+}
+
+class _BangumiLoggedOutAccount extends StatelessWidget {
+  const _BangumiLoggedOutAccount({
+    required this.config,
+    required this.isBusy,
+    required this.onLogin,
+  });
+
+  final BangumiOAuthConfig config;
+  final bool isBusy;
+  final VoidCallback onLogin;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final configured = config.isConfigured;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              configured ? Icons.login_outlined : Icons.key_off_outlined,
+              color: scheme.secondary,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                configured ? '未登录 Bangumi' : 'OAuth 客户端未配置',
+                style: theme.textTheme.titleMedium,
+              ),
+            ),
+            _BangumiStatusBadge(label: configured ? '可登录' : '需配置'),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          configured
+              ? '登录后可读取当前用户信息，并为后续收藏同步准备授权 token。'
+              : '公开搜索仍可使用；配置 client id、client secret 和 redirect URI 后可登录。',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          onPressed: configured && !isBusy ? onLogin : null,
+          icon: isBusy
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.login_outlined),
+          label: Text(isBusy ? '登录中' : '登录 Bangumi'),
+        ),
+      ],
+    );
+  }
+}
+
+class _BangumiLoggedInAccount extends StatelessWidget {
+  const _BangumiLoggedInAccount({
+    required this.user,
+    required this.isBusy,
+    required this.onRefresh,
+    required this.onLogout,
+  });
+
+  final BangumiUser user;
+  final bool isBusy;
+  final VoidCallback onRefresh;
+  final VoidCallback onLogout;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final avatarUrl = user.avatar.preferredUrl;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            CircleAvatar(
+              radius: 24,
+              backgroundImage: avatarUrl == null
+                  ? null
+                  : NetworkImage(avatarUrl),
+              child: avatarUrl == null
+                  ? const Icon(Icons.account_circle_outlined)
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(user.displayName, style: theme.textTheme.titleMedium),
+                  Text(
+                    user.usernameLabel,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const _BangumiStatusBadge(label: '已登录'),
+          ],
+        ),
+        if (user.sign.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Text(
+            user.sign,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodyMedium,
+          ),
+        ],
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: isBusy ? null : onRefresh,
+              icon: const Icon(Icons.refresh_outlined),
+              label: const Text('刷新'),
+            ),
+            OutlinedButton.icon(
+              onPressed: isBusy ? null : onLogout,
+              icon: const Icon(Icons.logout_outlined),
+              label: const Text('退出'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _BangumiAccountError extends StatelessWidget {
+  const _BangumiAccountError({
+    required this.message,
+    required this.isBusy,
+    required this.canLogin,
+    required this.onLogin,
+    required this.onRefresh,
+  });
+
+  final String message;
+  final bool isBusy;
+  final bool canLogin;
+  final VoidCallback onLogin;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.error_outline, color: scheme.error),
+            const SizedBox(width: 8),
+            Text('登录状态读取失败', style: theme.textTheme.titleMedium),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(message),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: isBusy ? null : onRefresh,
+              icon: const Icon(Icons.refresh_outlined),
+              label: const Text('重试'),
+            ),
+            FilledButton.icon(
+              onPressed: canLogin && !isBusy ? onLogin : null,
+              icon: const Icon(Icons.login_outlined),
+              label: const Text('重新登录'),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -164,12 +515,13 @@ class _BangumiSearchBar extends StatelessWidget {
   }
 }
 
-class _BangumiEmptyState extends StatelessWidget {
+class _BangumiEmptyState extends ConsumerWidget {
   const _BangumiEmptyState();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final config = ref.watch(bangumiOAuthConfigProvider);
 
     return Card(
       child: Padding(
@@ -179,10 +531,10 @@ class _BangumiEmptyState extends StatelessWidget {
           children: [
             Text('下一步能力', style: theme.textTheme.titleMedium),
             const SizedBox(height: 12),
-            const _CapabilityLine(
+            _CapabilityLine(
               icon: Icons.login_outlined,
               title: 'OAuth 授权',
-              status: '后续',
+              status: config.isConfigured ? '已接入' : '需配置',
             ),
             const _CapabilityLine(
               icon: Icons.search_outlined,

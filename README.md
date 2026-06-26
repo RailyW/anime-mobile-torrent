@@ -18,7 +18,7 @@
 当前仓库已完成 Flutter Android 工程初始化，并建立了应用壳、模块目录和首期外部 BT 客户端交接边界。已确认的优先方向如下：
 
 1. 安卓前端使用 Flutter。
-2. Bangumi 接入优先使用官方 OpenAPI，并生成 Dart API 客户端。
+2. Bangumi 接入优先使用官方 OpenAPI；当前 OAuth 登录使用 `flutter_appauth`，token 使用 `flutter_secure_storage` 保存。
 3. 首期不内置 BT 下载器，只负责 DMHY 磁力链接、`.torrent` 种子文件获取，以及交给外部 BT 客户端处理。
 4. DMHY 首期优先使用官方 RSS，并已按需解析详情页获取 `.torrent` 文件链接。
 5. 如果未来确实需要内置 BT 下载器，再把 Android Foreground Service 和成熟原生 Torrent 引擎作为独立后续阶段评估。
@@ -55,6 +55,18 @@ flutter test
 flutter build apk --debug
 ```
 
+Bangumi OAuth 登录需要在运行时注入客户端配置，仓库不会提交 client secret：
+
+```powershell
+flutter run --dart-define=BANGUMI_CLIENT_ID=你的客户端ID --dart-define=BANGUMI_CLIENT_SECRET=你的客户端密钥
+```
+
+Bangumi 开发者后台的 redirect URI 应配置为：
+
+```text
+com.railyw.anime_mobile_torrent:/oauth/bangumi
+```
+
 ## 当前状态
 
-本仓库目前包含项目规则、调研文档、Android Flutter 工程骨架、首页导航壳、功能模块 README、Bangumi 公开动画条目搜索与条目详情、DMHY RSS 关键词搜索、RSS 结果中的 magnet 复制/打开入口，以及 DMHY 详情页 `.torrent` 种子文件解析、下载和系统分享交接。下一步应优先实现 Bangumi OAuth 登录、当前用户信息和收藏同步，并继续补齐更直接的 Android FileProvider `ACTION_VIEW` 种子文件打开路径。
+本仓库目前包含项目规则、调研文档、Android Flutter 工程骨架、首页导航壳、功能模块 README、Bangumi 可配置 OAuth 登录、当前用户信息读取、公开动画条目搜索与条目详情、DMHY RSS 关键词搜索、RSS 结果中的 magnet 复制/打开入口，以及 DMHY 详情页 `.torrent` 种子文件解析、下载和系统分享交接。下一步应优先实现 Bangumi 收藏读取/修改，并继续补齐更直接的 Android FileProvider `ACTION_VIEW` 种子文件打开路径。

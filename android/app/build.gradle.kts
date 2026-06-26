@@ -22,6 +22,8 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // flutter_appauth 使用该 scheme 接收 Bangumi OAuth 回跳。
+        manifestPlaceholders["appAuthRedirectScheme"] = "com.railyw.anime_mobile_torrent"
     }
 
     buildTypes {
