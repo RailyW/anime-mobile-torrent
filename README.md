@@ -19,7 +19,7 @@
 
 1. 安卓前端使用 Flutter。
 2. Bangumi 接入优先使用官方 OpenAPI；当前 OAuth 登录使用 `flutter_appauth`，token 使用 `flutter_secure_storage` 保存。
-3. 首期不内置 BT 下载器，只负责 DMHY 磁力链接、`.torrent` 种子文件获取，以及交给外部 BT 客户端处理。
+3. 首期不内置 BT 下载器，只负责 DMHY 磁力链接、`.torrent` 种子文件获取，以及直开或分享给外部 BT 客户端处理。
 4. DMHY 首期优先使用官方 RSS，并已按需解析详情页获取 `.torrent` 文件链接。
 5. 播放首期使用系统文件选择器和外部播放器交接，不内置视频播放器，也不扫描外部 BT 客户端下载目录。
 6. 如果未来确实需要内置 BT 下载器，再把 Android Foreground Service 和成熟原生 Torrent 引擎作为独立后续阶段评估。
@@ -70,4 +70,4 @@ com.railyw.anime_mobile_torrent:/oauth/bangumi
 
 ## 当前状态
 
-本仓库目前包含项目规则、调研文档、Android Flutter 工程骨架、首页导航壳、功能模块 README、Bangumi 可配置 OAuth 登录、当前用户信息读取、公开动画条目搜索与条目详情、条目详情页个人收藏读取/修改、DMHY RSS 关键词搜索、RSS 结果中的 magnet 复制/打开入口、DMHY 详情页 `.torrent` 种子文件解析、下载和系统分享交接，以及手动选择本地视频并调用系统或第三方播放器。下一步应优先补齐 Bangumi 收藏列表/进度同步或详情页 DMHY 联动，并继续补齐更直接的 Android FileProvider `ACTION_VIEW` 种子文件打开路径。
+本仓库目前包含项目规则、调研文档、Android Flutter 工程骨架、首页导航壳、功能模块 README、Bangumi 可配置 OAuth 登录、当前用户信息读取、公开动画条目搜索与条目详情、条目详情页个人收藏读取/修改、DMHY RSS 关键词搜索、RSS 结果中的 magnet 复制/打开入口、DMHY 详情页 `.torrent` 种子文件解析、下载、外部 BT 客户端直开和系统分享兜底，以及手动选择本地视频并调用系统或第三方播放器。下一步应优先补齐 Bangumi 收藏列表/进度同步或详情页 DMHY 联动，并继续观察不同 Android 设备和 BT 客户端对 `.torrent` 直开的兼容性。

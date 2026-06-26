@@ -4,6 +4,9 @@ import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_subject.dar
 import 'package:anime_mobile_torrent/features/dmhy/application/dmhy_providers.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_resource.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_torrent_file.dart';
+import 'package:anime_mobile_torrent/features/torrent_handoff/application/torrent_handoff_providers.dart';
+import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_handoff_result.dart';
+import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_file.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,6 +35,7 @@ void main() {
     await tester.tap(find.text('种子').last);
     await tester.pumpAndSettle();
     expect(find.text('MVP'), findsOneWidget);
+    expect(find.text('分享面板兜底'), findsOneWidget);
 
     await tester.tap(find.text('播放').last);
     await tester.pumpAndSettle();
@@ -122,6 +126,38 @@ void main() {
     expect(find.text('test_team'), findsOneWidget);
     expect(find.text('复制'), findsOneWidget);
     expect(find.text('打开'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '种子'), findsOneWidget);
+  });
+
+  testWidgets('DMHY 种子按钮可以下载并交给外部 BT 客户端', (tester) async {
+    final fakeHandoffRepository = _FakeTorrentHandoffRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          dmhyRepositoryProvider.overrideWithValue(_FakeDmhyRepository()),
+          torrentHandoffRepositoryProvider.overrideWithValue(
+            fakeHandoffRepository,
+          ),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('DMHY').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '测试动画 1080');
+    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, '种子'));
+    await tester.pumpAndSettle();
+
+    expect(fakeHandoffRepository.lastFile?.fileName, 'test.torrent');
+    expect(fakeHandoffRepository.lastFile?.length, 128);
+    expect(find.textContaining('已交给外部 BT 客户端'), findsOneWidget);
+    expect(find.textContaining('种子 128 B'), findsOneWidget);
   });
 }
 
@@ -212,5 +248,34 @@ class _FakeDmhyRepository implements DmhyRepository {
       fileName: 'test.torrent',
       length: 128,
     );
+  }
+}
+
+class _FakeTorrentHandoffRepository implements TorrentHandoffRepository {
+  TorrentSeedFile? lastFile;
+
+  @override
+  Future<TorrentHandoffResult> openSeedFile(TorrentSeedFile file) async {
+    lastFile = file;
+    return const TorrentHandoffResult(
+      status: TorrentHandoffStatus.opened,
+      platformMessage: 'done',
+    );
+  }
+
+  @override
+  Future<TorrentHandoffResult> shareSeedFile(TorrentSeedFile file) async {
+    lastFile = file;
+    return const TorrentHandoffResult(
+      status: TorrentHandoffStatus.shareOpened,
+      platformMessage: 'share sheet opened',
+    );
+  }
+
+  @override
+  Future<TorrentHandoffResult> openSeedFileWithShareFallback(
+    TorrentSeedFile file,
+  ) {
+    return openSeedFile(file);
   }
 }

@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../torrent_handoff/application/torrent_handoff_providers.dart';
+import '../../torrent_handoff/domain/torrent_seed_file.dart';
 import '../application/dmhy_providers.dart';
 import '../domain/dmhy_resource.dart';
-import '../domain/dmhy_torrent_file.dart';
 
 /// DMHY 资源搜索首页入口。
 ///
@@ -289,7 +289,7 @@ class _DmhyResourceCard extends ConsumerStatefulWidget {
 }
 
 class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
-  bool _isDownloadingTorrent = false;
+  bool _isHandingOffTorrent = false;
 
   @override
   Widget build(BuildContext context) {
@@ -365,17 +365,17 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
                   label: const Text('打开'),
                 ),
                 FilledButton.icon(
-                  onPressed: _isDownloadingTorrent
+                  onPressed: _isHandingOffTorrent
                       ? null
-                      : () => _downloadAndShareTorrent(context),
-                  icon: _isDownloadingTorrent
+                      : () => _downloadAndOpenTorrent(context),
+                  icon: _isHandingOffTorrent
                       ? const SizedBox(
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
                       : const Icon(Icons.description_outlined),
-                  label: Text(_isDownloadingTorrent ? '下载中' : '种子'),
+                  label: Text(_isHandingOffTorrent ? '交接中' : '种子'),
                 ),
               ],
             ),
@@ -422,34 +422,37 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
     );
   }
 
-  /// 下载 `.torrent` 种子文件并调起系统分享面板。
+  /// 下载 `.torrent` 种子文件并交给外部 BT 客户端。
   ///
-  /// 这里的“下载”只保存种子文件本身，不下载种子指向的视频文件。分享面板
-  /// 允许用户选择手机里已安装的 BT 客户端继续处理。
-  Future<void> _downloadAndShareTorrent(BuildContext context) async {
+  /// 这里的“下载”只保存种子文件本身，不下载种子指向的视频文件。交接逻辑
+  /// 会优先尝试直接打开 BT 客户端，直开失败时自动降级到系统分享面板。
+  Future<void> _downloadAndOpenTorrent(BuildContext context) async {
     setState(() {
-      _isDownloadingTorrent = true;
+      _isHandingOffTorrent = true;
     });
 
     try {
       final repository = ref.read(dmhyRepositoryProvider);
       final torrentFile = await repository.downloadTorrentFile(widget.resource);
+      final handoffRepository = ref.read(torrentHandoffRepositoryProvider);
+      final result = await handoffRepository.openSeedFileWithShareFallback(
+        TorrentSeedFile(
+          localPath: torrentFile.localPath,
+          fileName: torrentFile.fileName,
+          length: torrentFile.length,
+          sourceUri: torrentFile.sourceUri,
+        ),
+      );
 
       if (!context.mounted) {
         return;
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已下载种子文件 ${_formatBytes(torrentFile.length)}')),
-      );
-
-      await SharePlus.instance.share(
-        ShareParams(
-          title: '分享 .torrent 种子文件',
-          files: [
-            XFile(torrentFile.localPath, mimeType: DmhyTorrentFile.mimeType),
-          ],
-          fileNameOverrides: [torrentFile.fileName],
+        SnackBar(
+          content: Text(
+            '${result.userMessage}（种子 ${_formatBytes(torrentFile.length)}）',
+          ),
         ),
       );
     } catch (error) {
@@ -463,7 +466,7 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
     } finally {
       if (mounted) {
         setState(() {
-          _isDownloadingTorrent = false;
+          _isHandingOffTorrent = false;
         });
       }
     }

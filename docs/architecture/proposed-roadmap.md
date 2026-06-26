@@ -36,7 +36,7 @@ flowchart LR
 1. Flutter 负责页面、状态编排、Bangumi/DMHY 的业务入口和用户操作。
 2. Bangumi 模块使用官方 OpenAPI 生成客户端，并由 Repository 封装业务语义。
 3. DMHY 模块首期使用 RSS 搜索，按需解析详情页种子链接。
-4. Torrent 交接模块只负责 magnet 打开、magnet 复制、`.torrent` 种子文件下载、FileProvider 暴露和 Intent/分享交接；当前已先落地系统分享交接。
+4. Torrent 交接模块只负责 magnet 打开、magnet 复制、`.torrent` 种子文件下载、外部客户端直开和分享兜底；当前已通过成熟 Flutter 插件落地直开与分享双路径。
 5. BT 视频内容下载由用户手机自己的外部 BT 客户端负责，APP 不管理下载进度、暂停恢复、做种、限速和下载目录。
 6. 播放模块首期可以只调起系统/第三方播放器；如果视频由外部客户端下载完成，APP 需要用户手动选择本地视频后才能播放。
 7. 如果未来明确要在 APP 内管理 BT 下载，再新增 Android 原生 Foreground Service 加 `libtorrent4j` 的后续阶段。
@@ -125,7 +125,7 @@ flowchart LR
 2. 已建立 DMHY 资源模型、RSS XML 解析器、Dio RSS 客户端、Repository 抽象和 Riverpod 搜索 Provider。
 3. 已在 DMHY 首页提供关键词搜索 UI、动画分类开关和 RSS 结果列表。
 4. 已支持从 RSS 结果复制 magnet 或通过系统外部应用打开 magnet。
-5. 已支持按用户点击解析 DMHY 详情页 `.torrent` 链接，并把种子文件下载到 APP 临时目录后交给系统分享面板。
+5. 已支持按用户点击解析 DMHY 详情页 `.torrent` 链接，并把种子文件下载到 APP 临时目录后优先直开外部 BT 客户端，直开失败时自动降级到系统分享面板。
 
 待确认：
 
@@ -139,7 +139,7 @@ flowchart LR
 1. 支持通过系统 Intent 打开 `magnet:` 链接。
 2. 支持复制 magnet，作为无外部客户端或用户手动处理时的兜底。
 3. 支持从 DMHY 详情页下载 `.torrent` 种子文件。
-4. 支持通过系统分享面板交接 `.torrent` 种子文件，并后续补齐 FileProvider `content://` URI 的直接打开路径。
+4. 支持直接打开 `.torrent` 种子文件给外部 BT 客户端，并在直开失败时通过系统分享面板兜底。
 5. 支持检测无可用外部 BT 客户端时的错误提示和降级入口。
 6. 明确不下载 BT 视频内容，不管理下载任务、下载进度、暂停恢复、做种、限速和下载目录。
 
@@ -147,16 +147,24 @@ flowchart LR
 
 1. Flutter 侧优先用 `url_launcher` 尝试打开 magnet；若兼容性不足，再补 Android 原生平台桥。
 2. `.torrent` 文件下载到 APP 专属缓存或文件目录，不写入公共下载目录。
-3. Android 原生侧通过 FileProvider 暴露 `content://` URI，并设置 `application/x-bittorrent` MIME。
+3. Flutter 侧优先使用 `open_filex` 以 `application/x-bittorrent` MIME 直开 `.torrent`，兼容性不足时再补 Android 原生 FileProvider 平台桥。
 4. 使用 `ACTION_VIEW` 打开 magnet 或 `.torrent`，使用 `ACTION_SEND` 分享 `.torrent` 作为兜底。
 5. 在 Android manifest `<queries>` 中声明 `magnet` scheme 和 `application/x-bittorrent`，以支持 Android 11+ 包可见性查询。
 6. 所有交接动作都由用户显式点击触发，不做自动下载和静默跳转。
+
+当前落地情况：
+
+1. 已通过 `url_launcher` 支持 `magnet:` 外部打开，并保留复制兜底。
+2. 已通过 DMHY 详情页解析和 Dio 下载 `.torrent` 种子文件到 APP 临时目录。
+3. 已抽象通用 `TorrentSeedFile`、`TorrentHandoffResult`、`TorrentHandoffRepository` 和 Riverpod Provider。
+4. 已通过 `open_filex` 直接打开 `.torrent` 文件给外部 BT 客户端。
+5. 已通过 `share_plus` 在直开失败时自动打开系统分享面板，作为外部客户端兼容兜底。
 
 待确认：
 
 1. 首期是否需要主动推荐或引导安装外部 BT 客户端。
 2. 不同 BT 客户端对 magnet、`.torrent`、`ACTION_VIEW` 和 `ACTION_SEND` 的兼容差异是否需要建立兼容性清单。
-3. 当前 `.torrent` 文件通过 `share_plus` 交给系统分享面板；是否需要优先新增原生 `ACTION_VIEW` 直开外部 BT 客户端。
+3. 是否需要为不同 BT 客户端建立直开和分享兼容性清单。
 
 ### 阶段 3B：可选内置 Torrent 下载器
 

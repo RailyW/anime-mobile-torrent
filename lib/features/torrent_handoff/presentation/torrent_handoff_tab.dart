@@ -15,7 +15,8 @@ class TorrentHandoffTab extends StatelessWidget {
       icon: Icons.open_in_new_outlined,
       title: '种子交接',
       status: 'MVP',
-      summary: 'DMHY 结果中已可把 magnet 或 .torrent 文件交给手机里的 BT 客户端，视频下载由外部客户端完成。',
+      summary:
+          'DMHY 结果中已可把 magnet 或 .torrent 文件直接交给手机里的 BT 客户端，直开失败时自动使用分享面板兜底。',
       capabilities: [
         FeatureCapability(
           icon: Icons.link_outlined,
@@ -29,13 +30,13 @@ class TorrentHandoffTab extends StatelessWidget {
         ),
         FeatureCapability(
           icon: Icons.ios_share_outlined,
-          title: '分享给 BT 客户端',
-          status: '分享面板',
+          title: '分享面板兜底',
+          status: '已接入',
         ),
         FeatureCapability(
           icon: Icons.phone_android_outlined,
           title: '种子文件直开',
-          status: '后续',
+          status: '已接入',
         ),
       ],
       actions: [
