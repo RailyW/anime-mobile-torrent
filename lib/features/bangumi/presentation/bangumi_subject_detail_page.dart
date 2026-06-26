@@ -7,6 +7,7 @@ import '../application/bangumi_collection_providers.dart';
 import '../application/bangumi_providers.dart';
 import '../domain/bangumi_collection.dart';
 import '../domain/bangumi_dmhy_keyword.dart';
+import '../domain/bangumi_episode_collection.dart';
 import '../domain/bangumi_subject.dart';
 import 'widgets/bangumi_info_chip.dart';
 import 'widgets/bangumi_rating_line.dart';
@@ -323,7 +324,7 @@ class _MyCollectionLoggedOut extends StatelessWidget {
   }
 }
 
-class _MyCollectionContent extends StatelessWidget {
+class _MyCollectionContent extends ConsumerWidget {
   const _MyCollectionContent({
     required this.subject,
     required this.collection,
@@ -335,7 +336,7 @@ class _MyCollectionContent extends StatelessWidget {
   final VoidCallback onEdit;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final collection = this.collection;
@@ -408,8 +409,386 @@ class _MyCollectionContent extends StatelessWidget {
           icon: const Icon(Icons.edit_outlined),
           label: const Text('修改收藏'),
         ),
+        const SizedBox(height: 18),
+        _MyEpisodeProgressContent(subject: subject),
       ],
     );
+  }
+}
+
+class _MyEpisodeProgressContent extends ConsumerWidget {
+  const _MyEpisodeProgressContent({required this.subject});
+
+  final BangumiSubject subject;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    if (subject.type != BangumiSubjectType.anime) {
+      return const SizedBox.shrink();
+    }
+
+    const limit = 100;
+    final request = BangumiSubjectEpisodeCollectionsRequest(
+      subjectId: subject.id,
+      limit: limit,
+    );
+    final progressState = ref.watch(
+      bangumiMySubjectEpisodeCollectionsProvider(request),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '观看进度',
+          style: Theme.of(
+            context,
+          ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 10),
+        progressState.when(
+          loading: () => const _InlineLoading(label: '正在读取章节进度...'),
+          error: (error, stackTrace) => _EpisodeProgressError(
+            message: error.toString(),
+            onRetry: () => ref.invalidate(
+              bangumiMySubjectEpisodeCollectionsProvider(request),
+            ),
+          ),
+          data: (page) {
+            if (page == null) {
+              return const Text('登录 Bangumi 后，可以同步这个条目的章节观看进度。');
+            }
+
+            return _EpisodeProgressList(
+              subject: subject,
+              request: request,
+              page: page,
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _EpisodeProgressList extends ConsumerStatefulWidget {
+  const _EpisodeProgressList({
+    required this.subject,
+    required this.request,
+    required this.page,
+  });
+
+  final BangumiSubject subject;
+  final BangumiSubjectEpisodeCollectionsRequest request;
+  final BangumiEpisodeCollectionPage page;
+
+  @override
+  ConsumerState<_EpisodeProgressList> createState() =>
+      _EpisodeProgressListState();
+}
+
+class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
+  int? _savingEpisodeId;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final page = widget.page;
+    final total = page.total > 0 ? page.total : page.episodes.length;
+    final nextEpisode = page.firstUnwatchedMainStory;
+    final visibleEpisodes = page.episodes.take(8).toList(growable: false);
+
+    if (page.episodes.isEmpty) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Padding(
+          padding: EdgeInsets.all(12),
+          child: Text('Bangumi 暂无可同步的本篇章节。'),
+        ),
+      );
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.playlist_add_check_outlined,
+                  color: scheme.secondary,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '已看 ${page.watchedMainStoryCount} / $total 本篇',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: nextEpisode == null || _savingEpisodeId != null
+                      ? null
+                      : () => _saveEpisodeStatus(
+                          nextEpisode,
+                          BangumiEpisodeCollectionType.done,
+                        ),
+                  icon: const Icon(Icons.done_outline),
+                  label: const Text('标记下一话看过'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _savingEpisodeId == null
+                      ? () {
+                          ref.invalidate(
+                            bangumiMySubjectEpisodeCollectionsProvider(
+                              widget.request,
+                            ),
+                          );
+                        }
+                      : null,
+                  icon: const Icon(Icons.refresh_outlined),
+                  label: const Text('刷新进度'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            for (final item in visibleEpisodes)
+              _EpisodeProgressTile(
+                item: item,
+                isSaving: _savingEpisodeId == item.episode.id,
+                onSetStatus: (type) => _saveEpisodeStatus(item, type),
+              ),
+            if (total > visibleEpisodes.length) ...[
+              const SizedBox(height: 6),
+              Text(
+                '已展示前 ${visibleEpisodes.length} 话，后续会加入完整分页列表。',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveEpisodeStatus(
+    BangumiEpisodeCollection item,
+    BangumiEpisodeCollectionType type,
+  ) async {
+    if (_savingEpisodeId != null) {
+      return;
+    }
+
+    setState(() {
+      _savingEpisodeId = item.episode.id;
+    });
+
+    try {
+      final repository = ref.read(bangumiMyCollectionRepositoryProvider);
+      await repository.saveMySubjectEpisodeStatus(
+        subjectId: widget.subject.id,
+        episodeIds: [item.episode.id],
+        type: type,
+      );
+
+      ref.invalidate(
+        bangumiMySubjectEpisodeCollectionsProvider(widget.request),
+      );
+      ref.invalidate(bangumiMySubjectCollectionProvider(widget.subject.id));
+      ref.invalidate(bangumiSubjectDetailProvider(widget.subject.id));
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${item.episode.sortLabel} 已标记为${type.label}')),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _savingEpisodeId = null;
+        });
+      }
+    }
+  }
+}
+
+class _EpisodeProgressTile extends StatelessWidget {
+  const _EpisodeProgressTile({
+    required this.item,
+    required this.isSaving,
+    required this.onSetStatus,
+  });
+
+  final BangumiEpisodeCollection item;
+  final bool isSaving;
+  final ValueChanged<BangumiEpisodeCollectionType> onSetStatus;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final episode = item.episode;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 52,
+            child: Text(
+              episode.sortLabel,
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  episode.displayName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                if (episode.subtitleName != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    episode.subtitleName!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 5),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    BangumiInfoChip(
+                      label: item.type.label,
+                      icon: _episodeStatusIcon(item.type),
+                      emphasized:
+                          item.type == BangumiEpisodeCollectionType.done,
+                    ),
+                    if (episode.airDate != null)
+                      BangumiInfoChip(label: episode.airDate!),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          PopupMenuButton<BangumiEpisodeCollectionType>(
+            tooltip: '修改章节状态',
+            enabled: !isSaving,
+            icon: isSaving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.more_horiz),
+            onSelected: onSetStatus,
+            itemBuilder: (context) {
+              return [
+                for (final type in BangumiEpisodeCollectionType.values)
+                  PopupMenuItem(value: type, child: Text(type.label)),
+              ];
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EpisodeProgressError extends StatelessWidget {
+  const _EpisodeProgressError({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.error_outline, color: scheme.error),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text('读取章节进度失败', style: theme.textTheme.titleSmall),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(message),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: onRetry,
+          icon: const Icon(Icons.refresh_outlined),
+          label: const Text('重试'),
+        ),
+      ],
+    );
+  }
+}
+
+IconData _episodeStatusIcon(BangumiEpisodeCollectionType type) {
+  switch (type) {
+    case BangumiEpisodeCollectionType.none:
+      return Icons.radio_button_unchecked;
+    case BangumiEpisodeCollectionType.wish:
+      return Icons.schedule_outlined;
+    case BangumiEpisodeCollectionType.done:
+      return Icons.check_circle_outline;
+    case BangumiEpisodeCollectionType.dropped:
+      return Icons.block_outlined;
   }
 }
 

@@ -70,4 +70,4 @@ com.railyw.anime_mobile_torrent:/oauth/bangumi
 
 ## 当前状态
 
-本仓库目前包含项目规则、调研文档、Android Flutter 工程骨架、首页导航壳、功能模块 README、Bangumi 可配置 OAuth 登录、当前用户信息读取、公开动画条目搜索与条目详情、首页我的动画收藏列表预览、条目详情页个人收藏读取/修改、条目详情页 DMHY 资源搜索联动、DMHY RSS 关键词搜索、RSS 结果中的 magnet 复制/打开入口、DMHY 详情页 `.torrent` 种子文件解析、下载、外部 BT 客户端直开和系统分享兜底，以及手动选择本地视频并调用系统或第三方播放器。下一步应优先补齐 Bangumi 章节进度同步，并继续观察不同 Android 设备和 BT 客户端对 `.torrent` 直开的兼容性。
+本仓库目前包含项目规则、调研文档、Android Flutter 工程骨架、首页导航壳、功能模块 README、Bangumi 可配置 OAuth 登录、当前用户信息读取、公开动画条目搜索与条目详情、首页我的动画收藏列表预览、条目详情页个人收藏读取/修改、动画本篇章节观看状态同步、条目详情页 DMHY 资源搜索联动、DMHY RSS 关键词搜索、RSS 结果中的 magnet 复制/打开入口、DMHY 详情页 `.torrent` 种子文件解析、下载、外部 BT 客户端直开和系统分享兜底，以及手动选择本地视频并调用系统或第三方播放器。下一步应优先补齐 Bangumi 收藏列表分页和批量进度操作，并继续观察不同 Android 设备和 BT 客户端对 `.torrent` 直开的兼容性。

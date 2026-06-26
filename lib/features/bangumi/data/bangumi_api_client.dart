@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../domain/bangumi_collection.dart';
+import '../domain/bangumi_episode_collection.dart';
 import '../domain/bangumi_subject.dart';
 import '../domain/bangumi_user.dart';
 
@@ -253,6 +254,87 @@ class BangumiApiClient {
     }
   }
 
+  /// 获取当前用户某个条目的章节收藏状态。
+  ///
+  /// 官方端点是当前用户专用路径，因此必须携带 access token。首期调用方默认
+  /// 使用 `episodeType: BangumiEpisodeType.mainStory`，只读取动画本篇章节。
+  Future<BangumiEpisodeCollectionPage> getMySubjectEpisodeCollections({
+    required int subjectId,
+    int limit = 100,
+    int offset = 0,
+    BangumiEpisodeType? episodeType,
+    required String accessToken,
+  }) async {
+    final normalizedToken = accessToken.trim();
+    if (normalizedToken.isEmpty) {
+      throw const BangumiApiException('Bangumi access token 为空');
+    }
+
+    if (subjectId <= 0) {
+      throw const BangumiApiException('Bangumi 条目 ID 不合法');
+    }
+
+    final queryParameters = <String, Object>{
+      'limit': limit.clamp(1, 1000),
+      'offset': offset < 0 ? 0 : offset,
+    };
+    if (episodeType != null) {
+      queryParameters['episode_type'] = episodeType.apiValue;
+    }
+
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/v0/users/-/collections/$subjectId/episodes',
+        queryParameters: queryParameters,
+        options: _authorizationOptions(normalizedToken),
+      );
+
+      final data = response.data;
+      if (data == null) {
+        throw const BangumiApiException('Bangumi 返回了空章节收藏列表');
+      }
+
+      return BangumiEpisodeCollectionPage.fromJson(data);
+    } on DioException catch (error) {
+      throw _mapDioException(error);
+    }
+  }
+
+  /// 批量更新当前用户某个条目的章节收藏状态。
+  ///
+  /// 官方接口成功后会重新计算条目的完成度。`episodeIds` 会先过滤非法 ID；
+  /// 若没有有效章节 ID，则直接抛出用户可理解的参数错误。
+  Future<void> saveMySubjectEpisodeCollections({
+    required int subjectId,
+    required BangumiEpisodeCollectionUpdate update,
+    required String accessToken,
+  }) async {
+    final normalizedToken = accessToken.trim();
+    if (normalizedToken.isEmpty) {
+      throw const BangumiApiException('Bangumi access token 为空');
+    }
+
+    if (subjectId <= 0) {
+      throw const BangumiApiException('Bangumi 条目 ID 不合法');
+    }
+
+    final data = update.toJson();
+    final episodeIds = data['episode_id'];
+    if (episodeIds is! List || episodeIds.isEmpty) {
+      throw const BangumiApiException('Bangumi 章节 ID 不合法');
+    }
+
+    try {
+      await _dio.patch<void>(
+        '/v0/users/-/collections/$subjectId/episodes',
+        data: data,
+        options: _authorizationOptions(normalizedToken),
+      );
+    } on DioException catch (error) {
+      throw _mapDioException(error);
+    }
+  }
+
   /// 新增或修改当前用户对单个条目的收藏信息。
   ///
   /// 官方接口要求 `write:collection` scope。这里使用 POST，因为该接口在
@@ -286,7 +368,7 @@ class BangumiApiClient {
     final statusCode = error.response?.statusCode;
 
     if (statusCode == 400) {
-      return BangumiApiException('Bangumi 拒绝了搜索参数', statusCode: statusCode);
+      return BangumiApiException('Bangumi 拒绝了请求参数', statusCode: statusCode);
     }
 
     if (statusCode == 401) {
