@@ -1,0 +1,10 @@
+/.gradle
+/captures/
+/local.properties
+GeneratedPluginRegistrant.java
+.cxx/
+
+# 签名密钥只能保存在本地或安全密钥库，严禁提交到仓库。
+key.properties
+**/*.keystore
+**/*.jks

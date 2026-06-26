@@ -1,0 +1,60 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Bangumi API、DMHY RSS 和种子文件下载都需要访问网络。 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:label="Anime Mobile Torrent"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <!-- Flutter 首帧渲染前使用的启动主题，避免冷启动时出现空白窗口。 -->
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <!-- Flutter 工具使用该标记启用 embedding v2 插件注册流程。 -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+
+    <!-- Android 11+ 需要声明包可见性查询，才能判断外部 APP 是否可处理对应 Intent。 -->
+    <queries>
+        <!-- Flutter 文本处理插件需要查询可处理选中文本的系统能力。 -->
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+
+        <!-- magnet 链接交给用户手机自己的 BT 客户端处理。 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="magnet" />
+        </intent>
+
+        <!-- .torrent 种子文件通过 FileProvider 的 content:// URI 打开。 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="application/x-bittorrent" />
+        </intent>
+
+        <!-- 部分 BT 客户端只响应分享动作，因此保留 ACTION_SEND 兜底。 -->
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="application/x-bittorrent" />
+        </intent>
+    </queries>
+</manifest>

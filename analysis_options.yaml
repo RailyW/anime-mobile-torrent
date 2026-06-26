@@ -1,0 +1,9 @@
+# Dart/Flutter 静态分析配置。
+#
+# 当前使用 Flutter 官方推荐 lint 规则作为基线。后续如果某个模块确实需要
+# 调整规则，应优先在局部文件说明原因，避免全局放宽代码质量要求。
+include: package:flutter_lints/flutter.yaml
+
+linter:
+  rules:
+    # 保持默认规则；新增例外前需要在对应模块 README 中说明原因。

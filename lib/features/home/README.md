@@ -1,0 +1,13 @@
+# home 模块说明
+
+`lib/features/home` 是 APP 的顶层导航模块，负责把 Bangumi、DMHY、种子交接和播放四个主入口组织到同一个移动端页面中。
+
+## 当前包含文件
+
+- `home_screen.dart`：Material 3 首页壳，使用底部 `NavigationBar` 和 `IndexedStack` 切换功能模块。
+
+## 设计边界
+
+1. 首页只做模块导航，不直接调用外部 API、下载种子文件或调起 Android Intent。
+2. `IndexedStack` 用于保留模块页面状态，后续搜索输入、分页位置和登录状态展示不会因切换 tab 丢失。
+3. 新增底部导航项时，需要同步更新 `features/README.md` 和本 README。

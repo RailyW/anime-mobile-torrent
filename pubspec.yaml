@@ -1,0 +1,39 @@
+name: anime_mobile_torrent
+description: "Bangumi 与 DMHY 动画资源检索交接工具。"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # 官方 Material/Cupertino 图标与控件资源。
+  cupertino_icons: ^1.0.8
+
+  # 应用路由与状态管理。
+  go_router: ^17.3.0
+  flutter_riverpod: ^3.3.2
+
+  # Bangumi API、OAuth token 存储、DMHY RSS/HTML 解析。
+  dio: ^5.9.2
+  flutter_secure_storage: ^10.3.1
+  xml: ^7.0.1
+  html: ^0.15.6
+
+  # magnet 打开、种子文件缓存、分享交接和用户手动选择视频文件。
+  url_launcher: ^6.3.2
+  path_provider: ^2.1.6
+  share_plus: ^13.1.0
+  file_selector: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

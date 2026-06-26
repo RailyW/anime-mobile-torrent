@@ -43,7 +43,7 @@ flowchart LR
 
 ## 阶段拆分
 
-### 阶段 0：Flutter 工程初始化
+### 阶段 0：Flutter 工程初始化（已完成）
 
 目标：
 
@@ -59,6 +59,14 @@ flowchart LR
 3. `lib/app/README.md`
 4. `lib/features/README.md`
 5. `android/README.md` 或 Android 原生模块 README
+
+当前落地情况：
+
+1. 已生成 Android-only Flutter 工程，包名前缀为 `com.railyw`。
+2. 已建立 `lib/app`、`lib/features`、`lib/shared`、`android` 和 `test` 模块 README。
+3. 已增加首页导航壳，覆盖 Bangumi、DMHY、种子交接和播放四个入口。
+4. 已在 Android Manifest 中声明网络权限、magnet 查询和 `.torrent` MIME 查询。
+5. 已加入 `go_router`、`flutter_riverpod`、`dio`、`flutter_secure_storage`、`url_launcher`、`path_provider`、`share_plus`、`file_selector`、`xml` 和 `html` 作为后续阶段基础依赖。
 
 ### 阶段 1：Bangumi 登录与条目浏览
 
