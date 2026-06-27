@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../torrent_handoff/application/torrent_handoff_providers.dart';
+import '../../torrent_handoff/domain/torrent_client_capabilities.dart';
 import '../../torrent_handoff/domain/torrent_seed_file.dart';
 import '../application/dmhy_providers.dart';
 import '../domain/dmhy_resource.dart';
@@ -337,6 +338,7 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final resource = widget.resource;
+    final clientCapabilities = ref.watch(torrentClientCapabilitiesProvider);
 
     return Card(
       child: Padding(
@@ -420,6 +422,8 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            _TorrentClientReadinessNote(capabilities: clientCapabilities),
           ],
         ),
       ),
@@ -511,6 +515,125 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
         });
       }
     }
+  }
+}
+
+/// DMHY 资源卡片里的外部 BT 客户端交接预提示。
+///
+/// 这个提示只读取当前设备能力检测结果，不阻止用户点击“种子”。即使检测不可用
+/// 或未发现客户端，真实交接仍会按原有直开加分享兜底流程执行。
+class _TorrentClientReadinessNote extends StatelessWidget {
+  const _TorrentClientReadinessNote({required this.capabilities});
+
+  final AsyncValue<TorrentClientCapabilities> capabilities;
+
+  @override
+  Widget build(BuildContext context) {
+    final hint = capabilities.when(
+      data: _SeedHandoffHint.fromCapabilities,
+      error: (error, _) => const _SeedHandoffHint(
+        icon: Icons.info_outline,
+        message: '无法检测外部 BT 客户端，点击后仍会尝试系统交接',
+        isWarning: true,
+      ),
+      loading: () => const _SeedHandoffHint(
+        icon: Icons.sync_outlined,
+        message: '正在检测外部 BT 客户端交接能力',
+        isWarning: false,
+      ),
+    );
+
+    final scheme = Theme.of(context).colorScheme;
+    final color = hint.isWarning
+        ? scheme.errorContainer
+        : scheme.surfaceContainerHighest;
+    final onColor = hint.isWarning
+        ? scheme.onErrorContainer
+        : scheme.onSurfaceVariant;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(hint.icon, color: onColor, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                hint.message,
+                style: TextStyle(color: onColor, fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// DMHY 卡片中的种子交接预提示文案。
+///
+/// 该对象把平台检测模型转换为面向用户的一句话提示，避免把判断逻辑散落在
+/// widget 构建代码里。
+class _SeedHandoffHint {
+  const _SeedHandoffHint({
+    required this.icon,
+    required this.message,
+    required this.isWarning,
+  });
+
+  final IconData icon;
+  final String message;
+  final bool isWarning;
+
+  /// 根据当前设备能力生成 `.torrent` 交接提示。
+  factory _SeedHandoffHint.fromCapabilities(
+    TorrentClientCapabilities capabilities,
+  ) {
+    if (!capabilities.isPlatformBridgeAvailable) {
+      return const _SeedHandoffHint(
+        icon: Icons.info_outline,
+        message: '外部客户端检测不可用，点击后会继续尝试系统交接',
+        isWarning: false,
+      );
+    }
+
+    if (capabilities.canOpenTorrentFile) {
+      return _SeedHandoffHint(
+        icon: Icons.check_circle_outline,
+        message:
+            '当前设备支持 .torrent 直开（${capabilities.torrentViewHandlerCount} 个候选）',
+        isWarning: false,
+      );
+    }
+
+    if (capabilities.canShareTorrentFile) {
+      return _SeedHandoffHint(
+        icon: Icons.ios_share_outlined,
+        message:
+            '未发现 .torrent 直开客户端，将依赖分享面板导入（${capabilities.torrentShareHandlerCount} 个候选）',
+        isWarning: false,
+      );
+    }
+
+    if (capabilities.canOpenMagnet) {
+      return const _SeedHandoffHint(
+        icon: Icons.link_outlined,
+        message: '未发现 .torrent 接收客户端，可先复制或打开 magnet',
+        isWarning: true,
+      );
+    }
+
+    return const _SeedHandoffHint(
+      icon: Icons.error_outline,
+      message: '未发现外部 BT 客户端，可安装或启用客户端后重试',
+      isWarning: true,
+    );
   }
 }
 

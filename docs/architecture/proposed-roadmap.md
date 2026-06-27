@@ -132,6 +132,7 @@ flowchart LR
 3. 已在 DMHY 首页提供关键词搜索 UI、Bangumi 初始关键词自动搜索、动画分类开关和 RSS 结果列表。
 4. 已支持从 RSS 结果复制 magnet 或通过系统外部应用打开 magnet。
 5. 已支持按用户点击解析 DMHY 详情页 `.torrent` 链接，并把种子文件下载到 APP 临时目录后优先直开外部 BT 客户端，直开失败时自动降级到系统分享面板。
+6. 已在 DMHY 资源卡片中读取外部 BT 客户端能力检测结果，在用户点击“种子”前提示 `.torrent` 直开、分享导入、只可用 magnet 或未发现客户端状态。
 
 待确认：
 
@@ -166,7 +167,7 @@ flowchart LR
 4. 已通过 `open_filex` 直接打开 `.torrent` 文件给外部 BT 客户端。
 5. 已通过 `share_plus` 在直开失败时自动打开系统分享面板，作为外部客户端兼容兜底。
 6. 已在种子交接页补充外部 BT 客户端兼容自检、失败处理和“不下载 BT 视频内容”的边界说明。
-7. 已新增 Android MethodChannel，通过 PackageManager resolver 查询当前设备是否存在可处理 magnet、`.torrent` 直开和 `.torrent` 分享导入的外部客户端，并在种子交接页展示检测结果。
+7. 已新增 Android MethodChannel，通过 PackageManager resolver 查询当前设备是否存在可处理 magnet、`.torrent` 直开和 `.torrent` 分享导入的外部客户端，并在种子交接页和 DMHY 资源卡片展示检测结果。
 
 待确认：
 

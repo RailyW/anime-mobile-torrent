@@ -238,6 +238,7 @@ void main() {
     expect(find.text('复制'), findsOneWidget);
     expect(find.text('打开'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '种子'), findsOneWidget);
+    expect(find.text('外部客户端检测不可用，点击后会继续尝试系统交接'), findsOneWidget);
   });
 
   testWidgets('DMHY 种子按钮可以下载并交给外部 BT 客户端', (tester) async {
@@ -247,7 +248,17 @@ void main() {
       ProviderScope(
         overrides: [
           torrentClientCapabilityRepositoryProvider.overrideWithValue(
-            const _FakeTorrentClientCapabilityRepository(),
+            const _FakeTorrentClientCapabilityRepository(
+              capabilities: TorrentClientCapabilities(
+                isPlatformBridgeAvailable: true,
+                canOpenMagnet: true,
+                canOpenTorrentFile: false,
+                canShareTorrentFile: true,
+                magnetHandlerCount: 1,
+                torrentViewHandlerCount: 0,
+                torrentShareHandlerCount: 1,
+              ),
+            ),
           ),
           dmhyRepositoryProvider.overrideWithValue(_FakeDmhyRepository()),
           torrentHandoffRepositoryProvider.overrideWithValue(
@@ -265,6 +276,8 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '搜索'));
     await tester.pumpAndSettle();
 
+    expect(find.textContaining('将依赖分享面板导入'), findsOneWidget);
+
     await tester.tap(find.widgetWithText(FilledButton, '种子'));
     await tester.pumpAndSettle();
 
@@ -277,11 +290,14 @@ void main() {
 
 class _FakeTorrentClientCapabilityRepository
     implements TorrentClientCapabilityRepository {
-  const _FakeTorrentClientCapabilityRepository();
+  const _FakeTorrentClientCapabilityRepository({this.capabilities});
+
+  final TorrentClientCapabilities? capabilities;
 
   @override
   Future<TorrentClientCapabilities> detectCapabilities() async {
-    return TorrentClientCapabilities.unavailable('测试环境不注册 Android 检测通道');
+    return capabilities ??
+        TorrentClientCapabilities.unavailable('测试环境不注册 Android 检测通道');
   }
 }
 
