@@ -231,19 +231,29 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
   }
 
   Future<void> _handleTick(DateTime timestamp) async {
-    await _publishHeartbeat(timestamp);
-    await _runSubscriptionAutoCheck(timestamp);
+    final outcome = await _runSubscriptionAutoCheck(timestamp);
+    if (outcome?.shouldUpdateNotification ?? false) {
+      return;
+    }
+
+    await _publishHeartbeat(timestamp, outcome: outcome);
   }
 
-  Future<void> _publishHeartbeat(DateTime timestamp) async {
+  Future<void> _publishHeartbeat(
+    DateTime timestamp, {
+    DmhySubscriptionAutoCheckOutcome? outcome,
+  }) async {
     final timeLabel = _formatClock(timestamp.toLocal());
+    final route = buildBackgroundNotificationInitialRoute(outcome);
     await FlutterForegroundTask.updateService(
       notificationTitle: 'Anime Mobile Torrent 正在后台运行',
-      notificationText: '最近保活心跳 $timeLabel，点击查看后台订阅检查。',
+      notificationText: _formatHeartbeatNotificationText(
+        timeLabel: timeLabel,
+        initialRoute: route,
+      ),
       notificationButtons:
           FlutterForegroundTaskResidencyRepository._notificationButtons,
-      notificationInitialRoute:
-          FlutterForegroundTaskResidencyRepository._notificationRoute,
+      notificationInitialRoute: route,
     );
     FlutterForegroundTask.sendDataToMain({
       'type': 'backgroundResidencyHeartbeat',
@@ -251,9 +261,11 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
     });
   }
 
-  Future<void> _runSubscriptionAutoCheck(DateTime timestamp) async {
+  Future<DmhySubscriptionAutoCheckOutcome?> _runSubscriptionAutoCheck(
+    DateTime timestamp,
+  ) async {
     if (_isCheckingSubscription) {
-      return;
+      return null;
     }
 
     _isCheckingSubscription = true;
@@ -266,15 +278,21 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
         final isFailed =
             outcome.status == DmhySubscriptionAutoCheckStatus.failed;
         final detail = _formatSubscriptionNotificationDetail(outcome);
+        final route = buildBackgroundNotificationInitialRoute(outcome);
         await FlutterForegroundTask.updateService(
           notificationTitle: isFailed ? 'DMHY 订阅检查失败' : 'DMHY 订阅检查已完成',
-          notificationText: '$detail · $timeLabel，点击查看后台订阅检查。',
+          notificationText: _formatSubscriptionNotificationText(
+            detail: detail,
+            timeLabel: timeLabel,
+            initialRoute: route,
+          ),
           notificationButtons:
               FlutterForegroundTaskResidencyRepository._notificationButtons,
-          notificationInitialRoute:
-              FlutterForegroundTaskResidencyRepository._notificationRoute,
+          notificationInitialRoute: route,
         );
       }
+
+      return outcome;
     } catch (error) {
       FlutterForegroundTask.sendDataToMain({
         'type': 'dmhySubscriptionAutoCheck',
@@ -289,6 +307,11 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
             FlutterForegroundTaskResidencyRepository._notificationButtons,
         notificationInitialRoute:
             FlutterForegroundTaskResidencyRepository._notificationRoute,
+      );
+      return DmhySubscriptionAutoCheckOutcome(
+        status: DmhySubscriptionAutoCheckStatus.failed,
+        message: error.toString(),
+        checkedAt: timestamp,
       );
     } finally {
       _isCheckingSubscription = false;
@@ -310,6 +333,33 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
   }
 }
 
+/// 计算后台持续通知点击时应进入的首页路由。
+///
+/// 后台服务只保存订阅检查的聚合摘要，不保存 RSS 条目列表。命中资源时，如果
+/// 自动检查结果携带了最新命中关键词，就让通知点击直接打开 DMHY 搜索页；
+/// 没有命中、失败或旧记录缺少关键词时仍回到后台页，保证用户能看到摘要和错误。
+String buildBackgroundNotificationInitialRoute(
+  DmhySubscriptionAutoCheckOutcome? outcome,
+) {
+  final keyword = outcome?.latestKeyword?.trim();
+  if (outcome != null &&
+      outcome.status != DmhySubscriptionAutoCheckStatus.failed &&
+      outcome.resourceCount > 0 &&
+      keyword != null &&
+      keyword.isNotEmpty) {
+    return Uri(
+      path: '/',
+      queryParameters: {
+        'tab': 'dmhy',
+        'keyword': keyword,
+        'animeOnly': outcome.latestAnimeOnly.toString(),
+      },
+    ).toString();
+  }
+
+  return FlutterForegroundTaskResidencyRepository._notificationRoute;
+}
+
 String _formatSubscriptionNotificationDetail(
   DmhySubscriptionAutoCheckOutcome outcome,
 ) {
@@ -322,6 +372,33 @@ String _formatSubscriptionNotificationDetail(
   }
 
   return '暂未发现资源';
+}
+
+String _formatHeartbeatNotificationText({
+  required String timeLabel,
+  required String initialRoute,
+}) {
+  if (_isDmhySearchRoute(initialRoute)) {
+    return '最近保活心跳 $timeLabel，点击打开最新 DMHY 搜索。';
+  }
+
+  return '最近保活心跳 $timeLabel，点击查看后台订阅检查。';
+}
+
+String _formatSubscriptionNotificationText({
+  required String detail,
+  required String timeLabel,
+  required String initialRoute,
+}) {
+  final tapHint = _isDmhySearchRoute(initialRoute)
+      ? '点击打开 DMHY 搜索。'
+      : '点击查看后台订阅检查。';
+  return '$detail · $timeLabel，$tapHint';
+}
+
+bool _isDmhySearchRoute(String route) {
+  final uri = Uri.tryParse(route);
+  return uri?.queryParameters['tab'] == 'dmhy';
 }
 
 String _formatClock(DateTime value) {
