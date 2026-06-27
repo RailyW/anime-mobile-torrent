@@ -785,6 +785,20 @@ void main() {
     expect(find.text('筛选后显示 1/2 条'), findsOneWidget);
     expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
     expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsNothing);
+
+    await tester.tap(find.widgetWithText(TextButton, '清除筛选'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('dmhy-filter-excluded-keywords')),
+      '桜都',
+    );
+    await tester.pumpAndSettle();
+
+    expect(dmhyRepository.requests, hasLength(1));
+    expect(find.text('筛选后显示 1/2 条'), findsOneWidget);
+    expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
+    expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsNothing);
   });
 
   testWidgets('DMHY 种子按钮可以下载并交给外部 BT 客户端', (tester) async {

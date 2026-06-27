@@ -16,6 +16,7 @@ class DmhyResourceFilter {
     this.subtitleLabel,
     this.sizeRange,
     this.minSeedCount,
+    this.excludedKeywords,
   });
 
   /// 空筛选常量，表示显示全部结果。
@@ -27,7 +28,8 @@ class DmhyResourceFilter {
       videoCodec = null,
       subtitleLabel = null,
       sizeRange = null,
-      minSeedCount = null;
+      minSeedCount = null,
+      excludedKeywords = null;
 
   /// 字幕组或发布组名称。
   final String? releaseGroup;
@@ -53,6 +55,9 @@ class DmhyResourceFilter {
   /// 最小种子数，用于过滤 HTML 列表页增强出的热度统计。
   final int? minSeedCount;
 
+  /// 排除关键词，支持用空格、逗号或分号分隔多个关键词。
+  final String? excludedKeywords;
+
   /// 当前是否没有启用任何筛选条件。
   bool get isEmpty =>
       releaseGroup == null &&
@@ -62,7 +67,8 @@ class DmhyResourceFilter {
       videoCodec == null &&
       subtitleLabel == null &&
       sizeRange == null &&
-      minSeedCount == null;
+      minSeedCount == null &&
+      !_hasExcludedKeywords(excludedKeywords);
 
   /// 当前是否至少启用了一个筛选条件。
   bool get isNotEmpty => !isEmpty;
@@ -89,7 +95,8 @@ class DmhyResourceFilter {
         _matchesText(videoCodec, metadata.videoCodec) &&
         _matchesText(subtitleLabel, metadata.subtitleLabel) &&
         _matchesSizeRange(sizeRange, resource) &&
-        _matchesMinSeedCount(minSeedCount, resource);
+        _matchesMinSeedCount(minSeedCount, resource) &&
+        _matchesExcludedKeywords(excludedKeywords, resource);
   }
 
   /// 返回一份替换部分字段后的筛选条件。
@@ -105,6 +112,7 @@ class DmhyResourceFilter {
     DmhyFilterValue<String>? subtitleLabel,
     DmhyFilterValue<DmhyResourceSizeRange>? sizeRange,
     DmhyFilterValue<int>? minSeedCount,
+    DmhyFilterValue<String>? excludedKeywords,
   }) {
     return DmhyResourceFilter(
       releaseGroup: releaseGroup == null
@@ -121,6 +129,9 @@ class DmhyResourceFilter {
       minSeedCount: minSeedCount == null
           ? this.minSeedCount
           : minSeedCount.value,
+      excludedKeywords: excludedKeywords == null
+          ? this.excludedKeywords
+          : excludedKeywords.value,
     );
   }
 
@@ -151,6 +162,53 @@ class DmhyResourceFilter {
 
     final seedCount = resource.stats.seedCount;
     return seedCount != null && seedCount >= expected;
+  }
+
+  /// 判断资源是否没有命中用户输入的排除关键词。
+  ///
+  /// 匹配范围覆盖标题、RSS 简介和已解析出的元数据标签，方便用户用字幕组、
+  /// 片源、字幕说明或标题中的任意关键词快速排除不想看到的资源。
+  static bool _matchesExcludedKeywords(
+    String? expected,
+    DmhyResource resource,
+  ) {
+    final keywords = _splitExcludedKeywords(expected);
+    if (keywords.isEmpty) {
+      return true;
+    }
+
+    final metadataLabels = resource.metadata.displayChips
+        .map((chip) => chip.label)
+        .join(' ');
+    final searchableText =
+        '${resource.title} ${resource.descriptionText} $metadataLabels'
+            .toLowerCase();
+    return !keywords.any(searchableText.contains);
+  }
+
+  /// 判断用户是否实际输入了至少一个排除关键词。
+  ///
+  /// 单纯空格、逗号或分号都不算启用筛选，避免清除输入框后 `isEmpty`
+  /// 仍然被误判为存在筛选条件。
+  static bool _hasExcludedKeywords(String? value) {
+    return _splitExcludedKeywords(value).isNotEmpty;
+  }
+
+  /// 将排除关键词文本拆成小写关键词列表。
+  ///
+  /// DMHY 标题里常见中英文符号混用，因此同时支持空白、英文逗号、中文逗号、
+  /// 英文分号和中文分号作为分隔符。
+  static List<String> _splitExcludedKeywords(String? value) {
+    if (value == null) {
+      return const [];
+    }
+
+    return value
+        .toLowerCase()
+        .split(RegExp(r'[\s,，;；]+'))
+        .map((keyword) => keyword.trim())
+        .where((keyword) => keyword.isNotEmpty)
+        .toList(growable: false);
   }
 }
 
@@ -212,6 +270,7 @@ class DmhyResourceFilterOptions {
     required this.subtitleLabels,
     required this.hasSize,
     required this.hasSeedCount,
+    required this.hasKeywordContent,
   });
 
   /// 从资源列表中提取筛选项。
@@ -228,6 +287,7 @@ class DmhyResourceFilterOptions {
     final subtitleLabels = <String>{};
     var hasSize = false;
     var hasSeedCount = false;
+    var hasKeywordContent = false;
 
     for (final resource in resources) {
       _addOption(releaseGroups, resource.metadata.releaseGroup);
@@ -238,6 +298,10 @@ class DmhyResourceFilterOptions {
       _addOption(subtitleLabels, resource.metadata.subtitleLabel);
       hasSize = hasSize || dmhyResourceSizeBytes(resource) != null;
       hasSeedCount = hasSeedCount || resource.stats.seedCount != null;
+      hasKeywordContent =
+          hasKeywordContent ||
+          resource.title.trim().isNotEmpty ||
+          resource.descriptionText.trim().isNotEmpty;
     }
 
     return DmhyResourceFilterOptions(
@@ -249,6 +313,7 @@ class DmhyResourceFilterOptions {
       subtitleLabels: _sortedOptions(subtitleLabels),
       hasSize: hasSize,
       hasSeedCount: hasSeedCount,
+      hasKeywordContent: hasKeywordContent,
     );
   }
 
@@ -261,6 +326,12 @@ class DmhyResourceFilterOptions {
   final bool hasSize;
   final bool hasSeedCount;
 
+  /// 当前资源集合是否有可供关键词排除检索的标题或简介文本。
+  ///
+  /// 该标记只控制 UI 是否展示排除关键词输入框；具体是否命中仍由
+  /// `DmhyResourceFilter` 在筛选时基于每条资源判断。
+  final bool hasKeywordContent;
+
   /// 当前结果是否没有任何可用筛选项。
   bool get isEmpty =>
       releaseGroups.isEmpty &&
@@ -270,7 +341,8 @@ class DmhyResourceFilterOptions {
       videoCodecs.isEmpty &&
       subtitleLabels.isEmpty &&
       !hasSize &&
-      !hasSeedCount;
+      !hasSeedCount &&
+      !hasKeywordContent;
 
   /// 当前结果是否至少有一个可用筛选项。
   bool get isNotEmpty => !isEmpty;

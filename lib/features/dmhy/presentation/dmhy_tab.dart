@@ -622,6 +622,17 @@ class _DmhyFilterBar extends StatelessWidget {
                       );
                     },
                   ),
+                if (options.hasKeywordContent)
+                  _DmhyExcludeKeywordFilterInput(
+                    value: filter.excludedKeywords,
+                    onChanged: (value) {
+                      onChanged(
+                        filter.copyWith(
+                          excludedKeywords: DmhyFilterValue(value),
+                        ),
+                      );
+                    },
+                  ),
               ],
             ),
           ],
@@ -668,6 +679,97 @@ class _DmhyStringFilterDropdown extends StatelessWidget {
         onChanged: onChanged,
       ),
     );
+  }
+}
+
+/// DMHY 前台筛选栏中的排除关键词输入框。
+///
+/// 该控件只更新当前已加载结果的内存筛选条件，不会触发 RSS 或 HTML 列表请求。
+/// 用户可以用空格、逗号或分号输入多个关键词；具体拆分逻辑位于
+/// `DmhyResourceFilter`，这里负责把空白文本规范化为 null，便于父级清空状态。
+class _DmhyExcludeKeywordFilterInput extends StatefulWidget {
+  const _DmhyExcludeKeywordFilterInput({
+    required this.value,
+    required this.onChanged,
+  });
+
+  /// 当前启用的排除关键词原始文本；null 表示不启用关键词排除。
+  final String? value;
+
+  /// 输入变化时把规范化后的文本回传给父级筛选值对象。
+  final ValueChanged<String?> onChanged;
+
+  @override
+  State<_DmhyExcludeKeywordFilterInput> createState() =>
+      _DmhyExcludeKeywordFilterInputState();
+}
+
+class _DmhyExcludeKeywordFilterInputState
+    extends State<_DmhyExcludeKeywordFilterInput> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.value ?? '');
+  }
+
+  /// 父级点击“清除筛选”或恢复筛选状态时，同步本地输入框文本。
+  @override
+  void didUpdateWidget(_DmhyExcludeKeywordFilterInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value == widget.value) {
+      return;
+    }
+
+    final nextText = widget.value ?? '';
+    if (_controller.text == nextText) {
+      return;
+    }
+
+    _controller.value = TextEditingValue(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: nextText.length),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 220,
+      child: TextField(
+        key: const Key('dmhy-filter-excluded-keywords'),
+        controller: _controller,
+        decoration: const InputDecoration(
+          border: OutlineInputBorder(),
+          labelText: '排除关键词',
+          hintText: '字幕组 / 片源 / 标题',
+          prefixIcon: Icon(Icons.block_outlined),
+        ),
+        onChanged: (value) {
+          widget.onChanged(_normalizeExcludedKeywords(value));
+        },
+      ),
+    );
+  }
+
+  /// 将输入框文本规范化为筛选值。
+  ///
+  /// 这里只处理空白与首尾空格，保留用户输入的分隔符和大小写，便于输入框回显；
+  /// 关键词拆分和大小写归一化由筛选值对象集中处理。
+  String? _normalizeExcludedKeywords(String value) {
+    final normalized = value.trim();
+    if (normalized.isEmpty) {
+      return null;
+    }
+
+    return normalized;
   }
 }
 
