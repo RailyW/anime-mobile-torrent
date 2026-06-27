@@ -1,8 +1,16 @@
 import 'package:anime_mobile_torrent/features/bangumi/application/bangumi_collection_providers.dart';
+import 'package:anime_mobile_torrent/features/bangumi/application/bangumi_auth_providers.dart';
+import 'package:anime_mobile_torrent/features/bangumi/data/bangumi_api_client.dart';
+import 'package:anime_mobile_torrent/features/bangumi/data/bangumi_auth_client.dart';
+import 'package:anime_mobile_torrent/features/bangumi/data/bangumi_auth_storage.dart';
+import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_auth.dart';
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_collection.dart';
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_episode_collection.dart';
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_subject.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter_appauth/flutter_appauth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -252,6 +260,63 @@ void main() {
     );
   });
 
+  test('BangumiMyCollectionRepository 读取收藏遇到 401 时会清理 token', () async {
+    FlutterSecureStorage.setMockInitialValues({});
+    final tokenStorage = BangumiAuthStorage(const FlutterSecureStorage());
+    await tokenStorage.saveToken(
+      BangumiOAuthToken(
+        accessToken: 'expired-access-token',
+        refreshToken: 'refresh-token',
+        tokenType: 'Bearer',
+        expiresAt: DateTime.now().add(const Duration(hours: 1)),
+        scopes: const ['write:collection'],
+      ),
+    );
+
+    final dio = Dio(BaseOptions(baseUrl: BangumiApiClient.baseUrl));
+    dio.interceptors.add(
+      InterceptorsWrapper(
+        onRequest: (options, handler) {
+          if (options.path == '/v0/me') {
+            return handler.resolve(
+              Response<Map<String, dynamic>>(
+                requestOptions: options,
+                statusCode: 200,
+                data: _buildUserJson(),
+              ),
+            );
+          }
+
+          return handler.reject(
+            DioException(
+              requestOptions: options,
+              response: Response<void>(
+                requestOptions: options,
+                statusCode: 401,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    final apiClient = BangumiApiClient(dio);
+    final authRepository = BangumiAuthRepository(
+      config: _configuredOAuthConfig(),
+      authClient: const BangumiAuthClient(FlutterAppAuth()),
+      storage: tokenStorage,
+      apiClient: apiClient,
+    );
+    final repository = BangumiMyCollectionRepository(
+      authRepository: authRepository,
+      apiClient: apiClient,
+    );
+
+    final page = await repository.getMyAnimeCollections();
+
+    expect(page, isNull);
+    expect(await tokenStorage.readToken(), isNull);
+  });
+
   group('BangumiEpisodeCollection', () {
     test('可以解析单集收藏状态分页', () {
       final page = BangumiEpisodeCollectionPage.fromJson({
@@ -396,6 +461,26 @@ BangumiEpisodeCollection _buildEpisodeCollection({
     type: type,
     updatedAt: null,
   );
+}
+
+BangumiOAuthConfig _configuredOAuthConfig() {
+  return BangumiOAuthConfig.fromUserInput(
+    clientId: 'client-id',
+    clientSecret: 'client-secret',
+    redirectUri: BangumiOAuthConfig.defaultRedirectUri,
+    scopes: 'write:collection',
+  );
+}
+
+Map<String, dynamic> _buildUserJson() {
+  return {
+    'id': 1,
+    'username': 'tester',
+    'nickname': '测试用户',
+    'user_group': 10,
+    'avatar': <String, dynamic>{},
+    'sign': '',
+  };
 }
 
 class _FakeBangumiMyCollectionRepository

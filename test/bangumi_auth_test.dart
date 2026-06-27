@@ -1,7 +1,11 @@
 import 'package:anime_mobile_torrent/features/bangumi/application/bangumi_auth_providers.dart';
+import 'package:anime_mobile_torrent/features/bangumi/data/bangumi_api_client.dart';
+import 'package:anime_mobile_torrent/features/bangumi/data/bangumi_auth_client.dart';
 import 'package:anime_mobile_torrent/features/bangumi/data/bangumi_auth_storage.dart';
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_auth.dart';
 import 'package:anime_mobile_torrent/features/bangumi/data/bangumi_oauth_config_storage.dart';
+import 'package:dio/dio.dart';
+import 'package:flutter_appauth/flutter_appauth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -205,6 +209,54 @@ void main() {
       expect(await tokenStorage.readToken(), isNull);
     });
   });
+
+  group('BangumiAuthRepository', () {
+    setUp(() {
+      FlutterSecureStorage.setMockInitialValues({});
+    });
+
+    test('当前用户接口返回 401 时会清理本地 token 并回到未登录', () async {
+      final tokenStorage = BangumiAuthStorage(const FlutterSecureStorage());
+      await tokenStorage.saveToken(
+        BangumiOAuthToken(
+          accessToken: 'server-rejected-token',
+          refreshToken: 'refresh-token',
+          tokenType: 'Bearer',
+          expiresAt: DateTime.now().add(const Duration(hours: 1)),
+          scopes: const ['write:collection'],
+        ),
+      );
+
+      final dio = Dio(BaseOptions(baseUrl: BangumiApiClient.baseUrl));
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            return handler.reject(
+              DioException(
+                requestOptions: options,
+                response: Response<void>(
+                  requestOptions: options,
+                  statusCode: 401,
+                ),
+              ),
+            );
+          },
+        ),
+      );
+
+      final repository = BangumiAuthRepository(
+        config: _configuredOAuthConfig(),
+        authClient: const BangumiAuthClient(FlutterAppAuth()),
+        storage: tokenStorage,
+        apiClient: BangumiApiClient(dio),
+      );
+
+      final user = await repository.getCurrentUser();
+
+      expect(user, isNull);
+      expect(await tokenStorage.readToken(), isNull);
+    });
+  });
 }
 
 /// 写入一个测试用 Bangumi token，供配置控制器清理。
@@ -217,5 +269,14 @@ Future<void> _saveFakeToken(BangumiAuthStorage tokenStorage) {
       expiresAt: DateTime.utc(2026, 6, 27, 12),
       scopes: const ['write:collection'],
     ),
+  );
+}
+
+BangumiOAuthConfig _configuredOAuthConfig() {
+  return BangumiOAuthConfig.fromUserInput(
+    clientId: 'client-id',
+    clientSecret: 'client-secret',
+    redirectUri: BangumiOAuthConfig.defaultRedirectUri,
+    scopes: 'write:collection',
   );
 }

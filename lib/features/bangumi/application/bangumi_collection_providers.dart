@@ -69,25 +69,27 @@ class BangumiMyCollectionRepository
   Future<BangumiSubjectCollection?> getMySubjectCollection(
     int subjectId,
   ) async {
-    final token = await authRepository.getValidToken();
-    if (token == null) {
-      return null;
-    }
-
-    final user = await apiClient.getMyself(accessToken: token.accessToken);
-    try {
-      return await apiClient.getUserCollection(
-        username: user.username,
-        subjectId: subjectId,
-        accessToken: token.accessToken,
-      );
-    } on BangumiApiException catch (error) {
-      if (error.statusCode == 404) {
+    return _readWithInvalidTokenCleanup(() async {
+      final token = await authRepository.getValidToken();
+      if (token == null) {
         return null;
       }
 
-      rethrow;
-    }
+      final user = await apiClient.getMyself(accessToken: token.accessToken);
+      try {
+        return await apiClient.getUserCollection(
+          username: user.username,
+          subjectId: subjectId,
+          accessToken: token.accessToken,
+        );
+      } on BangumiApiException catch (error) {
+        if (error.statusCode == 404) {
+          return null;
+        }
+
+        rethrow;
+      }
+    });
   }
 
   /// 读取当前用户的动画收藏列表。
@@ -100,20 +102,22 @@ class BangumiMyCollectionRepository
     int limit = 20,
     int offset = 0,
   }) async {
-    final token = await authRepository.getValidToken();
-    if (token == null) {
-      return null;
-    }
+    return _readWithInvalidTokenCleanup(() async {
+      final token = await authRepository.getValidToken();
+      if (token == null) {
+        return null;
+      }
 
-    final user = await apiClient.getMyself(accessToken: token.accessToken);
-    return apiClient.getUserCollections(
-      username: user.username,
-      subjectType: BangumiSubjectType.anime,
-      type: type,
-      limit: limit,
-      offset: offset,
-      accessToken: token.accessToken,
-    );
+      final user = await apiClient.getMyself(accessToken: token.accessToken);
+      return apiClient.getUserCollections(
+        username: user.username,
+        subjectType: BangumiSubjectType.anime,
+        type: type,
+        limit: limit,
+        offset: offset,
+        accessToken: token.accessToken,
+      );
+    });
   }
 
   /// 读取当前用户某个动画条目的章节收藏状态。
@@ -127,18 +131,20 @@ class BangumiMyCollectionRepository
     int offset = 0,
     BangumiEpisodeType episodeType = BangumiEpisodeType.mainStory,
   }) async {
-    final token = await authRepository.getValidToken();
-    if (token == null) {
-      return null;
-    }
+    return _readWithInvalidTokenCleanup(() async {
+      final token = await authRepository.getValidToken();
+      if (token == null) {
+        return null;
+      }
 
-    return apiClient.getMySubjectEpisodeCollections(
-      subjectId: subjectId,
-      limit: limit,
-      offset: offset,
-      episodeType: episodeType,
-      accessToken: token.accessToken,
-    );
+      return apiClient.getMySubjectEpisodeCollections(
+        subjectId: subjectId,
+        limit: limit,
+        offset: offset,
+        episodeType: episodeType,
+        accessToken: token.accessToken,
+      );
+    });
   }
 
   /// 新增或修改当前用户对指定条目的收藏信息。
@@ -149,16 +155,18 @@ class BangumiMyCollectionRepository
     required int subjectId,
     required BangumiSubjectCollectionUpdate update,
   }) async {
-    final token = await authRepository.getValidToken();
-    if (token == null) {
-      throw const BangumiApiException('请先登录 Bangumi 后再修改收藏');
-    }
+    await _writeWithInvalidTokenCleanup(() async {
+      final token = await authRepository.getValidToken();
+      if (token == null) {
+        throw const BangumiApiException('请先登录 Bangumi 后再修改收藏');
+      }
 
-    await apiClient.saveMyCollection(
-      subjectId: subjectId,
-      update: update,
-      accessToken: token.accessToken,
-    );
+      await apiClient.saveMyCollection(
+        subjectId: subjectId,
+        update: update,
+        accessToken: token.accessToken,
+      );
+    });
 
     return getMySubjectCollection(subjectId);
   }
@@ -174,24 +182,63 @@ class BangumiMyCollectionRepository
     required BangumiEpisodeCollectionType type,
     BangumiEpisodeType episodeType = BangumiEpisodeType.mainStory,
   }) async {
-    final token = await authRepository.getValidToken();
-    if (token == null) {
-      throw const BangumiApiException('请先登录 Bangumi 后再同步章节进度');
-    }
+    await _writeWithInvalidTokenCleanup(() async {
+      final token = await authRepository.getValidToken();
+      if (token == null) {
+        throw const BangumiApiException('请先登录 Bangumi 后再同步章节进度');
+      }
 
-    await apiClient.saveMySubjectEpisodeCollections(
-      subjectId: subjectId,
-      update: BangumiEpisodeCollectionUpdate(
-        episodeIds: episodeIds,
-        type: type,
-      ),
-      accessToken: token.accessToken,
-    );
+      await apiClient.saveMySubjectEpisodeCollections(
+        subjectId: subjectId,
+        update: BangumiEpisodeCollectionUpdate(
+          episodeIds: episodeIds,
+          type: type,
+        ),
+        accessToken: token.accessToken,
+      );
+    });
 
     return getMySubjectEpisodeCollections(
       subjectId: subjectId,
       episodeType: episodeType,
     );
+  }
+
+  /// 包装当前用户读取类请求，在 Bangumi 明确返回 401 时清理本地 token。
+  ///
+  /// 读取类方法返回 nullable 模型，因此 token 失效时可以回到“未登录”语义；
+  /// 404 等业务状态仍由具体方法自行处理，其余错误继续交给 UI 展示。
+  Future<T?> _readWithInvalidTokenCleanup<T>(
+    Future<T?> Function() action,
+  ) async {
+    try {
+      return await action();
+    } on BangumiApiException catch (error) {
+      if (error.statusCode == 401) {
+        await authRepository.logout();
+        return null;
+      }
+
+      rethrow;
+    }
+  }
+
+  /// 包装当前用户写入类请求，在 401 时清理 token 但保留失败反馈。
+  ///
+  /// 写入类动作不能把授权失败伪装成成功；清理 token 后继续抛出原始异常，让
+  /// 页面展示“授权已失效，请重新登录”，用户可以明确知道本次修改没有保存。
+  Future<T> _writeWithInvalidTokenCleanup<T>(
+    Future<T> Function() action,
+  ) async {
+    try {
+      return await action();
+    } on BangumiApiException catch (error) {
+      if (error.statusCode == 401) {
+        await authRepository.logout();
+      }
+
+      rethrow;
+    }
   }
 }
 

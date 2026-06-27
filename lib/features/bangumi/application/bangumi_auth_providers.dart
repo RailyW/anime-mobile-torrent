@@ -68,14 +68,24 @@ class BangumiAuthRepository {
   /// 读取当前登录用户信息。
   ///
   /// 如果本地没有 token，返回 null 表示未登录。若 token 被 Bangumi 拒绝，
-  /// API client 会抛出中文业务异常，UI 展示后允许用户重新登录。
+  /// 会同步清理本地旧 token 并返回未登录状态，避免后续页面继续拿同一个失效
+  /// token 反复请求。
   Future<BangumiUser?> getCurrentUser() async {
     final token = await getValidToken();
     if (token == null) {
       return null;
     }
 
-    return apiClient.getMyself(accessToken: token.accessToken);
+    try {
+      return await apiClient.getMyself(accessToken: token.accessToken);
+    } on BangumiApiException catch (error) {
+      if (error.statusCode == 401) {
+        await storage.clearToken();
+        return null;
+      }
+
+      rethrow;
+    }
   }
 }
 
