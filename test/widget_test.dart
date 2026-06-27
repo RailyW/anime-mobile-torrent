@@ -41,6 +41,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('MVP'), findsOneWidget);
     expect(find.text('分享面板兜底'), findsOneWidget);
+    expect(find.text('外部 BT 客户端自检'), findsOneWidget);
+    expect(find.text('magnet 支持'), findsOneWidget);
+    expect(find.text('.torrent 直开'), findsOneWidget);
+    expect(find.text('视频播放交接'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
+      find.text('失败时处理'),
+      220,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('失败时处理'), findsOneWidget);
 
     await tester.tap(find.text('播放').last);
     await tester.pumpAndSettle();

@@ -165,12 +165,13 @@ flowchart LR
 3. 已抽象通用 `TorrentSeedFile`、`TorrentHandoffResult`、`TorrentHandoffRepository` 和 Riverpod Provider。
 4. 已通过 `open_filex` 直接打开 `.torrent` 文件给外部 BT 客户端。
 5. 已通过 `share_plus` 在直开失败时自动打开系统分享面板，作为外部客户端兼容兜底。
+6. 已在种子交接页补充外部 BT 客户端兼容自检、失败处理和“不下载 BT 视频内容”的边界说明。
 
 待确认：
 
 1. 首期是否需要主动推荐或引导安装外部 BT 客户端。
-2. 不同 BT 客户端对 magnet、`.torrent`、`ACTION_VIEW` 和 `ACTION_SEND` 的兼容差异是否需要建立兼容性清单。
-3. 是否需要为不同 BT 客户端建立直开和分享兼容性清单。
+2. 不同 BT 客户端对 magnet、`.torrent`、`ACTION_VIEW` 和 `ACTION_SEND` 的兼容差异是否需要建立基于真实设备测试的兼容性清单。
+3. 是否需要在 Android 平台层增加 package visibility 查询或 Intent resolver 检测，用于提前提示用户当前设备是否具备可用外部 BT 客户端。
 
 ### 阶段 3B：可选内置 Torrent 下载器
 
@@ -258,7 +259,7 @@ flowchart LR
 8. 已提供用户显式开启的 Android 前台服务后台常驻入口。
 9. 已提供 DMHY RSS 订阅关键词保存、手动检查、后台低频自动检查、最近自动检查摘要入口和后台通知回流入口。
 
-复杂过滤、章节完整分页、更多批量管理、订阅通知交互、外部客户端兼容性清单、公共目录导出和内置下载器可以在基础闭环跑通后逐步补齐。
+复杂过滤、章节完整分页、更多批量管理、订阅通知交互、真实设备外部客户端兼容记录、公共目录导出和内置下载器可以在基础闭环跑通后逐步补齐。
 
 ## 关键风险
 
