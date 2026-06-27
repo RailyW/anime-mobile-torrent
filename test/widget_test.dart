@@ -706,7 +706,7 @@ void main() {
     );
   });
 
-  testWidgets('DMHY 资源筛选可以缩小当前结果且不重新请求', (tester) async {
+  testWidgets('DMHY 资源筛选和字幕组偏好可以缩小当前结果且不重新请求', (tester) async {
     final dmhyRepository = _FilterableFakeDmhyRepository();
 
     await tester.pumpWidget(
@@ -742,13 +742,14 @@ void main() {
     expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
     expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsNothing);
 
-    await tester.tap(find.widgetWithText(TextButton, '清除筛选'));
-    await tester.pumpAndSettle();
+    await _tapDmhyClearFilter(tester);
 
     expect(dmhyRepository.requests, hasLength(1));
     expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
     expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsOneWidget);
 
+    await tester.ensureVisible(find.byKey(const Key('dmhy-filter-source')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('dmhy-filter-source')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('BDRip').last);
@@ -759,9 +760,12 @@ void main() {
     expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsNothing);
     expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(TextButton, '清除筛选'));
-    await tester.pumpAndSettle();
+    await _tapDmhyClearFilter(tester);
 
+    await tester.ensureVisible(
+      find.byKey(const Key('dmhy-filter-subtitle-label')),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('dmhy-filter-subtitle-label')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('简繁内封').last);
@@ -772,8 +776,7 @@ void main() {
     expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
     expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsNothing);
 
-    await tester.tap(find.widgetWithText(TextButton, '清除筛选'));
-    await tester.pumpAndSettle();
+    await _tapDmhyClearFilter(tester);
 
     await tester.enterText(
       find.byKey(const Key('dmhy-filter-min-seed-count')),
@@ -786,8 +789,7 @@ void main() {
     expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
     expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsNothing);
 
-    await tester.tap(find.widgetWithText(TextButton, '清除筛选'));
-    await tester.pumpAndSettle();
+    await _tapDmhyClearFilter(tester);
 
     await tester.enterText(
       find.byKey(const Key('dmhy-filter-excluded-keywords')),
@@ -796,6 +798,33 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(dmhyRepository.requests, hasLength(1));
+    expect(find.text('筛选后显示 1/2 条'), findsOneWidget);
+    expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
+    expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsNothing);
+
+    await _tapDmhyClearFilter(tester);
+
+    await tester.tap(find.byKey(const Key('dmhy-filter-release-group')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('猫耳字幕').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('dmhy-save-release-group-preference')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('偏好：猫耳字幕'), findsOneWidget);
+    expect(find.text('已记住字幕组“猫耳字幕”'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField).first, '测试动画 720');
+    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.pumpAndSettle();
+
+    expect(dmhyRepository.requests, hasLength(2));
+    expect(find.text('偏好：猫耳字幕'), findsOneWidget);
     expect(find.text('筛选后显示 1/2 条'), findsOneWidget);
     expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
     expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsNothing);
@@ -919,6 +948,19 @@ void main() {
 
     expect(copiedText, 'magnet:?xt=urn:btih:ABCDEF');
   });
+}
+
+/// 点击 DMHY 筛选栏中的“清除筛选”按钮。
+///
+/// 筛选栏在测试视口中有时会贴近顶部，直接点击中心点容易落到 AppBar
+/// 边缘；改点按钮右下角仍可见的区域，模拟用户点击露出的按钮主体。
+Future<void> _tapDmhyClearFilter(WidgetTester tester) async {
+  final finder = find.widgetWithText(TextButton, '清除筛选');
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+
+  await tester.tapAt(tester.getBottomRight(finder) - const Offset(12, 12));
+  await tester.pumpAndSettle();
 }
 
 /// 把卡片底部主按钮滚到导航栏遮挡区域上方。

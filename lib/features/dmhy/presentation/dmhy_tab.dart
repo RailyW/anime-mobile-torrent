@@ -7,8 +7,10 @@ import '../../torrent_handoff/application/torrent_handoff_providers.dart';
 import '../../torrent_handoff/domain/torrent_client_capabilities.dart';
 import '../../torrent_handoff/domain/torrent_seed_history_item.dart';
 import '../../torrent_handoff/domain/torrent_seed_file.dart';
+import '../application/dmhy_filter_preference_providers.dart';
 import '../application/dmhy_resource_filter.dart';
 import '../application/dmhy_providers.dart';
+import '../domain/dmhy_filter_preference.dart';
 import '../domain/dmhy_resource.dart';
 import '../domain/dmhy_resource_metadata.dart';
 
@@ -37,6 +39,8 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
   bool _animeOnly = true;
   DmhyResourceSort _sort = DmhyResourceSort.publishedDesc;
   DmhyResourceFilter _filter = const DmhyResourceFilter.empty();
+  bool _preferredReleaseGroupAutoApplied = false;
+  bool _preferredReleaseGroupSuppressed = false;
 
   @override
   void initState() {
@@ -91,6 +95,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
       );
       _animeOnly = animeOnly;
       _filter = const DmhyResourceFilter.empty();
+      _resetPreferredReleaseGroupAutoApply();
     }
 
     if (notify && mounted) {
@@ -109,6 +114,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
     if (keyword.isEmpty) {
       setState(() {
         _searchRequest = null;
+        _resetPreferredReleaseGroupAutoApply();
       });
       return;
     }
@@ -120,6 +126,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
         sort: _sort,
       );
       _filter = const DmhyResourceFilter.empty();
+      _resetPreferredReleaseGroupAutoApply();
     });
   }
 
@@ -134,6 +141,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
           ? null
           : DmhySearchRequest(keyword: keyword, animeOnly: value, sort: _sort);
       _filter = const DmhyResourceFilter.empty();
+      _resetPreferredReleaseGroupAutoApply();
     });
   }
 
@@ -164,8 +172,13 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
   /// 筛选只作用于已经加载到页面的结果，不会改变搜索请求缓存键，也不会重新
   /// 访问 DMHY。
   void _setFilter(DmhyResourceFilter value) {
+    final releaseGroupCleared =
+        _filter.releaseGroup != null && value.releaseGroup == null;
     setState(() {
       _filter = value;
+      if (releaseGroupCleared) {
+        _preferredReleaseGroupSuppressed = true;
+      }
     });
   }
 
@@ -173,6 +186,30 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
   void _clearFilter() {
     setState(() {
       _filter = const DmhyResourceFilter.empty();
+      _preferredReleaseGroupSuppressed = true;
+    });
+  }
+
+  /// 允许新一轮搜索结果根据本机字幕组偏好自动套用一次筛选。
+  void _resetPreferredReleaseGroupAutoApply() {
+    _preferredReleaseGroupAutoApplied = false;
+    _preferredReleaseGroupSuppressed = false;
+  }
+
+  /// 当前结果集加载完成后，按本机字幕组偏好自动套用筛选。
+  ///
+  /// 自动套用只在用户没有手动清空当前结果筛选时发生；一旦用户清除筛选，
+  /// 本轮结果不会再次自动恢复偏好，避免“清了又回来”的割裂体验。
+  void _autoApplyPreferredReleaseGroup(String releaseGroup) {
+    if (_preferredReleaseGroupAutoApplied ||
+        _preferredReleaseGroupSuppressed ||
+        _filter.releaseGroup != null) {
+      return;
+    }
+
+    setState(() {
+      _filter = _filter.copyWith(releaseGroup: DmhyFilterValue(releaseGroup));
+      _preferredReleaseGroupAutoApplied = true;
     });
   }
 
@@ -200,8 +237,11 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
           _DmhySearchResult(
             request: request,
             filter: _filter,
+            preferenceAutoApplySuppressed: _preferredReleaseGroupSuppressed,
+            preferenceAlreadyAutoApplied: _preferredReleaseGroupAutoApplied,
             onFilterChanged: _setFilter,
             onFilterCleared: _clearFilter,
+            onPreferredReleaseGroupAutoApply: _autoApplyPreferredReleaseGroup,
           ),
       ],
     );
@@ -410,18 +450,27 @@ class _DmhySearchResult extends ConsumerWidget {
   const _DmhySearchResult({
     required this.request,
     required this.filter,
+    required this.preferenceAutoApplySuppressed,
+    required this.preferenceAlreadyAutoApplied,
     required this.onFilterChanged,
     required this.onFilterCleared,
+    required this.onPreferredReleaseGroupAutoApply,
   });
 
   final DmhySearchRequest request;
   final DmhyResourceFilter filter;
+  final bool preferenceAutoApplySuppressed;
+  final bool preferenceAlreadyAutoApplied;
   final ValueChanged<DmhyResourceFilter> onFilterChanged;
   final VoidCallback onFilterCleared;
+  final ValueChanged<String> onPreferredReleaseGroupAutoApply;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final result = ref.watch(dmhySearchProvider(request));
+    final preferenceAsync = ref.watch(dmhyFilterPreferenceControllerProvider);
+    final preference =
+        preferenceAsync.value ?? const DmhyFilterPreference.empty();
 
     return result.when(
       loading: () => const _DmhyLoadingState(),
@@ -436,6 +485,10 @@ class _DmhySearchResult extends ConsumerWidget {
 
         final filterOptions = DmhyResourceFilterOptions.fromResources(
           resources,
+        );
+        _schedulePreferredReleaseGroupAutoApply(
+          preference: preference,
+          options: filterOptions,
         );
         final filteredResources = filter.apply(resources);
 
@@ -455,8 +508,16 @@ class _DmhySearchResult extends ConsumerWidget {
               _DmhyFilterBar(
                 filter: filter,
                 options: filterOptions,
+                preferredReleaseGroup: preference.preferredReleaseGroup,
+                isPreferenceBusy: preferenceAsync.isLoading,
                 onChanged: onFilterChanged,
                 onClear: onFilterCleared,
+                onPreferredReleaseGroupSaved: (releaseGroup) {
+                  _savePreferredReleaseGroup(context, ref, releaseGroup);
+                },
+                onPreferredReleaseGroupCleared: () {
+                  _clearPreferredReleaseGroup(context, ref);
+                },
               ),
             ],
             const SizedBox(height: 8),
@@ -471,6 +532,75 @@ class _DmhySearchResult extends ConsumerWidget {
           ],
         );
       },
+    );
+  }
+
+  /// 在当前资源集合中存在本机字幕组偏好时，安排一次自动筛选。
+  ///
+  /// 这里使用 post-frame 回调，是为了避免在 `build` 过程中直接修改父组件
+  /// 状态。父级会记录本轮结果是否已经自动套用过，避免重复调度。
+  void _schedulePreferredReleaseGroupAutoApply({
+    required DmhyFilterPreference preference,
+    required DmhyResourceFilterOptions options,
+  }) {
+    final preferredReleaseGroup = preference.preferredReleaseGroup;
+    if (preferredReleaseGroup == null ||
+        preferenceAutoApplySuppressed ||
+        preferenceAlreadyAutoApplied ||
+        filter.releaseGroup != null ||
+        !options.releaseGroups.contains(preferredReleaseGroup)) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      onPreferredReleaseGroupAutoApply(preferredReleaseGroup);
+    });
+  }
+
+  /// 保存当前筛选中的字幕组为本机偏好。
+  Future<void> _savePreferredReleaseGroup(
+    BuildContext context,
+    WidgetRef ref,
+    String releaseGroup,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    await ref
+        .read(dmhyFilterPreferenceControllerProvider.notifier)
+        .setPreferredReleaseGroup(releaseGroup);
+
+    if (!context.mounted) {
+      return;
+    }
+
+    final preferenceState = ref.read(dmhyFilterPreferenceControllerProvider);
+    final error = preferenceState.error;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          error == null ? '已记住字幕组“$releaseGroup”' : '字幕组偏好保存失败：$error',
+        ),
+      ),
+    );
+  }
+
+  /// 清除本机保存的字幕组偏好。
+  Future<void> _clearPreferredReleaseGroup(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    await ref
+        .read(dmhyFilterPreferenceControllerProvider.notifier)
+        .clearPreferredReleaseGroup();
+
+    if (!context.mounted) {
+      return;
+    }
+
+    final preferenceState = ref.read(dmhyFilterPreferenceControllerProvider);
+    final error = preferenceState.error;
+    messenger.showSnackBar(
+      SnackBar(content: Text(error == null ? '已清除字幕组偏好' : '字幕组偏好清除失败：$error')),
     );
   }
 }
@@ -488,14 +618,22 @@ class _DmhyFilterBar extends StatelessWidget {
   const _DmhyFilterBar({
     required this.filter,
     required this.options,
+    required this.preferredReleaseGroup,
+    required this.isPreferenceBusy,
     required this.onChanged,
     required this.onClear,
+    required this.onPreferredReleaseGroupSaved,
+    required this.onPreferredReleaseGroupCleared,
   });
 
   final DmhyResourceFilter filter;
   final DmhyResourceFilterOptions options;
+  final String? preferredReleaseGroup;
+  final bool isPreferenceBusy;
   final ValueChanged<DmhyResourceFilter> onChanged;
   final VoidCallback onClear;
+  final ValueChanged<String> onPreferredReleaseGroupSaved;
+  final VoidCallback onPreferredReleaseGroupCleared;
 
   @override
   Widget build(BuildContext context) {
@@ -527,6 +665,48 @@ class _DmhyFilterBar extends StatelessWidget {
                   ),
               ],
             ),
+            if (preferredReleaseGroup != null ||
+                filter.releaseGroup != null) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  if (preferredReleaseGroup != null)
+                    Chip(
+                      avatar: const Icon(Icons.bookmark_added_outlined),
+                      label: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 220),
+                        child: Text(
+                          '偏好：$preferredReleaseGroup',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ),
+                  if (filter.releaseGroup != null)
+                    OutlinedButton.icon(
+                      key: const Key('dmhy-save-release-group-preference'),
+                      onPressed: isPreferenceBusy
+                          ? null
+                          : () => onPreferredReleaseGroupSaved(
+                              filter.releaseGroup!,
+                            ),
+                      icon: const Icon(Icons.bookmark_add_outlined),
+                      label: const Text('记住字幕组'),
+                    ),
+                  if (preferredReleaseGroup != null)
+                    OutlinedButton.icon(
+                      key: const Key('dmhy-clear-release-group-preference'),
+                      onPressed: isPreferenceBusy
+                          ? null
+                          : onPreferredReleaseGroupCleared,
+                      icon: const Icon(Icons.bookmark_remove_outlined),
+                      label: const Text('清除偏好'),
+                    ),
+                ],
+              ),
+            ],
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
