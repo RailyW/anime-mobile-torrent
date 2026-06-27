@@ -2,6 +2,7 @@ import 'package:anime_mobile_torrent/features/torrent_handoff/application/torren
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_client_capabilities.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_client_compatibility_record.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_handoff_result.dart';
+import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_history_item.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_file.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -207,6 +208,117 @@ void main() {
       expect(records, hasLength(20));
       expect(records.first.recordedAt, DateTime.fromMillisecondsSinceEpoch(24));
       expect(records.last.recordedAt, DateTime.fromMillisecondsSinceEpoch(5));
+    });
+  });
+
+  group('TorrentSeedHistoryItem', () {
+    test('可以序列化并恢复最近种子记录', () {
+      final savedAt = DateTime(2026, 6, 27, 10, 30);
+      final item = TorrentSeedHistoryItem.capture(
+        seedFile: TorrentSeedFile(
+          localPath: '/tmp/test.torrent',
+          fileName: 'test.torrent',
+          length: 2048,
+          sourceUri: Uri.parse('https://dl.dmhy.org/test.torrent'),
+        ),
+        title: '测试动画 01',
+        savedAt: savedAt,
+      );
+
+      final restored = TorrentSeedHistoryItem.fromJson(item.toJson());
+
+      expect(restored.seedFile.localPath, '/tmp/test.torrent');
+      expect(restored.seedFile.fileName, 'test.torrent');
+      expect(restored.seedFile.length, 2048);
+      expect(
+        restored.seedFile.sourceUri,
+        Uri.parse('https://dl.dmhy.org/test.torrent'),
+      );
+      expect(restored.title, '测试动画 01');
+      expect(restored.savedAt, savedAt);
+      expect(restored.sourceLabel, 'dl.dmhy.org');
+      expect(restored.savedAtLabel, '06-27 10:30');
+    });
+  });
+
+  group('SharedPreferencesTorrentSeedHistoryRepository', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('可以保存、倒序读取、按路径去重并清空最近种子', () async {
+      const repository = SharedPreferencesTorrentSeedHistoryRepository();
+
+      await repository.addItem(
+        TorrentSeedHistoryItem.capture(
+          seedFile: TorrentSeedFile(
+            localPath: '/tmp/episode-01.torrent',
+            fileName: 'episode-01.torrent',
+            length: 128,
+            sourceUri: Uri.parse('https://dl.dmhy.org/episode-01.torrent'),
+          ),
+          title: '第 1 话',
+          savedAt: DateTime.fromMillisecondsSinceEpoch(1000),
+        ),
+      );
+      await repository.addItem(
+        TorrentSeedHistoryItem.capture(
+          seedFile: TorrentSeedFile(
+            localPath: '/tmp/episode-02.torrent',
+            fileName: 'episode-02.torrent',
+            length: 256,
+            sourceUri: Uri.parse('https://dl.dmhy.org/episode-02.torrent'),
+          ),
+          title: '第 2 话',
+          savedAt: DateTime.fromMillisecondsSinceEpoch(2000),
+        ),
+      );
+      await repository.addItem(
+        TorrentSeedHistoryItem.capture(
+          seedFile: TorrentSeedFile(
+            localPath: '/tmp/episode-01.torrent',
+            fileName: 'episode-01-new.torrent',
+            length: 512,
+            sourceUri: Uri.parse('https://dl.dmhy.org/episode-01-new.torrent'),
+          ),
+          title: '第 1 话 新版',
+          savedAt: DateTime.fromMillisecondsSinceEpoch(3000),
+        ),
+      );
+
+      final items = await repository.loadItems();
+
+      expect(items, hasLength(2));
+      expect(items.first.title, '第 1 话 新版');
+      expect(items.first.seedFile.length, 512);
+      expect(items.last.title, '第 2 话');
+
+      await repository.clearItems();
+      expect(await repository.loadItems(), isEmpty);
+    });
+
+    test('最多保留最近 20 条种子记录', () async {
+      const repository = SharedPreferencesTorrentSeedHistoryRepository();
+
+      for (var index = 0; index < 25; index++) {
+        await repository.addItem(
+          TorrentSeedHistoryItem.capture(
+            seedFile: TorrentSeedFile(
+              localPath: '/tmp/episode-$index.torrent',
+              fileName: 'episode-$index.torrent',
+              length: index,
+            ),
+            title: '第 $index 话',
+            savedAt: DateTime.fromMillisecondsSinceEpoch(index),
+          ),
+        );
+      }
+
+      final items = await repository.loadItems();
+
+      expect(items, hasLength(20));
+      expect(items.first.title, '第 24 话');
+      expect(items.last.title, '第 5 话');
     });
   });
 }

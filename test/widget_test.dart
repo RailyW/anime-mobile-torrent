@@ -60,6 +60,16 @@ void main() {
     expect(find.text('检测不可用'), findsWidgets);
 
     await tester.scrollUntilVisible(
+      find.text('最近种子'),
+      220,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('最近种子'), findsOneWidget);
+    expect(find.text('暂无最近种子'), findsOneWidget);
+
+    await tester.scrollUntilVisible(
       find.text('真实设备兼容记录'),
       220,
       scrollable: find.byType(Scrollable).last,
@@ -370,6 +380,19 @@ void main() {
     expect(fakeHandoffRepository.lastFile?.length, 128);
     expect(find.textContaining('已交给外部 BT 客户端'), findsOneWidget);
     expect(find.textContaining('种子 128 B'), findsOneWidget);
+
+    await tester.tap(find.text('种子').last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('最近种子'),
+      220,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('最近种子'), findsOneWidget);
+    expect(find.text('[字幕组] 测试动画 01 1080p'), findsOneWidget);
+    expect(find.text('test.torrent'), findsOneWidget);
   });
 
   testWidgets('DMHY 未发现 BT 客户端时主按钮切换为复制磁力', (tester) async {

@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../torrent_handoff/application/torrent_handoff_providers.dart';
 import '../../torrent_handoff/domain/torrent_client_capabilities.dart';
+import '../../torrent_handoff/domain/torrent_seed_history_item.dart';
 import '../../torrent_handoff/domain/torrent_seed_file.dart';
 import '../application/dmhy_providers.dart';
 import '../domain/dmhy_resource.dart';
@@ -477,14 +478,24 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
     try {
       final repository = ref.read(dmhyRepositoryProvider);
       final torrentFile = await repository.downloadTorrentFile(widget.resource);
+      final seedFile = TorrentSeedFile(
+        localPath: torrentFile.localPath,
+        fileName: torrentFile.fileName,
+        length: torrentFile.length,
+        sourceUri: torrentFile.sourceUri,
+      );
+      final historyRepository = ref.read(torrentSeedHistoryRepositoryProvider);
+      await historyRepository.addItem(
+        TorrentSeedHistoryItem.capture(
+          seedFile: seedFile,
+          title: widget.resource.title,
+        ),
+      );
+      ref.invalidate(torrentSeedHistoryProvider);
+
       final handoffRepository = ref.read(torrentHandoffRepositoryProvider);
       final result = await handoffRepository.openSeedFileWithShareFallback(
-        TorrentSeedFile(
-          localPath: torrentFile.localPath,
-          fileName: torrentFile.fileName,
-          length: torrentFile.length,
-          sourceUri: torrentFile.sourceUri,
-        ),
+        seedFile,
       );
 
       if (!context.mounted) {

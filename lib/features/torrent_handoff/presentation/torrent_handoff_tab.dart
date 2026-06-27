@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/torrent_handoff_providers.dart';
 import '../domain/torrent_client_capabilities.dart';
 import '../domain/torrent_client_compatibility_record.dart';
+import '../domain/torrent_handoff_result.dart';
+import '../domain/torrent_seed_history_item.dart';
 
 /// Torrent 种子交接首页入口。
 ///
@@ -95,6 +97,7 @@ class TorrentHandoffTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final deviceCapabilities = ref.watch(torrentClientCapabilitiesProvider);
     final compatibilityRecords = ref.watch(torrentCompatibilityRecordsProvider);
+    final seedHistory = ref.watch(torrentSeedHistoryProvider);
 
     Future<void> recordCompatibility(
       TorrentCompatibilityOutcome outcome,
@@ -126,6 +129,44 @@ class TorrentHandoffTab extends ConsumerWidget {
       }
     }
 
+    Future<void> openSeedHistoryItem(TorrentSeedHistoryItem item) async {
+      final repository = ref.read(torrentHandoffRepositoryProvider);
+      final result = await repository.openSeedFileWithShareFallback(
+        item.seedFile,
+      );
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(result.userMessage)));
+      }
+    }
+
+    Future<void> shareSeedHistoryItem(TorrentSeedHistoryItem item) async {
+      final repository = ref.read(torrentHandoffRepositoryProvider);
+      final result = await repository.shareSeedFile(item.seedFile);
+      final message = result.status == TorrentHandoffStatus.shareOpened
+          ? '已打开系统分享面板，请选择 BT 客户端'
+          : result.userMessage;
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
+      }
+    }
+
+    Future<void> clearSeedHistory() async {
+      final repository = ref.read(torrentSeedHistoryRepositoryProvider);
+      await repository.clearItems();
+      ref.invalidate(torrentSeedHistoryProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已清空最近种子')));
+      }
+    }
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
@@ -142,6 +183,13 @@ class TorrentHandoffTab extends ConsumerWidget {
         _DeviceDetectionPanel(
           capabilities: deviceCapabilities,
           onRefresh: () => ref.invalidate(torrentClientCapabilitiesProvider),
+        ),
+        const SizedBox(height: 12),
+        _SeedHistoryPanel(
+          items: seedHistory,
+          onOpen: openSeedHistoryItem,
+          onShare: shareSeedHistoryItem,
+          onClear: clearSeedHistory,
         ),
         const SizedBox(height: 12),
         _CompatibilityRecordPanel(
@@ -165,6 +213,205 @@ class TorrentHandoffTab extends ConsumerWidget {
         const SizedBox(height: 12),
         const _BoundaryNote(),
       ],
+    );
+  }
+}
+
+/// 最近下载种子文件面板。
+///
+/// 面板只展示用户已经显式下载过的 `.torrent` 文件，方便重试直开或分享。
+/// 它不解析种子内容，也不展示 BT 下载任务或视频文件进度。
+class _SeedHistoryPanel extends StatelessWidget {
+  const _SeedHistoryPanel({
+    required this.items,
+    required this.onOpen,
+    required this.onShare,
+    required this.onClear,
+  });
+
+  final AsyncValue<List<TorrentSeedHistoryItem>> items;
+  final Future<void> Function(TorrentSeedHistoryItem item) onOpen;
+  final Future<void> Function(TorrentSeedHistoryItem item) onShare;
+  final Future<void> Function() onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('最近种子', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 6),
+            Text(
+              '保存最近从 DMHY 下载过的 .torrent 文件记录，可从这里再次打开或分享给外部 BT 客户端。',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            items.when(
+              data: (items) {
+                return _SeedHistoryContent(
+                  items: items,
+                  onOpen: onOpen,
+                  onShare: onShare,
+                  onClear: onClear,
+                );
+              },
+              error: (error, _) {
+                return Text(
+                  '读取最近种子失败：$error',
+                  style: TextStyle(color: scheme.error),
+                );
+              },
+              loading: () => const Text('正在读取最近种子'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 最近种子文件列表内容。
+class _SeedHistoryContent extends StatelessWidget {
+  const _SeedHistoryContent({
+    required this.items,
+    required this.onOpen,
+    required this.onShare,
+    required this.onClear,
+  });
+
+  final List<TorrentSeedHistoryItem> items;
+  final Future<void> Function(TorrentSeedHistoryItem item) onOpen;
+  final Future<void> Function(TorrentSeedHistoryItem item) onShare;
+  final Future<void> Function() onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return const Text('暂无最近种子');
+    }
+
+    final visibleItems = items.take(5).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final item in visibleItems)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _SeedHistoryTile(
+              item: item,
+              onOpen: onOpen,
+              onShare: onShare,
+            ),
+          ),
+        TextButton.icon(
+          onPressed: onClear,
+          icon: const Icon(Icons.delete_outline),
+          label: const Text('清空最近种子'),
+        ),
+      ],
+    );
+  }
+}
+
+/// 单条最近种子记录。
+class _SeedHistoryTile extends StatelessWidget {
+  const _SeedHistoryTile({
+    required this.item,
+    required this.onOpen,
+    required this.onShare,
+  });
+
+  final TorrentSeedHistoryItem item;
+  final Future<void> Function(TorrentSeedHistoryItem item) onOpen;
+  final Future<void> Function(TorrentSeedHistoryItem item) onShare;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.description_outlined, color: scheme.secondary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${item.savedAtLabel} · ${item.seedFile.displayLength} · ${item.sourceLabel}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.seedFile.fileName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                FilledButton.icon(
+                  onPressed: () => onOpen(item),
+                  icon: const Icon(Icons.open_in_new_outlined),
+                  label: const Text('打开'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => onShare(item),
+                  icon: const Icon(Icons.ios_share_outlined),
+                  label: const Text('分享'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

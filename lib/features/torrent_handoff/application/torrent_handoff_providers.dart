@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../domain/torrent_client_capabilities.dart';
 import '../domain/torrent_client_compatibility_record.dart';
 import '../domain/torrent_handoff_result.dart';
+import '../domain/torrent_seed_history_item.dart';
 import '../domain/torrent_seed_file.dart';
 
 /// Android 原生种子客户端检测 MethodChannel 名称。
@@ -24,6 +25,12 @@ const _compatibilityRecordsKey = 'torrent_handoff.client_compatibility_records';
 
 /// 本地最多保留的实测记录数量。
 const _maxCompatibilityRecords = 20;
+
+/// 最近种子文件记录的 SharedPreferences key。
+const _seedHistoryKey = 'torrent_handoff.seed_history';
+
+/// 本地最多保留的最近种子数量。
+const _maxSeedHistoryItems = 20;
 
 /// Torrent 种子文件交接仓库接口。
 ///
@@ -63,6 +70,20 @@ abstract class TorrentCompatibilityRecordRepository {
 
   /// 清空本机兼容实测记录。
   Future<void> clearRecords();
+}
+
+/// 最近种子文件记录仓库接口。
+///
+/// 记录只保存用户已经显式下载过的 `.torrent` 文件，用于后续再次打开或分享。
+abstract class TorrentSeedHistoryRepository {
+  /// 读取最近下载过的种子记录，按保存时间倒序排列。
+  Future<List<TorrentSeedHistoryItem>> loadItems();
+
+  /// 新增或更新一条最近种子记录。
+  Future<void> addItem(TorrentSeedHistoryItem item);
+
+  /// 清空本机最近种子记录。
+  Future<void> clearItems();
 }
 
 /// 基于成熟 Flutter 插件的 Torrent 交接仓库实现。
@@ -236,6 +257,63 @@ class SharedPreferencesTorrentCompatibilityRecordRepository
   }
 }
 
+/// 基于 SharedPreferences 的最近种子文件记录仓库。
+///
+/// 最近种子只保存少量本机元信息，用 StringList JSON 足够。读取时跳过
+/// 单条损坏记录，避免旧数据影响整个种子交接页。
+class SharedPreferencesTorrentSeedHistoryRepository
+    implements TorrentSeedHistoryRepository {
+  const SharedPreferencesTorrentSeedHistoryRepository();
+
+  @override
+  Future<List<TorrentSeedHistoryItem>> loadItems() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawItems = prefs.getStringList(_seedHistoryKey) ?? [];
+    final items = <TorrentSeedHistoryItem>[];
+
+    for (final rawItem in rawItems) {
+      try {
+        final decoded = jsonDecode(rawItem);
+        if (decoded is Map) {
+          items.add(TorrentSeedHistoryItem.fromJson(decoded));
+        }
+      } catch (_) {
+        // 单条记录损坏时跳过，保留其他正常种子记录。
+      }
+    }
+
+    items.sort((a, b) => b.savedAt.compareTo(a.savedAt));
+    return items;
+  }
+
+  @override
+  Future<void> addItem(TorrentSeedHistoryItem item) async {
+    final prefs = await SharedPreferences.getInstance();
+    final existingItems = await loadItems();
+    final mergedItems = <TorrentSeedHistoryItem>[item];
+
+    for (final existingItem in existingItems) {
+      if (existingItem.dedupeKey != item.dedupeKey) {
+        mergedItems.add(existingItem);
+      }
+      if (mergedItems.length >= _maxSeedHistoryItems) {
+        break;
+      }
+    }
+
+    final encodedItems = mergedItems
+        .map((item) => jsonEncode(item.toJson()))
+        .toList();
+    await prefs.setStringList(_seedHistoryKey, encodedItems);
+  }
+
+  @override
+  Future<void> clearItems() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_seedHistoryKey);
+  }
+}
+
 /// Torrent 种子文件交接仓库 Provider。
 final torrentHandoffRepositoryProvider = Provider<TorrentHandoffRepository>((
   ref,
@@ -272,4 +350,17 @@ final torrentCompatibilityRecordsProvider =
         torrentCompatibilityRecordRepositoryProvider,
       );
       return repository.loadRecords();
+    });
+
+/// 最近种子文件记录仓库 Provider。
+final torrentSeedHistoryRepositoryProvider =
+    Provider<TorrentSeedHistoryRepository>((ref) {
+      return const SharedPreferencesTorrentSeedHistoryRepository();
+    });
+
+/// 当前设备本机保存的最近种子文件记录。
+final torrentSeedHistoryProvider =
+    FutureProvider.autoDispose<List<TorrentSeedHistoryItem>>((ref) {
+      final repository = ref.watch(torrentSeedHistoryRepositoryProvider);
+      return repository.loadItems();
     });
