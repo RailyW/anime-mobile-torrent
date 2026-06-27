@@ -380,6 +380,41 @@ void main() {
       expect(template, contains('- 导出 `.torrent` 后手动导入是否成功：'));
       expect(template, contains('视频由外部 BT 客户端下载'));
     });
+
+    test('可以生成跨设备兼容清单汇总行', () {
+      final capabilities = TorrentClientCapabilities(
+        isPlatformBridgeAvailable: true,
+        canOpenMagnet: true,
+        canOpenTorrentFile: false,
+        canShareTorrentFile: true,
+        magnetHandlerCount: 2,
+        torrentViewHandlerCount: 0,
+        torrentShareHandlerCount: 1,
+        androidSdkInt: 35,
+      );
+      final records = [
+        TorrentClientCompatibilityRecord.capture(
+          outcome: TorrentCompatibilityOutcome.shareImportSucceeded,
+          capabilities: capabilities,
+          recordedAt: DateTime(2026, 6, 27, 12, 45),
+        ),
+      ];
+
+      final summaryRow = TorrentCompatibilityReport(
+        capabilities: capabilities,
+        records: records,
+        generatedAt: DateTime(2026, 6, 27, 13),
+      ).toCrossDeviceSummaryMarkdownRow();
+
+      expect(summaryRow, contains('| 日期 | 设备/系统 | Android SDK | BT 客户端/包名 |'));
+      expect(
+        summaryRow,
+        contains('| 2026-06-27 | 待填写设备型号/Android 版本 | 35 | 待填写客户端名和包名 |'),
+      );
+      expect(summaryRow, contains('| 可用（候选 2 个） | 未发现（候选 0 个） |'));
+      expect(summaryRow, contains('| 可用（候选 1 个） | 待实测 |'));
+      expect(summaryRow, contains('| .torrent 分享导入 | 本机样本 1/1 条可用；'));
+    });
   });
 
   group('SharedPreferencesTorrentCompatibilityRecordRepository', () {

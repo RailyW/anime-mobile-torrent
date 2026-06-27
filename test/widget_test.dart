@@ -439,6 +439,7 @@ void main() {
     expect(copiedText, contains('APP 只下载和交接 .torrent 文件'));
     expect(find.text('已复制兼容报告'), findsOneWidget);
 
+    expect(find.widgetWithText(OutlinedButton, '复制汇总行'), findsOneWidget);
     await tester.ensureVisible(find.widgetWithText(OutlinedButton, '复制模板'));
     await tester.tap(find.widgetWithText(OutlinedButton, '复制模板'));
     await tester.pump();
@@ -450,6 +451,18 @@ void main() {
     expect(copiedText, contains('| 推荐观察路径 | .torrent 分享导入 |'));
     expect(copiedText, contains('- 导出 `.torrent` 后手动导入是否成功：'));
     expect(find.text('已复制兼容模板'), findsOneWidget);
+
+    await tester.ensureVisible(find.widgetWithText(OutlinedButton, '复制汇总行'));
+    await tester.tap(find.widgetWithText(OutlinedButton, '复制汇总行'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(copiedText, contains('| 日期 | 设备/系统 | Android SDK | BT 客户端/包名 |'));
+    expect(copiedText, contains('| 待填写设备型号/Android 版本 | 35 |'));
+    expect(copiedText, contains('| 可用（候选 1 个） | 未发现（候选 0 个） |'));
+    expect(copiedText, contains('| 可用（候选 1 个） | 待实测 |'));
+    expect(copiedText, contains('| .torrent 分享导入 | 本机样本 1/1 条可用；'));
+    expect(find.text('已复制汇总行'), findsOneWidget);
   });
 
   testWidgets('种子交接页可以删除单条最近种子记录', (tester) async {

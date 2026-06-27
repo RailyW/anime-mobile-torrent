@@ -254,6 +254,35 @@ class TorrentCompatibilityReport {
     return buffer.toString().trimRight();
   }
 
+  /// 生成适合直接粘贴到跨设备兼容清单中的单行 Markdown 表格。
+  ///
+  /// 完整模板适合第一次提交设备样本；这个汇总行则适合用户多次补充不同手机、
+  /// Android 版本或外部 BT 客户端的测试结果。已知的 resolver 检测状态会被
+  /// 预填，仍无法由 APP 自动确认的“设备型号、客户端版本、导出手动导入”
+  /// 保持待填写/待实测，避免把系统声明的 Intent 能力误写成真实导入成功。
+  String toCrossDeviceSummaryMarkdownRow() {
+    final summary = TorrentCompatibilitySummary.fromRecords(records);
+    final buffer = StringBuffer()
+      ..writeln(
+        '| 日期 | 设备/系统 | Android SDK | BT 客户端/包名 | magnet | .torrent 直开 | 分享导入 | 导出手动导入 | 推荐路径 | 备注 |',
+      )
+      ..writeln('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |')
+      ..writeln(
+        '| ${_formatDate(generatedAt)} '
+        '| 待填写设备型号/Android 版本 '
+        '| ${_escapeMarkdownCell(capabilities.androidSdkInt?.toString() ?? '未知')} '
+        '| 待填写客户端名和包名 '
+        '| ${_escapeMarkdownCell(_formatSummaryPathStatus(capabilities, TorrentClientHandoffPath.magnet))} '
+        '| ${_escapeMarkdownCell(_formatSummaryPathStatus(capabilities, TorrentClientHandoffPath.torrentView))} '
+        '| ${_escapeMarkdownCell(_formatSummaryPathStatus(capabilities, TorrentClientHandoffPath.torrentShare))} '
+        '| 待实测 '
+        '| ${_escapeMarkdownCell(summary.leadingOutcomeLabel)} '
+        '| 本机样本 ${_escapeMarkdownCell(summary.successfulRatioLabel)}；APP 只交接 .torrent |',
+      );
+
+    return buffer.toString().trimRight();
+  }
+
   /// 写入某一类 Intent 路径下的候选客户端列表。
   static void _writeCandidateSection(
     StringBuffer buffer, {
@@ -315,6 +344,36 @@ class TorrentCompatibilityReport {
   static String _formatPathStatus(bool isAvailable, int handlerCount) {
     final status = isAvailable ? '可用' : '未发现';
     return '$status（候选 $handlerCount 个）';
+  }
+
+  /// 生成跨设备汇总行中的单条路径状态。
+  ///
+  /// 平台检测通道不可用时，不把 handler 数量为 0 误读成“没有客户端”；只有
+  /// Android resolver 正常返回后，才把三条交接路径格式化为可用或未发现。
+  static String _formatSummaryPathStatus(
+    TorrentClientCapabilities capabilities,
+    TorrentClientHandoffPath path,
+  ) {
+    if (!capabilities.isPlatformBridgeAvailable) {
+      return '检测不可用';
+    }
+
+    final (isAvailable, handlerCount) = switch (path) {
+      TorrentClientHandoffPath.magnet => (
+        capabilities.canOpenMagnet,
+        capabilities.magnetHandlerCount,
+      ),
+      TorrentClientHandoffPath.torrentView => (
+        capabilities.canOpenTorrentFile,
+        capabilities.torrentViewHandlerCount,
+      ),
+      TorrentClientHandoffPath.torrentShare => (
+        capabilities.canShareTorrentFile,
+        capabilities.torrentShareHandlerCount,
+      ),
+    };
+
+    return _formatPathStatus(isAvailable, handlerCount);
   }
 
   /// 格式化本地日期时间。

@@ -159,6 +159,19 @@ class TorrentHandoffTab extends ConsumerWidget {
       await Clipboard.setData(ClipboardData(text: template));
     }
 
+    Future<void> copyCompatibilitySummaryRow(
+      TorrentClientCapabilities capabilities,
+      List<TorrentClientCompatibilityRecord> records,
+    ) async {
+      final summaryRow = TorrentCompatibilityReport(
+        capabilities: capabilities,
+        records: records,
+        generatedAt: DateTime.now(),
+      ).toCrossDeviceSummaryMarkdownRow();
+
+      await Clipboard.setData(ClipboardData(text: summaryRow));
+    }
+
     Future<void> openSeedHistoryItem(TorrentSeedHistoryItem item) async {
       final repository = ref.read(torrentHandoffRepositoryProvider);
       final result = await repository.openSeedFileWithShareFallback(
@@ -264,6 +277,7 @@ class TorrentHandoffTab extends ConsumerWidget {
           onClear: clearCompatibilityRecords,
           onCopyReport: copyCompatibilityReport,
           onCopyTemplate: copyCompatibilityTemplate,
+          onCopySummaryRow: copyCompatibilitySummaryRow,
         ),
         const SizedBox(height: 12),
         const _GuidePanel(
@@ -572,6 +586,7 @@ class _CompatibilityRecordPanel extends StatelessWidget {
     required this.onClear,
     required this.onCopyReport,
     required this.onCopyTemplate,
+    required this.onCopySummaryRow,
   });
 
   final AsyncValue<TorrentClientCapabilities> capabilities;
@@ -592,6 +607,11 @@ class _CompatibilityRecordPanel extends StatelessWidget {
     List<TorrentClientCompatibilityRecord> records,
   )
   onCopyTemplate;
+  final Future<void> Function(
+    TorrentClientCapabilities capabilities,
+    List<TorrentClientCompatibilityRecord> records,
+  )
+  onCopySummaryRow;
 
   @override
   Widget build(BuildContext context) {
@@ -648,6 +668,7 @@ class _CompatibilityRecordPanel extends StatelessWidget {
                   onRecord: onRecord,
                   onCopyReport: onCopyReport,
                   onCopyTemplate: onCopyTemplate,
+                  onCopySummaryRow: onCopySummaryRow,
                 );
               },
               error: (error, _) {
@@ -689,6 +710,7 @@ class _CompatibilityRecordActions extends StatelessWidget {
     required this.onRecord,
     required this.onCopyReport,
     required this.onCopyTemplate,
+    required this.onCopySummaryRow,
   });
 
   final TorrentClientCapabilities capabilities;
@@ -708,6 +730,11 @@ class _CompatibilityRecordActions extends StatelessWidget {
     List<TorrentClientCompatibilityRecord> records,
   )
   onCopyTemplate;
+  final Future<void> Function(
+    TorrentClientCapabilities capabilities,
+    List<TorrentClientCompatibilityRecord> records,
+  )
+  onCopySummaryRow;
 
   @override
   Widget build(BuildContext context) {
@@ -770,6 +797,20 @@ class _CompatibilityRecordActions extends StatelessWidget {
           },
           icon: const Icon(Icons.table_chart_outlined),
           label: const Text('复制模板'),
+        ),
+        OutlinedButton.icon(
+          key: const Key('torrent-copy-compatibility-summary-row'),
+          onPressed: () async {
+            await onCopySummaryRow(capabilities, records);
+            if (!context.mounted) {
+              return;
+            }
+            final messenger = ScaffoldMessenger.of(context);
+            messenger.clearSnackBars();
+            messenger.showSnackBar(const SnackBar(content: Text('已复制汇总行')));
+          },
+          icon: const Icon(Icons.view_week_outlined),
+          label: const Text('复制汇总行'),
         ),
       ],
     );
