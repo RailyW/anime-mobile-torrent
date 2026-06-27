@@ -243,13 +243,13 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
       final outcome = await _autoCheckService.runIfDue();
       FlutterForegroundTask.sendDataToMain(outcome.toMessage());
 
-      if (outcome.didCheck) {
+      if (outcome.shouldUpdateNotification) {
         final timeLabel = _formatClock(outcome.checkedAt.toLocal());
-        final detail = outcome.hasMatches
-            ? '发现 ${outcome.resourceCount} 条资源'
-            : '暂未发现资源';
+        final isFailed =
+            outcome.status == DmhySubscriptionAutoCheckStatus.failed;
+        final detail = _formatSubscriptionNotificationDetail(outcome);
         await FlutterForegroundTask.updateService(
-          notificationTitle: 'DMHY 订阅检查已完成',
+          notificationTitle: isFailed ? 'DMHY 订阅检查失败' : 'DMHY 订阅检查已完成',
           notificationText: '$detail · $timeLabel，点击返回应用。',
         );
       }
@@ -268,6 +268,20 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
       _isCheckingSubscription = false;
     }
   }
+}
+
+String _formatSubscriptionNotificationDetail(
+  DmhySubscriptionAutoCheckOutcome outcome,
+) {
+  if (outcome.status == DmhySubscriptionAutoCheckStatus.failed) {
+    return '检查失败，稍后会再次尝试';
+  }
+
+  if (outcome.hasMatches) {
+    return '发现 ${outcome.resourceCount} 条资源';
+  }
+
+  return '暂未发现资源';
 }
 
 String _formatClock(DateTime value) {

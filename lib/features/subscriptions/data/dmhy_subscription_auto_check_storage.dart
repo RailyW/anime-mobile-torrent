@@ -2,17 +2,37 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// DMHY 订阅自动检查记录的类型。
+///
+/// `checked` 表示后台已经成功完成一次 RSS 检查；`failed` 表示后台已经到达
+/// 检查窗口但请求、解析或其他执行步骤失败。前台页面用该状态决定展示成功
+/// 摘要还是失败原因。
+enum DmhySubscriptionAutoCheckRecordStatus {
+  checked('已检查'),
+  failed('失败');
+
+  const DmhySubscriptionAutoCheckRecordStatus(this.label);
+
+  /// 面向用户展示的短标签。
+  final String label;
+}
+
 /// DMHY 订阅自动检查的最近一次执行记录。
 ///
 /// 该记录只保存聚合摘要，不保存第三方 RSS 条目列表。后台服务用它判断下次
 /// 是否已经到达低频检查间隔，UI 或通知也可以用它展示最近检查结果。
 class DmhySubscriptionAutoCheckRecord {
   const DmhySubscriptionAutoCheckRecord({
+    this.status = DmhySubscriptionAutoCheckRecordStatus.checked,
     required this.checkedAt,
     required this.keywordCount,
     required this.resourceCount,
     this.latestTitle,
+    this.message,
   });
+
+  /// 最近一次后台检查的执行状态。
+  final DmhySubscriptionAutoCheckRecordStatus status;
 
   /// 最近一次自动检查完成时间。
   final DateTime checkedAt;
@@ -26,24 +46,36 @@ class DmhySubscriptionAutoCheckRecord {
   /// 最近一次检查中排在最前的资源标题。
   final String? latestTitle;
 
+  /// 最近一次自动检查的可读说明，失败时用于展示具体原因。
+  final String? message;
+
   /// 是否至少命中一条 RSS 资源。
-  bool get hasMatches => resourceCount > 0;
+  bool get hasMatches =>
+      status == DmhySubscriptionAutoCheckRecordStatus.checked &&
+      resourceCount > 0;
+
+  /// 最近一次自动检查是否失败。
+  bool get isFailed => status == DmhySubscriptionAutoCheckRecordStatus.failed;
 
   Map<String, Object?> toJson() {
     return {
+      'status': status.name,
       'checkedAt': checkedAt.toIso8601String(),
       'keywordCount': keywordCount,
       'resourceCount': resourceCount,
       'latestTitle': latestTitle,
+      'message': message,
     };
   }
 
   factory DmhySubscriptionAutoCheckRecord.fromJson(Map<String, dynamic> json) {
     return DmhySubscriptionAutoCheckRecord(
+      status: _readStatus(json['status']),
       checkedAt: _readDateTime(json['checkedAt']) ?? DateTime(1970),
       keywordCount: _readInt(json['keywordCount']),
       resourceCount: _readInt(json['resourceCount']),
       latestTitle: _readString(json['latestTitle']),
+      message: _readString(json['message']),
     );
   }
 }
@@ -126,4 +158,19 @@ DateTime? _readDateTime(Object? value) {
   }
 
   return DateTime.tryParse(text);
+}
+
+DmhySubscriptionAutoCheckRecordStatus _readStatus(Object? value) {
+  final text = _readString(value);
+  if (text == null) {
+    return DmhySubscriptionAutoCheckRecordStatus.checked;
+  }
+
+  for (final status in DmhySubscriptionAutoCheckRecordStatus.values) {
+    if (status.name == text) {
+      return status;
+    }
+  }
+
+  return DmhySubscriptionAutoCheckRecordStatus.checked;
 }

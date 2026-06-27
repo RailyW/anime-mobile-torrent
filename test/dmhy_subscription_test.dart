@@ -84,10 +84,21 @@ void main() {
 
   test('DmhySubscriptionController 可以添加、检查和删除关键词', () async {
     final storage = _MemoryDmhySubscriptionStorage();
+    final autoCheckStorage = _MemoryDmhySubscriptionAutoCheckStorage();
     final dmhyRepository = _FakeDmhyRepository();
+    autoCheckStorage.record = DmhySubscriptionAutoCheckRecord(
+      status: DmhySubscriptionAutoCheckRecordStatus.failed,
+      checkedAt: DateTime.utc(2026, 6, 27, 11, 30),
+      keywordCount: 1,
+      resourceCount: 0,
+      message: 'DMHY 订阅检查失败：测试失败',
+    );
     final container = ProviderContainer(
       overrides: [
         dmhySubscriptionStorageProvider.overrideWithValue(storage),
+        dmhySubscriptionAutoCheckStorageProvider.overrideWithValue(
+          autoCheckStorage,
+        ),
         dmhyRepositoryProvider.overrideWithValue(dmhyRepository),
       ],
     );
@@ -100,6 +111,7 @@ void main() {
 
     await controller.addKeyword('测试动画', animeOnly: true);
     var state = container.read(dmhySubscriptionControllerProvider).value!;
+    expect(state.autoCheckRecord?.isFailed, isTrue);
     expect(state.keywords, hasLength(1));
     expect(state.lastActionMessage, '已添加订阅关键词“测试动画”');
 
@@ -107,6 +119,19 @@ void main() {
     state = container.read(dmhySubscriptionControllerProvider).value!;
     expect(state.summary.totalResourceCount, 1);
     expect(state.lastActionMessage, '订阅检查完成，共找到 1 条资源');
+
+    autoCheckStorage.record = DmhySubscriptionAutoCheckRecord(
+      checkedAt: DateTime.utc(2026, 6, 27, 12),
+      keywordCount: 1,
+      resourceCount: 2,
+      latestTitle: '[字幕组] 测试动画 02',
+      message: 'DMHY 订阅检查发现 2 条资源',
+    );
+    await controller.refreshAutoCheckRecord();
+    state = container.read(dmhySubscriptionControllerProvider).value!;
+    expect(state.autoCheckRecord?.resourceCount, 2);
+    expect(state.autoCheckRecord?.latestTitle, '[字幕组] 测试动画 02');
+    expect(state.lastActionMessage, '已刷新后台自动检查记录');
 
     await controller.removeKeyword(state.keywords.single.id);
     state = container.read(dmhySubscriptionControllerProvider).value!;
@@ -159,6 +184,36 @@ void main() {
     expect(outcome.status, DmhySubscriptionAutoCheckStatus.checked);
     expect(dmhyRepository.requests, hasLength(2));
   });
+
+  test('DmhySubscriptionAutoCheckService 会保存失败原因供前台展示', () async {
+    final now = DateTime.utc(2026, 6, 27, 13);
+    final keywordStorage = _MemoryDmhySubscriptionStorage();
+    final autoCheckStorage = _MemoryDmhySubscriptionAutoCheckStorage();
+    final dmhyRepository = _FakeDmhyRepository(shouldThrow: true);
+    final subscriptionRepository = DmhySubscriptionRepository(
+      storage: keywordStorage,
+      dmhyRepository: dmhyRepository,
+      now: () => now,
+    );
+    final autoCheckService = DmhySubscriptionAutoCheckService(
+      subscriptionRepository: subscriptionRepository,
+      autoCheckStorage: autoCheckStorage,
+      now: () => now,
+    );
+
+    await subscriptionRepository.addKeyword('测试动画', animeOnly: true);
+    final outcome = await autoCheckService.runIfDue();
+
+    expect(outcome.status, DmhySubscriptionAutoCheckStatus.failed);
+    expect(outcome.shouldUpdateNotification, isTrue);
+    expect(outcome.message, contains('测试网络失败'));
+    expect(
+      autoCheckStorage.record?.status,
+      DmhySubscriptionAutoCheckRecordStatus.failed,
+    );
+    expect(autoCheckStorage.record?.message, contains('测试网络失败'));
+    expect(autoCheckStorage.record?.keywordCount, 1);
+  });
 }
 
 class _MemoryDmhySubscriptionStorage implements DmhySubscriptionStorage {
@@ -191,11 +246,18 @@ class _MemoryDmhySubscriptionAutoCheckStorage
 }
 
 class _FakeDmhyRepository implements DmhyRepository {
+  _FakeDmhyRepository({this.shouldThrow = false});
+
+  final bool shouldThrow;
   final List<DmhySearchRequest> requests = [];
 
   @override
   Future<List<DmhyResource>> searchResources(DmhySearchRequest request) async {
     requests.add(request);
+    if (shouldThrow) {
+      throw StateError('测试网络失败');
+    }
+
     return [
       DmhyResource(
         title: '[字幕组] ${request.normalizedKeyword} 01',

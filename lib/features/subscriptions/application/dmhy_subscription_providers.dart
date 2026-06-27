@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../dmhy/application/dmhy_providers.dart';
+import '../data/dmhy_subscription_auto_check_storage.dart';
 import '../data/dmhy_subscription_storage.dart';
 import '../domain/dmhy_subscription.dart';
 
@@ -25,6 +26,15 @@ final dmhySubscriptionStorageProvider = Provider<DmhySubscriptionStorage>((
 ) {
   return const SharedPreferencesDmhySubscriptionStorage();
 });
+
+/// DMHY 订阅后台自动检查记录存储 Provider。
+///
+/// 页面控制器通过该 Provider 读取后台 isolate 写入的最近检查摘要。测试可以
+/// 覆盖为内存实现，避免依赖真实 `SharedPreferences`。
+final dmhySubscriptionAutoCheckStorageProvider =
+    Provider<DmhySubscriptionAutoCheckStorage>((ref) {
+      return const SharedPreferencesDmhySubscriptionAutoCheckStorage();
+    });
 
 /// DMHY 订阅 Repository Provider。
 ///
@@ -182,6 +192,7 @@ class DmhySubscriptionUiState {
   const DmhySubscriptionUiState({
     this.keywords = const [],
     this.summary = const DmhySubscriptionCheckSummary(results: []),
+    this.autoCheckRecord,
     this.isBusy = false,
     this.lastActionMessage,
   });
@@ -193,6 +204,9 @@ class DmhySubscriptionUiState {
 
   /// 最近一次手动检查产生的结果摘要。
   final DmhySubscriptionCheckSummary summary;
+
+  /// 后台自动检查最近一次写入的聚合记录。
+  final DmhySubscriptionAutoCheckRecord? autoCheckRecord;
 
   /// 当前是否正在保存、删除或检查。
   final bool isBusy;
@@ -206,16 +220,23 @@ class DmhySubscriptionUiState {
   /// 最近一次检查是否产生过可展示结果。
   bool get hasCheckResults => summary.results.isNotEmpty;
 
+  /// 是否存在后台自动检查记录。
+  bool get hasAutoCheckRecord => autoCheckRecord != null;
+
   /// 创建一个局部更新后的 UI 状态。
   DmhySubscriptionUiState copyWith({
     List<DmhySubscriptionKeyword>? keywords,
     DmhySubscriptionCheckSummary? summary,
+    Object? autoCheckRecord = _unchanged,
     bool? isBusy,
     Object? lastActionMessage = _unchanged,
   }) {
     return DmhySubscriptionUiState(
       keywords: keywords ?? this.keywords,
       summary: summary ?? this.summary,
+      autoCheckRecord: identical(autoCheckRecord, _unchanged)
+          ? this.autoCheckRecord
+          : autoCheckRecord as DmhySubscriptionAutoCheckRecord?,
       isBusy: isBusy ?? this.isBusy,
       lastActionMessage: identical(lastActionMessage, _unchanged)
           ? this.lastActionMessage
@@ -230,8 +251,15 @@ class DmhySubscriptionController
   @override
   Future<DmhySubscriptionUiState> build() async {
     final repository = ref.watch(dmhySubscriptionRepositoryProvider);
+    final autoCheckStorage = ref.watch(
+      dmhySubscriptionAutoCheckStorageProvider,
+    );
     final keywords = await repository.loadKeywords();
-    return DmhySubscriptionUiState(keywords: keywords);
+    final autoCheckRecord = await autoCheckStorage.loadLastRecord();
+    return DmhySubscriptionUiState(
+      keywords: keywords,
+      autoCheckRecord: autoCheckRecord,
+    );
   }
 
   /// 重新读取本地订阅关键词。
@@ -239,9 +267,55 @@ class DmhySubscriptionController
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() async {
       final repository = ref.read(dmhySubscriptionRepositoryProvider);
+      final autoCheckStorage = ref.read(
+        dmhySubscriptionAutoCheckStorageProvider,
+      );
       final keywords = await repository.loadKeywords();
-      return DmhySubscriptionUiState(keywords: keywords);
+      final autoCheckRecord = await autoCheckStorage.loadLastRecord();
+      return DmhySubscriptionUiState(
+        keywords: keywords,
+        autoCheckRecord: autoCheckRecord,
+      );
     });
+  }
+
+  /// 只刷新后台自动检查记录。
+  ///
+  /// 后台 isolate 会把最近一次检查结果写入 `SharedPreferences`。前台页面不
+  /// 订阅后台 isolate 的内存状态，因此提供显式刷新动作，从持久化记录重新
+  /// 读取最新摘要。
+  Future<void> refreshAutoCheckRecord() async {
+    final currentState = state.value ?? const DmhySubscriptionUiState();
+    if (currentState.isBusy) {
+      return;
+    }
+
+    state = AsyncValue.data(
+      currentState.copyWith(isBusy: true, lastActionMessage: '正在刷新后台自动检查记录...'),
+    );
+
+    try {
+      final autoCheckStorage = ref.read(
+        dmhySubscriptionAutoCheckStorageProvider,
+      );
+      final autoCheckRecord = await autoCheckStorage.loadLastRecord();
+      state = AsyncValue.data(
+        currentState.copyWith(
+          autoCheckRecord: autoCheckRecord,
+          isBusy: false,
+          lastActionMessage: autoCheckRecord == null
+              ? '暂无后台自动检查记录'
+              : '已刷新后台自动检查记录',
+        ),
+      );
+    } catch (error) {
+      state = AsyncValue.data(
+        currentState.copyWith(
+          isBusy: false,
+          lastActionMessage: '后台自动检查记录读取失败：${_formatSubscriptionError(error)}',
+        ),
+      );
+    }
   }
 
   /// 添加用户输入的 DMHY RSS 订阅关键词。

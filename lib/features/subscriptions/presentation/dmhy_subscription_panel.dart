@@ -3,12 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../dmhy/domain/dmhy_resource.dart';
 import '../application/dmhy_subscription_providers.dart';
+import '../data/dmhy_subscription_auto_check_storage.dart';
 import '../domain/dmhy_subscription.dart';
 
 /// DMHY RSS 订阅检查面板。
 ///
 /// 面板当前嵌入后台常驻页，但业务状态完全由 `subscriptions` 模块托管。
-/// 用户可以保存关键词并手动检查 RSS；后台自动调度会在后续阶段接入。
+/// 用户可以保存关键词、手动检查 RSS，并查看后台自动检查写入的最近摘要。
 class DmhySubscriptionPanel extends ConsumerStatefulWidget {
   const DmhySubscriptionPanel({super.key});
 
@@ -97,6 +98,7 @@ class _DmhySubscriptionPanelState extends ConsumerState<DmhySubscriptionPanel> {
                 },
                 onSubmitKeyword: _submitKeyword,
                 onCheckAll: controller.checkAll,
+                onRefreshAutoCheckRecord: controller.refreshAutoCheckRecord,
                 onRemoveKeyword: controller.removeKeyword,
               ),
               loading: () => const _SubscriptionLoadingView(),
@@ -121,6 +123,7 @@ class _SubscriptionLoadedView extends StatelessWidget {
     required this.onAnimeOnlyChanged,
     required this.onSubmitKeyword,
     required this.onCheckAll,
+    required this.onRefreshAutoCheckRecord,
     required this.onRemoveKeyword,
   });
 
@@ -131,6 +134,7 @@ class _SubscriptionLoadedView extends StatelessWidget {
   final ValueChanged<bool> onAnimeOnlyChanged;
   final Future<void> Function() onSubmitKeyword;
   final Future<void> Function() onCheckAll;
+  final Future<void> Function() onRefreshAutoCheckRecord;
   final Future<void> Function(String id) onRemoveKeyword;
 
   @override
@@ -207,6 +211,12 @@ class _SubscriptionLoadedView extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 12),
+        _SubscriptionAutoCheckRecordView(
+          record: state.autoCheckRecord,
+          isBusy: isBusy,
+          onRefresh: onRefreshAutoCheckRecord,
+        ),
+        const SizedBox(height: 12),
         _SubscriptionKeywordWrap(
           keywords: state.keywords,
           isBusy: isBusy,
@@ -217,6 +227,99 @@ class _SubscriptionLoadedView extends StatelessWidget {
           _SubscriptionCheckSummaryView(summary: state.summary),
         ],
       ],
+    );
+  }
+}
+
+class _SubscriptionAutoCheckRecordView extends StatelessWidget {
+  const _SubscriptionAutoCheckRecordView({
+    required this.record,
+    required this.isBusy,
+    required this.onRefresh,
+  });
+
+  final DmhySubscriptionAutoCheckRecord? record;
+  final bool isBusy;
+  final Future<void> Function() onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final currentRecord = record;
+    final isFailed = currentRecord?.isFailed ?? false;
+    final accentColor = isFailed ? scheme.error : scheme.tertiary;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  isFailed ? Icons.error_outline : Icons.manage_search_outlined,
+                  color: accentColor,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('后台自动检查', style: theme.textTheme.titleSmall),
+                ),
+                IconButton(
+                  onPressed: isBusy
+                      ? null
+                      : () {
+                          onRefresh();
+                        },
+                  icon: const Icon(Icons.refresh_outlined),
+                  tooltip: '刷新后台自动检查记录',
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            if (currentRecord == null)
+              Text(
+                '暂无后台自动检查记录',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              )
+            else ...[
+              Text(
+                '${currentRecord.status.label} · '
+                '${_formatDateTime(currentRecord.checkedAt)}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _formatAutoCheckRecordSummary(currentRecord),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: isFailed ? scheme.error : null,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              if (currentRecord.latestTitle != null) ...[
+                const SizedBox(height: 4),
+                Text(
+                  '最新：${currentRecord.latestTitle}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -465,3 +568,16 @@ String _formatDateTime(DateTime? value) {
 }
 
 String _twoDigits(int value) => value.toString().padLeft(2, '0');
+
+String _formatAutoCheckRecordSummary(DmhySubscriptionAutoCheckRecord record) {
+  if (record.isFailed) {
+    return record.message ?? '后台自动检查失败，原因未知';
+  }
+
+  final keywordText = '${record.keywordCount} 个关键词';
+  if (record.hasMatches) {
+    return '发现 ${record.resourceCount} 条资源 · $keywordText';
+  }
+
+  return '暂未发现资源 · $keywordText';
+}

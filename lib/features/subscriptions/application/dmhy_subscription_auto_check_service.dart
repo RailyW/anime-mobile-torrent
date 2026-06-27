@@ -16,6 +16,9 @@ enum DmhySubscriptionAutoCheckStatus {
 
   /// 已完成一次 DMHY RSS 自动检查。
   checked,
+
+  /// 已到达检查窗口，但 RSS 请求、解析或其他步骤失败。
+  failed,
 }
 
 /// DMHY 订阅自动检查结果。
@@ -41,11 +44,19 @@ class DmhySubscriptionAutoCheckOutcome {
   final String? latestTitle;
   final DateTime? nextAllowedAt;
 
-  /// 是否真正访问了 DMHY RSS。
+  /// 是否成功完成了 DMHY RSS 检查。
   bool get didCheck => status == DmhySubscriptionAutoCheckStatus.checked;
 
   /// 是否命中了至少一条 RSS 资源。
   bool get hasMatches => resourceCount > 0;
+
+  /// 是否需要把结果更新到持续通知。
+  ///
+  /// 未配置关键词和节流都不代表新结果；成功检查和失败检查则应该让用户在
+  /// 通知或前台页面看到最新状态。
+  bool get shouldUpdateNotification =>
+      status == DmhySubscriptionAutoCheckStatus.checked ||
+      status == DmhySubscriptionAutoCheckStatus.failed;
 
   /// 转换为可通过 `FlutterForegroundTask.sendDataToMain` 传递的数据。
   Map<String, Object?> toMessage() {
@@ -140,25 +151,48 @@ class DmhySubscriptionAutoCheckService {
       }
     }
 
-    final results = await subscriptionRepository.checkAll(
-      keywords,
-      limitPerKeyword: limitPerKeyword,
-    );
+    final List<DmhySubscriptionCheckResult> results;
+    try {
+      results = await subscriptionRepository.checkAll(
+        keywords,
+        limitPerKeyword: limitPerKeyword,
+      );
+    } catch (error) {
+      final message = 'DMHY 订阅检查失败：${_formatAutoCheckError(error)}';
+      await autoCheckStorage.saveLastRecord(
+        DmhySubscriptionAutoCheckRecord(
+          status: DmhySubscriptionAutoCheckRecordStatus.failed,
+          checkedAt: timestamp,
+          keywordCount: keywords.length,
+          resourceCount: 0,
+          message: message,
+        ),
+      );
+      return DmhySubscriptionAutoCheckOutcome(
+        status: DmhySubscriptionAutoCheckStatus.failed,
+        message: message,
+        checkedAt: timestamp,
+        keywordCount: keywords.length,
+      );
+    }
+
     final summary = DmhySubscriptionCheckSummary(results: results);
     final latestTitle = _findLatestTitle(summary);
+    final message = summary.hasMatches
+        ? 'DMHY 订阅检查发现 ${summary.totalResourceCount} 条资源'
+        : 'DMHY 订阅检查完成，暂未发现资源';
     final record = DmhySubscriptionAutoCheckRecord(
       checkedAt: timestamp,
       keywordCount: keywords.length,
       resourceCount: summary.totalResourceCount,
       latestTitle: latestTitle,
+      message: message,
     );
     await autoCheckStorage.saveLastRecord(record);
 
     return DmhySubscriptionAutoCheckOutcome(
       status: DmhySubscriptionAutoCheckStatus.checked,
-      message: summary.hasMatches
-          ? 'DMHY 订阅检查发现 ${summary.totalResourceCount} 条资源'
-          : 'DMHY 订阅检查完成，暂未发现资源',
+      message: message,
       checkedAt: timestamp,
       keywordCount: keywords.length,
       resourceCount: summary.totalResourceCount,
@@ -176,4 +210,12 @@ class DmhySubscriptionAutoCheckService {
 
     return null;
   }
+}
+
+String _formatAutoCheckError(Object error) {
+  if (error is DmhySubscriptionException) {
+    return error.message;
+  }
+
+  return error.toString();
 }
