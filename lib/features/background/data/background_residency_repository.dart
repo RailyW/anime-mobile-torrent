@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
+import '../../dmhy/domain/dmhy_entry_context.dart';
 import '../../subscriptions/application/dmhy_subscription_auto_check_service.dart';
 import '../domain/background_residency_state.dart';
 
@@ -446,8 +447,9 @@ Map<String, Object?> buildBackgroundNotificationOpenRouteRequest({
 /// 计算后台持续通知点击时应进入的首页路由。
 ///
 /// 后台服务只保存订阅检查的聚合摘要，不保存 RSS 条目列表。命中资源时，如果
-/// 自动检查结果携带了最新命中关键词，就让通知点击直接打开 DMHY 搜索页；
-/// 没有命中、失败或旧记录缺少关键词时仍回到后台页，保证用户能看到摘要和错误。
+/// 自动检查结果携带了最新命中关键词，就让通知点击直接打开 DMHY 搜索页，并
+/// 携带后台订阅命中的入口语境；没有命中、失败或旧记录缺少关键词时仍回到
+/// 后台页，保证用户能看到摘要和错误。
 String buildBackgroundNotificationInitialRoute(
   DmhySubscriptionAutoCheckOutcome? outcome,
 ) {
@@ -458,13 +460,10 @@ String buildBackgroundNotificationInitialRoute(
       outcome.hasNewMatches &&
       keyword != null &&
       keyword.isNotEmpty) {
-    return Uri(
-      path: '/',
-      queryParameters: {
-        'tab': 'dmhy',
-        'keyword': keyword,
-        'animeOnly': outcome.latestAnimeOnly.toString(),
-      },
+    return buildDmhySearchHomeRoute(
+      keyword: keyword,
+      animeOnly: outcome.latestAnimeOnly,
+      entryContext: DmhyEntryContext.backgroundSubscription,
     ).toString();
   }
 

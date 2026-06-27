@@ -1,6 +1,7 @@
 import 'package:anime_mobile_torrent/features/background/application/background_residency_providers.dart';
 import 'package:anime_mobile_torrent/features/background/data/background_residency_repository.dart';
 import 'package:anime_mobile_torrent/features/background/domain/background_residency_state.dart';
+import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_entry_context.dart';
 import 'package:anime_mobile_torrent/features/subscriptions/application/dmhy_subscription_auto_check_service.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -36,6 +37,10 @@ void main() {
     expect(uri.queryParameters['tab'], 'dmhy');
     expect(uri.queryParameters['keyword'], '测试动画 1080');
     expect(uri.queryParameters['animeOnly'], 'false');
+    expect(
+      uri.queryParameters[dmhyEntryContextQueryParameter],
+      DmhyEntryContext.backgroundSubscription.queryValue,
+    );
   });
 
   test('后台通知重复命中订阅资源时回到后台页', () {

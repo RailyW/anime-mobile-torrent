@@ -12,6 +12,7 @@ import '../../torrent_handoff/domain/torrent_seed_file.dart';
 import '../application/dmhy_filter_preference_providers.dart';
 import '../application/dmhy_resource_filter.dart';
 import '../application/dmhy_providers.dart';
+import '../domain/dmhy_entry_context.dart';
 import '../domain/dmhy_filter_preference.dart';
 import '../domain/dmhy_resource.dart';
 import '../domain/dmhy_resource_metadata.dart';
@@ -22,13 +23,21 @@ import '../domain/dmhy_resource_metadata.dart';
 /// 种子文件显式交给用户操作。模块不下载 BT 视频内容，也不管理外部客户端
 /// 的下载进度。
 class DmhyTab extends ConsumerStatefulWidget {
-  const DmhyTab({this.initialKeyword, this.initialAnimeOnly = true, super.key});
+  const DmhyTab({
+    this.initialKeyword,
+    this.initialAnimeOnly = true,
+    this.initialEntryContext = DmhyEntryContext.normal,
+    super.key,
+  });
 
   /// 从其他模块跳转过来时预填并自动搜索的关键词。
   final String? initialKeyword;
 
   /// 从其他模块跳转过来时使用的初始搜索范围。
   final bool initialAnimeOnly;
+
+  /// 从其他模块跳转过来时展示的入口语境。
+  final DmhyEntryContext initialEntryContext;
 
   @override
   ConsumerState<DmhyTab> createState() => _DmhyTabState();
@@ -41,6 +50,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
   bool _animeOnly = true;
   DmhyResourceSort _sort = DmhyResourceSort.publishedDesc;
   DmhyResourceFilter _filter = const DmhyResourceFilter.empty();
+  DmhyEntryContext _entryContext = DmhyEntryContext.normal;
   bool _preferredReleaseGroupAutoApplied = false;
   bool _preferredReleaseGroupSuppressed = false;
 
@@ -59,7 +69,8 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.initialKeyword != widget.initialKeyword ||
-        oldWidget.initialAnimeOnly != widget.initialAnimeOnly) {
+        oldWidget.initialAnimeOnly != widget.initialAnimeOnly ||
+        oldWidget.initialEntryContext != widget.initialEntryContext) {
       _applyInitialKeyword(
         widget.initialKeyword,
         animeOnly: widget.initialAnimeOnly,
@@ -96,6 +107,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
         sort: _sort,
       );
       _animeOnly = animeOnly;
+      _entryContext = widget.initialEntryContext;
       _filter = const DmhyResourceFilter.empty();
       _resetPreferredReleaseGroupAutoApply();
     }
@@ -116,6 +128,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
     if (keyword.isEmpty) {
       setState(() {
         _searchRequest = null;
+        _entryContext = DmhyEntryContext.normal;
         _resetPreferredReleaseGroupAutoApply();
       });
       return;
@@ -127,6 +140,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
         animeOnly: _animeOnly,
         sort: _sort,
       );
+      _entryContext = DmhyEntryContext.normal;
       _filter = const DmhyResourceFilter.empty();
       _resetPreferredReleaseGroupAutoApply();
     });
@@ -138,6 +152,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
   void _setAnimeOnly(bool value) {
     setState(() {
       _animeOnly = value;
+      _entryContext = DmhyEntryContext.normal;
       final keyword = _keywordController.text.trim();
       _searchRequest = keyword.isEmpty
           ? null
@@ -233,6 +248,10 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
           onSubmitted: _submitSearch,
         ),
         const SizedBox(height: 16),
+        if (request != null && _entryContext.isBackgroundSubscription) ...[
+          _DmhyEntryContextBanner(entryContext: _entryContext),
+          const SizedBox(height: 16),
+        ],
         if (request == null)
           const _DmhyEmptyState()
         else
@@ -246,6 +265,75 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
             onPreferredReleaseGroupAutoApply: _autoApplyPreferredReleaseGroup,
           ),
       ],
+    );
+  }
+}
+
+class _DmhyEntryContextBanner extends StatelessWidget {
+  const _DmhyEntryContextBanner({required this.entryContext});
+
+  /// 当前 DMHY 页面入口语境。
+  ///
+  /// 目前只有后台订阅命中会展示横幅。保留字段而不是写死文案，是为了后续
+  /// 增加 Bangumi 收藏回流、外部深链等入口提示时可以沿用同一个组件边界。
+  final DmhyEntryContext entryContext;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!entryContext.isBackgroundSubscription) {
+      return const SizedBox.shrink();
+    }
+
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.tertiaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.notifications_active_outlined,
+              color: scheme.onTertiaryContainer,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '来自后台订阅命中',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: scheme.onTertiaryContainer,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '这是后台常驻服务发现新资源后打开的搜索结果。请选择合适资源，再手动把 magnet 或 .torrent 交给外部 BT 客户端。',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onTertiaryContainer,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton.icon(
+              onPressed: () {
+                context.go('/?tab=background');
+              },
+              icon: const Icon(Icons.fact_check_outlined),
+              label: const Text('后台摘要'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

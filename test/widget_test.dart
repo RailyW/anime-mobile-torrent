@@ -12,6 +12,7 @@ import 'package:anime_mobile_torrent/features/background/application/background_
 import 'package:anime_mobile_torrent/features/background/data/background_residency_repository.dart';
 import 'package:anime_mobile_torrent/features/background/domain/background_residency_state.dart';
 import 'package:anime_mobile_torrent/features/dmhy/application/dmhy_providers.dart';
+import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_entry_context.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_resource.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_resource_metadata.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_torrent_file.dart';
@@ -272,6 +273,48 @@ void main() {
     expect(find.text('后台常驻'), findsOneWidget);
     expect(find.text('服务控制'), findsOneWidget);
     expect(find.text('后台常驻服务未启动'), findsWidgets);
+    expect(find.text('后台自动检查'), findsOneWidget);
+  });
+
+  testWidgets('后台订阅通知初始路由可以打开 DMHY 并展示来源提示', (tester) async {
+    final dmhyRepository = _FakeDmhyRepository();
+    tester.binding.platformDispatcher.defaultRouteNameTestValue =
+        buildDmhySearchHomeRoute(
+          keyword: '测试动画 1080',
+          animeOnly: false,
+          entryContext: DmhyEntryContext.backgroundSubscription,
+        ).toString();
+    addTearDown(
+      tester.binding.platformDispatcher.clearDefaultRouteNameTestValue,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
+          backgroundResidencyRepositoryProvider.overrideWithValue(
+            _FakeWidgetBackgroundResidencyRepository(),
+          ),
+          dmhyRepositoryProvider.overrideWithValue(dmhyRepository),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('RSS 可用'), findsOneWidget);
+    expect(find.text('来自后台订阅命中'), findsOneWidget);
+    expect(find.textContaining('后台常驻服务发现新资源'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, '后台摘要'), findsOneWidget);
+    expect(find.text('“测试动画 1080” 在全站找到 1 条 RSS 资源'), findsOneWidget);
+    expect(dmhyRepository.requests.single.animeOnly, isFalse);
+
+    await tester.tap(find.widgetWithText(TextButton, '后台摘要'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('后台常驻'), findsOneWidget);
     expect(find.text('后台自动检查'), findsOneWidget);
   });
 

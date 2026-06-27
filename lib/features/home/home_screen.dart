@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../background/presentation/background_tab.dart';
 import '../bangumi/application/bangumi_auth_providers.dart';
 import '../bangumi/presentation/bangumi_tab.dart';
+import '../dmhy/domain/dmhy_entry_context.dart';
 import '../dmhy/presentation/dmhy_tab.dart';
 import '../playback/presentation/playback_tab.dart';
 import '../torrent_handoff/presentation/torrent_handoff_tab.dart';
@@ -19,6 +20,7 @@ class HomeScreen extends ConsumerStatefulWidget {
     this.initialTabIndex = 0,
     this.initialDmhyKeyword,
     this.initialDmhyAnimeOnly = true,
+    this.initialDmhyEntryContext = DmhyEntryContext.normal,
     this.initialPlaybackEntryContext = PlaybackEntryContext.normal,
     super.key,
   });
@@ -35,6 +37,11 @@ class HomeScreen extends ConsumerStatefulWidget {
   ///
   /// 订阅检查可以从全站范围跳回 DMHY 搜索，因此这里不能固定为动画分类。
   final bool initialDmhyAnimeOnly;
+
+  /// 初次打开 DMHY 标签页时展示的入口语境。
+  ///
+  /// 首页只透传展示语境，真实搜索、订阅保存和种子交接仍由 DMHY 模块处理。
+  final DmhyEntryContext initialDmhyEntryContext;
 
   /// 初次打开播放标签页时展示的入口语境。
   ///
@@ -61,6 +68,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (oldWidget.initialTabIndex != widget.initialTabIndex ||
         oldWidget.initialDmhyKeyword != widget.initialDmhyKeyword ||
         oldWidget.initialDmhyAnimeOnly != widget.initialDmhyAnimeOnly ||
+        oldWidget.initialDmhyEntryContext != widget.initialDmhyEntryContext ||
         oldWidget.initialPlaybackEntryContext !=
             widget.initialPlaybackEntryContext) {
       setState(() {
@@ -114,6 +122,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: DmhyTab(
           initialKeyword: widget.initialDmhyKeyword,
           initialAnimeOnly: widget.initialDmhyAnimeOnly,
+          initialEntryContext: widget.initialDmhyEntryContext,
         ),
       ),
       const _HomeTab(

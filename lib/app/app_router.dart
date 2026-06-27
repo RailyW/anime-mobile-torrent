@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../features/bangumi/presentation/bangumi_oauth_settings_page.dart';
 import '../features/bangumi/presentation/bangumi_subject_detail_page.dart';
+import '../features/dmhy/domain/dmhy_entry_context.dart';
 import '../features/home/home_screen.dart';
 import '../features/playback/presentation/playback_tab.dart';
 
@@ -25,6 +26,9 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final dmhyAnimeOnly = _initialDmhyAnimeOnlyFromQuery(
             state.uri.queryParameters['animeOnly'],
           );
+          final dmhyEntryContext = DmhyEntryContext.fromQuery(
+            state.uri.queryParameters[dmhyEntryContextQueryParameter],
+          );
           final playbackEntryContext = _initialPlaybackEntryContextFromQuery(
             state.uri.queryParameters['source'],
           );
@@ -33,6 +37,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             initialTabIndex: initialTabIndex,
             initialDmhyKeyword: dmhyKeyword,
             initialDmhyAnimeOnly: dmhyAnimeOnly,
+            initialDmhyEntryContext: dmhyEntryContext,
             initialPlaybackEntryContext: playbackEntryContext,
           );
         },
