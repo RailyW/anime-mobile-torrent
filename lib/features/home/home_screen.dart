@@ -19,6 +19,7 @@ class HomeScreen extends ConsumerStatefulWidget {
     this.initialTabIndex = 0,
     this.initialDmhyKeyword,
     this.initialDmhyAnimeOnly = true,
+    this.initialPlaybackEntryContext = PlaybackEntryContext.normal,
     super.key,
   });
 
@@ -34,6 +35,11 @@ class HomeScreen extends ConsumerStatefulWidget {
   ///
   /// 订阅检查可以从全站范围跳回 DMHY 搜索，因此这里不能固定为动画分类。
   final bool initialDmhyAnimeOnly;
+
+  /// 初次打开播放标签页时展示的入口语境。
+  ///
+  /// 首页只透传轻量展示参数，播放模块仍自行处理文件选择和播放器交接。
+  final PlaybackEntryContext initialPlaybackEntryContext;
 
   @override
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
@@ -54,7 +60,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     if (oldWidget.initialTabIndex != widget.initialTabIndex ||
         oldWidget.initialDmhyKeyword != widget.initialDmhyKeyword ||
-        oldWidget.initialDmhyAnimeOnly != widget.initialDmhyAnimeOnly) {
+        oldWidget.initialDmhyAnimeOnly != widget.initialDmhyAnimeOnly ||
+        oldWidget.initialPlaybackEntryContext !=
+            widget.initialPlaybackEntryContext) {
       setState(() {
         _selectedIndex = _normalizeTabIndex(widget.initialTabIndex);
       });
@@ -114,11 +122,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         label: '种子',
         child: TorrentHandoffTab(),
       ),
-      const _HomeTab(
+      _HomeTab(
         icon: Icons.play_circle_outline,
         selectedIcon: Icons.play_circle,
         label: '播放',
-        child: PlaybackTab(),
+        child: PlaybackTab(entryContext: widget.initialPlaybackEntryContext),
       ),
       const _HomeTab(
         icon: Icons.notifications_active_outlined,

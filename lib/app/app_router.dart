@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../features/bangumi/presentation/bangumi_oauth_settings_page.dart';
 import '../features/bangumi/presentation/bangumi_subject_detail_page.dart';
 import '../features/home/home_screen.dart';
+import '../features/playback/presentation/playback_tab.dart';
 
 /// GoRouter 路由表 Provider。
 ///
@@ -24,11 +25,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final dmhyAnimeOnly = _initialDmhyAnimeOnlyFromQuery(
             state.uri.queryParameters['animeOnly'],
           );
+          final playbackEntryContext = _initialPlaybackEntryContextFromQuery(
+            state.uri.queryParameters['source'],
+          );
 
           return HomeScreen(
             initialTabIndex: initialTabIndex,
             initialDmhyKeyword: dmhyKeyword,
             initialDmhyAnimeOnly: dmhyAnimeOnly,
+            initialPlaybackEntryContext: playbackEntryContext,
           );
         },
       ),
@@ -79,5 +84,18 @@ bool _initialDmhyAnimeOnlyFromQuery(String? value) {
     '0' => false,
     'all' => false,
     _ => true,
+  };
+}
+
+/// 将首页 `source` 查询参数转换为播放页入口语境。
+///
+/// 该参数只用于展示提示文案，不代表 APP 已经获取外部 BT 客户端的下载状态。
+PlaybackEntryContext _initialPlaybackEntryContextFromQuery(String? value) {
+  return switch (value?.trim().toLowerCase()) {
+    'dmhy' => PlaybackEntryContext.dmhyTorrent,
+    'dmhytorrent' => PlaybackEntryContext.dmhyTorrent,
+    'dmhy-torrent' => PlaybackEntryContext.dmhyTorrent,
+    'dmhy_torrent' => PlaybackEntryContext.dmhyTorrent,
+    _ => PlaybackEntryContext.normal,
   };
 }

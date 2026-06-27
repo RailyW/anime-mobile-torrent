@@ -1225,6 +1225,8 @@ void main() {
     await tester.tap(find.text('去播放'));
     await tester.pumpAndSettle();
 
+    expect(find.text('从 DMHY 种子交接继续'), findsOneWidget);
+    expect(find.textContaining('外部 BT 客户端完成真实视频下载后'), findsOneWidget);
     expect(find.text('手动选择'), findsOneWidget);
     expect(find.text('选择视频'), findsOneWidget);
     expect(find.text('最近视频'), findsOneWidget);

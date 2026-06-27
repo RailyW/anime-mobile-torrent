@@ -1426,7 +1426,12 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
   /// DMHY 页只负责 `.torrent` 种子交接；这里的动作不读取外部客户端下载目录，
   /// 也不假设视频已经下载完成，只是把用户带到系统文件选择器所在的播放入口。
   void _openPlaybackTab(BuildContext context) {
-    context.go(Uri(path: '/', queryParameters: {'tab': 'playback'}).toString());
+    context.go(
+      Uri(
+        path: '/',
+        queryParameters: {'tab': 'playback', 'source': 'dmhyTorrent'},
+      ).toString(),
+    );
   }
 }
 

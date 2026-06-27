@@ -6,12 +6,33 @@ import '../domain/local_video_file.dart';
 import '../domain/playback_open_result.dart';
 import '../domain/recent_local_video.dart';
 
+/// 播放页入口来源。
+///
+/// 播放页本身不关心上游业务细节，但不同入口需要给用户不同的轻提示：
+/// 普通入口只展示基础选择流程，从 DMHY `.torrent` 交接回流时则强调真实视频仍需
+/// 先由外部 BT 客户端下载完成，再由用户手动选择。
+enum PlaybackEntryContext {
+  /// 用户从底部导航或通用播放入口进入。
+  normal,
+
+  /// 用户从 DMHY `.torrent` 种子交接成功提示进入。
+  dmhyTorrent,
+}
+
 /// 本地播放首页入口。
 ///
 /// 因为 BT 视频下载由外部客户端负责，播放模块只处理用户显式选择的本地
 /// 视频文件，并把文件交给系统或第三方播放器。
 class PlaybackTab extends ConsumerStatefulWidget {
-  const PlaybackTab({super.key});
+  const PlaybackTab({
+    this.entryContext = PlaybackEntryContext.normal,
+    super.key,
+  });
+
+  /// 本次进入播放页的轻量来源语境。
+  ///
+  /// 该字段只影响页面提示文案，不会触发文件扫描、外部 BT 客户端读取或自动播放。
+  final PlaybackEntryContext entryContext;
 
   @override
   ConsumerState<PlaybackTab> createState() => _PlaybackTabState();
@@ -184,6 +205,10 @@ class _PlaybackTabState extends ConsumerState<PlaybackTab> {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
         const _PlaybackHeader(),
+        if (widget.entryContext != PlaybackEntryContext.normal) ...[
+          const SizedBox(height: 12),
+          _PlaybackEntryContextNotice(entryContext: widget.entryContext),
+        ],
         const SizedBox(height: 16),
         _PlaybackActionPanel(
           selectedVideo: _selectedVideo,
@@ -207,6 +232,93 @@ class _PlaybackTabState extends ConsumerState<PlaybackTab> {
         ],
       ],
     );
+  }
+}
+
+/// 播放页入口语境提示。
+///
+/// 这里不执行任何业务动作，只把跨模块跳转的上下文翻译成用户可理解的下一步。
+class _PlaybackEntryContextNotice extends StatelessWidget {
+  const _PlaybackEntryContextNotice({required this.entryContext});
+
+  final PlaybackEntryContext entryContext;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final notice = _PlaybackEntryContextNoticeData.fromContext(entryContext);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.tertiaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(notice.icon, color: scheme.onTertiaryContainer),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    notice.title,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: scheme.onTertiaryContainer,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    notice.description,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onTertiaryContainer,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 入口语境提示文案数据。
+///
+/// 使用独立值对象集中维护标题、说明和图标，避免在 Widget 树里散落 switch。
+class _PlaybackEntryContextNoticeData {
+  const _PlaybackEntryContextNoticeData({
+    required this.title,
+    required this.description,
+    required this.icon,
+  });
+
+  final String title;
+  final String description;
+  final IconData icon;
+
+  factory _PlaybackEntryContextNoticeData.fromContext(
+    PlaybackEntryContext context,
+  ) {
+    return switch (context) {
+      PlaybackEntryContext.dmhyTorrent => const _PlaybackEntryContextNoticeData(
+        title: '从 DMHY 种子交接继续',
+        description:
+            '外部 BT 客户端完成真实视频下载后，请在这里手动选择本地视频文件；APP 不扫描外部下载目录，也不会判断下载是否完成。',
+        icon: Icons.download_done_outlined,
+      ),
+      PlaybackEntryContext.normal => const _PlaybackEntryContextNoticeData(
+        title: '',
+        description: '',
+        icon: Icons.info_outline,
+      ),
+    };
   }
 }
 
