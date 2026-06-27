@@ -27,6 +27,8 @@ class DmhySubscriptionAutoCheckRecord {
     required this.checkedAt,
     required this.keywordCount,
     required this.resourceCount,
+    this.latestKeyword,
+    this.latestAnimeOnly = true,
     this.latestTitle,
     this.message,
   });
@@ -42,6 +44,18 @@ class DmhySubscriptionAutoCheckRecord {
 
   /// 最近一次自动检查命中的 RSS 资源总数。
   final int resourceCount;
+
+  /// 最近一次自动检查中第一个命中资源所属的订阅关键词。
+  ///
+  /// 该字段用于让前台后台页可以把自动检查摘要带回 DMHY 搜索页继续查看和
+  /// 下载种子。旧版本本地记录没有该字段，因此它必须保持可空。
+  final String? latestKeyword;
+
+  /// `latestKeyword` 对应的搜索范围。
+  ///
+  /// true 表示动画分类，false 表示全站。旧记录没有范围字段时回退为动画
+  /// 分类，和 DMHY 搜索页的默认行为保持一致。
+  final bool latestAnimeOnly;
 
   /// 最近一次检查中排在最前的资源标题。
   final String? latestTitle;
@@ -63,6 +77,8 @@ class DmhySubscriptionAutoCheckRecord {
       'checkedAt': checkedAt.toIso8601String(),
       'keywordCount': keywordCount,
       'resourceCount': resourceCount,
+      'latestKeyword': latestKeyword,
+      'latestAnimeOnly': latestAnimeOnly,
       'latestTitle': latestTitle,
       'message': message,
     };
@@ -74,6 +90,8 @@ class DmhySubscriptionAutoCheckRecord {
       checkedAt: _readDateTime(json['checkedAt']) ?? DateTime(1970),
       keywordCount: _readInt(json['keywordCount']),
       resourceCount: _readInt(json['resourceCount']),
+      latestKeyword: _readString(json['latestKeyword']),
+      latestAnimeOnly: _readBool(json['latestAnimeOnly']) ?? true,
       latestTitle: _readString(json['latestTitle']),
       message: _readString(json['message']),
     );
@@ -149,6 +167,14 @@ int _readInt(Object? value) {
   }
 
   return 0;
+}
+
+bool? _readBool(Object? value) {
+  if (value is bool) {
+    return value;
+  }
+
+  return null;
 }
 
 DateTime? _readDateTime(Object? value) {

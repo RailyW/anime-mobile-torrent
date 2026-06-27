@@ -32,6 +32,8 @@ class DmhySubscriptionAutoCheckOutcome {
     required this.checkedAt,
     this.keywordCount = 0,
     this.resourceCount = 0,
+    this.latestKeyword,
+    this.latestAnimeOnly = true,
     this.latestTitle,
     this.nextAllowedAt,
   });
@@ -41,6 +43,8 @@ class DmhySubscriptionAutoCheckOutcome {
   final DateTime checkedAt;
   final int keywordCount;
   final int resourceCount;
+  final String? latestKeyword;
+  final bool latestAnimeOnly;
   final String? latestTitle;
   final DateTime? nextAllowedAt;
 
@@ -67,6 +71,8 @@ class DmhySubscriptionAutoCheckOutcome {
       'checkedAt': checkedAt.toIso8601String(),
       'keywordCount': keywordCount,
       'resourceCount': resourceCount,
+      'latestKeyword': latestKeyword,
+      'latestAnimeOnly': latestAnimeOnly,
       'latestTitle': latestTitle,
       'nextAllowedAt': nextAllowedAt?.toIso8601String(),
     };
@@ -145,6 +151,8 @@ class DmhySubscriptionAutoCheckService {
           checkedAt: timestamp,
           keywordCount: lastRecord.keywordCount,
           resourceCount: lastRecord.resourceCount,
+          latestKeyword: lastRecord.latestKeyword,
+          latestAnimeOnly: lastRecord.latestAnimeOnly,
           latestTitle: lastRecord.latestTitle,
           nextAllowedAt: nextAllowedAt,
         );
@@ -177,7 +185,7 @@ class DmhySubscriptionAutoCheckService {
     }
 
     final summary = DmhySubscriptionCheckSummary(results: results);
-    final latestTitle = _findLatestTitle(summary);
+    final latestMatch = _findLatestMatch(summary);
     final message = summary.hasMatches
         ? 'DMHY 订阅检查发现 ${summary.totalResourceCount} 条资源'
         : 'DMHY 订阅检查完成，暂未发现资源';
@@ -185,7 +193,9 @@ class DmhySubscriptionAutoCheckService {
       checkedAt: timestamp,
       keywordCount: keywords.length,
       resourceCount: summary.totalResourceCount,
-      latestTitle: latestTitle,
+      latestKeyword: latestMatch?.keyword,
+      latestAnimeOnly: latestMatch?.animeOnly ?? true,
+      latestTitle: latestMatch?.title,
       message: message,
     );
     await autoCheckStorage.saveLastRecord(record);
@@ -196,20 +206,44 @@ class DmhySubscriptionAutoCheckService {
       checkedAt: timestamp,
       keywordCount: keywords.length,
       resourceCount: summary.totalResourceCount,
-      latestTitle: latestTitle,
+      latestKeyword: latestMatch?.keyword,
+      latestAnimeOnly: latestMatch?.animeOnly ?? true,
+      latestTitle: latestMatch?.title,
     );
   }
 
-  String? _findLatestTitle(DmhySubscriptionCheckSummary summary) {
+  _LatestSubscriptionMatch? _findLatestMatch(
+    DmhySubscriptionCheckSummary summary,
+  ) {
     for (final result in summary.results) {
       final latestResource = result.latestResource;
       if (latestResource != null && latestResource.title.trim().isNotEmpty) {
-        return latestResource.title.trim();
+        return _LatestSubscriptionMatch(
+          keyword: result.subscription.normalizedKeyword,
+          animeOnly: result.subscription.animeOnly,
+          title: latestResource.title.trim(),
+        );
       }
     }
 
     return null;
   }
+}
+
+/// 自动检查中第一个可展示命中的轻量上下文。
+///
+/// 后台记录只保存聚合摘要，不保存完整 RSS 列表；但保留命中关键词和标题可以让
+/// 前台页面在用户点击时重新走 DMHY 搜索，而不是长期缓存第三方资源条目。
+class _LatestSubscriptionMatch {
+  const _LatestSubscriptionMatch({
+    required this.keyword,
+    required this.animeOnly,
+    required this.title,
+  });
+
+  final String keyword;
+  final bool animeOnly;
+  final String title;
 }
 
 String _formatAutoCheckError(Object error) {

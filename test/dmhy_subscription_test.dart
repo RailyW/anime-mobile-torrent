@@ -49,6 +49,24 @@ void main() {
     expect(restored.single.scopeLabel, '全站');
   });
 
+  test('DmhySubscriptionAutoCheckRecord 可以保存最新命中搜索上下文', () {
+    final record = DmhySubscriptionAutoCheckRecord(
+      checkedAt: DateTime.utc(2026, 6, 27, 10, 30),
+      keywordCount: 2,
+      resourceCount: 3,
+      latestKeyword: '测试动画 1080',
+      latestAnimeOnly: false,
+      latestTitle: '[字幕组] 测试动画 01',
+      message: 'DMHY 订阅检查发现 3 条资源',
+    );
+
+    final restored = DmhySubscriptionAutoCheckRecord.fromJson(record.toJson());
+
+    expect(restored.latestKeyword, '测试动画 1080');
+    expect(restored.latestAnimeOnly, isFalse);
+    expect(restored.latestTitle, '[字幕组] 测试动画 01');
+  });
+
   test('DmhySubscriptionRepository 可以去重保存关键词并检查 DMHY RSS', () async {
     final storage = _MemoryDmhySubscriptionStorage();
     final dmhyRepository = _FakeDmhyRepository();
@@ -124,12 +142,15 @@ void main() {
       checkedAt: DateTime.utc(2026, 6, 27, 12),
       keywordCount: 1,
       resourceCount: 2,
+      latestKeyword: '测试动画',
+      latestAnimeOnly: true,
       latestTitle: '[字幕组] 测试动画 02',
       message: 'DMHY 订阅检查发现 2 条资源',
     );
     await controller.refreshAutoCheckRecord();
     state = container.read(dmhySubscriptionControllerProvider).value!;
     expect(state.autoCheckRecord?.resourceCount, 2);
+    expect(state.autoCheckRecord?.latestKeyword, '测试动画');
     expect(state.autoCheckRecord?.latestTitle, '[字幕组] 测试动画 02');
     expect(state.lastActionMessage, '已刷新后台自动检查记录');
 
@@ -167,8 +188,11 @@ void main() {
 
     expect(outcome.status, DmhySubscriptionAutoCheckStatus.checked);
     expect(outcome.resourceCount, 1);
+    expect(outcome.latestKeyword, '测试动画');
+    expect(outcome.latestAnimeOnly, isTrue);
     expect(outcome.latestTitle, '[字幕组] 测试动画 01');
     expect(autoCheckStorage.record?.resourceCount, 1);
+    expect(autoCheckStorage.record?.latestKeyword, '测试动画');
     expect(dmhyRepository.requests, hasLength(1));
 
     now = now.add(const Duration(minutes: 30));

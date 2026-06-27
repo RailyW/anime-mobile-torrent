@@ -14,6 +14,7 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({
     this.initialTabIndex = 0,
     this.initialDmhyKeyword,
+    this.initialDmhyAnimeOnly = true,
     super.key,
   });
 
@@ -24,6 +25,11 @@ class HomeScreen extends StatefulWidget {
 
   /// 初次打开 DMHY 标签页时自动填入并搜索的关键词。
   final String? initialDmhyKeyword;
+
+  /// 初次打开 DMHY 标签页时使用的搜索范围。
+  ///
+  /// 订阅检查可以从全站范围跳回 DMHY 搜索，因此这里不能固定为动画分类。
+  final bool initialDmhyAnimeOnly;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -43,7 +49,8 @@ class _HomeScreenState extends State<HomeScreen> {
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.initialTabIndex != widget.initialTabIndex ||
-        oldWidget.initialDmhyKeyword != widget.initialDmhyKeyword) {
+        oldWidget.initialDmhyKeyword != widget.initialDmhyKeyword ||
+        oldWidget.initialDmhyAnimeOnly != widget.initialDmhyAnimeOnly) {
       setState(() {
         _selectedIndex = _normalizeTabIndex(widget.initialTabIndex);
       });
@@ -73,7 +80,10 @@ class _HomeScreenState extends State<HomeScreen> {
         icon: Icons.rss_feed_outlined,
         selectedIcon: Icons.rss_feed,
         label: 'DMHY',
-        child: DmhyTab(initialKeyword: widget.initialDmhyKeyword),
+        child: DmhyTab(
+          initialKeyword: widget.initialDmhyKeyword,
+          initialAnimeOnly: widget.initialDmhyAnimeOnly,
+        ),
       ),
       const _HomeTab(
         icon: Icons.open_in_new_outlined,

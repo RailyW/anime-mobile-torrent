@@ -142,6 +142,52 @@ void main() {
     expect(find.text('后台自动检查'), findsOneWidget);
   });
 
+  testWidgets('DMHY 订阅关键词可以跳转到搜索页并保留全站范围', (tester) async {
+    final dmhyRepository = _FakeDmhyRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
+          dmhyRepositoryProvider.overrideWithValue(dmhyRepository),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('后台').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '测试动画 1080');
+    await tester.scrollUntilVisible(
+      find.text('动画分类'),
+      120,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('动画分类'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.widgetWithText(FilledButton, '添加'),
+      120,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '添加'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('测试动画 1080 · 全站'), findsOneWidget);
+
+    await tester.tap(find.text('测试动画 1080 · 全站'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('RSS 可用'), findsOneWidget);
+    expect(find.text('“测试动画 1080” 在全站找到 1 条 RSS 资源'), findsOneWidget);
+    expect(dmhyRepository.requests.single.animeOnly, isFalse);
+  });
+
   testWidgets('Bangumi 搜索可以渲染动画条目结果', (tester) async {
     final repository = _FakeBangumiRepository();
 
@@ -777,8 +823,11 @@ class _FakeBangumiDetailCollectionRepository
 }
 
 class _FakeDmhyRepository implements DmhyRepository {
+  final List<DmhySearchRequest> requests = [];
+
   @override
   Future<List<DmhyResource>> searchResources(DmhySearchRequest request) async {
+    requests.add(request);
     return [
       DmhyResource(
         title: '[字幕组] 测试动画 01 1080p',

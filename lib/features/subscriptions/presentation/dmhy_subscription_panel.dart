@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../dmhy/domain/dmhy_resource.dart';
 import '../application/dmhy_subscription_providers.dart';
@@ -62,6 +63,27 @@ class _DmhySubscriptionPanelState extends ConsumerState<DmhySubscriptionPanel> {
     }
   }
 
+  /// 跳转到 DMHY 搜索页继续查看资源。
+  ///
+  /// 订阅面板只负责把“关键词 + 范围”交给首页路由；真正的 RSS 搜索、HTML
+  /// 统计合并、magnet 操作和 `.torrent` 下载仍由 DMHY 模块处理。
+  void _openDmhySearch(String keyword, {required bool animeOnly}) {
+    final normalizedKeyword = keyword.trim();
+    if (normalizedKeyword.isEmpty) {
+      return;
+    }
+
+    final location = Uri(
+      path: '/',
+      queryParameters: {
+        'tab': 'dmhy',
+        'keyword': normalizedKeyword,
+        'animeOnly': animeOnly.toString(),
+      },
+    ).toString();
+    context.go(location);
+  }
+
   @override
   Widget build(BuildContext context) {
     final asyncState = ref.watch(dmhySubscriptionControllerProvider);
@@ -100,6 +122,7 @@ class _DmhySubscriptionPanelState extends ConsumerState<DmhySubscriptionPanel> {
                 onCheckAll: controller.checkAll,
                 onRefreshAutoCheckRecord: controller.refreshAutoCheckRecord,
                 onRemoveKeyword: controller.removeKeyword,
+                onOpenDmhySearch: _openDmhySearch,
               ),
               loading: () => const _SubscriptionLoadingView(),
               error: (error, stackTrace) => _SubscriptionErrorView(
@@ -125,6 +148,7 @@ class _SubscriptionLoadedView extends StatelessWidget {
     required this.onCheckAll,
     required this.onRefreshAutoCheckRecord,
     required this.onRemoveKeyword,
+    required this.onOpenDmhySearch,
   });
 
   final DmhySubscriptionUiState state;
@@ -136,6 +160,8 @@ class _SubscriptionLoadedView extends StatelessWidget {
   final Future<void> Function() onCheckAll;
   final Future<void> Function() onRefreshAutoCheckRecord;
   final Future<void> Function(String id) onRemoveKeyword;
+  final void Function(String keyword, {required bool animeOnly})
+  onOpenDmhySearch;
 
   @override
   Widget build(BuildContext context) {
@@ -215,16 +241,21 @@ class _SubscriptionLoadedView extends StatelessWidget {
           record: state.autoCheckRecord,
           isBusy: isBusy,
           onRefresh: onRefreshAutoCheckRecord,
+          onOpenDmhySearch: onOpenDmhySearch,
         ),
         const SizedBox(height: 12),
         _SubscriptionKeywordWrap(
           keywords: state.keywords,
           isBusy: isBusy,
           onRemoveKeyword: onRemoveKeyword,
+          onOpenDmhySearch: onOpenDmhySearch,
         ),
         if (state.hasCheckResults) ...[
           const SizedBox(height: 16),
-          _SubscriptionCheckSummaryView(summary: state.summary),
+          _SubscriptionCheckSummaryView(
+            summary: state.summary,
+            onOpenDmhySearch: onOpenDmhySearch,
+          ),
         ],
       ],
     );
@@ -236,11 +267,14 @@ class _SubscriptionAutoCheckRecordView extends StatelessWidget {
     required this.record,
     required this.isBusy,
     required this.onRefresh,
+    required this.onOpenDmhySearch,
   });
 
   final DmhySubscriptionAutoCheckRecord? record;
   final bool isBusy;
   final Future<void> Function() onRefresh;
+  final void Function(String keyword, {required bool animeOnly})
+  onOpenDmhySearch;
 
   @override
   Widget build(BuildContext context) {
@@ -316,6 +350,19 @@ class _SubscriptionAutoCheckRecordView extends StatelessWidget {
                   ),
                 ),
               ],
+              if (currentRecord.latestKeyword != null) ...[
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: () {
+                    onOpenDmhySearch(
+                      currentRecord.latestKeyword!,
+                      animeOnly: currentRecord.latestAnimeOnly,
+                    );
+                  },
+                  icon: const Icon(Icons.travel_explore_outlined),
+                  label: const Text('搜索最新命中'),
+                ),
+              ],
             ],
           ],
         ),
@@ -329,11 +376,14 @@ class _SubscriptionKeywordWrap extends StatelessWidget {
     required this.keywords,
     required this.isBusy,
     required this.onRemoveKeyword,
+    required this.onOpenDmhySearch,
   });
 
   final List<DmhySubscriptionKeyword> keywords;
   final bool isBusy;
   final Future<void> Function(String id) onRemoveKeyword;
+  final void Function(String keyword, {required bool animeOnly})
+  onOpenDmhySearch;
 
   @override
   Widget build(BuildContext context) {
@@ -355,8 +405,17 @@ class _SubscriptionKeywordWrap extends StatelessWidget {
       children: [
         for (final keyword in keywords)
           InputChip(
+            avatar: const Icon(Icons.search_outlined, size: 18),
             label: Text('${keyword.keyword} · ${keyword.scopeLabel}'),
             deleteIcon: const Icon(Icons.close_outlined, size: 18),
+            onPressed: isBusy
+                ? null
+                : () {
+                    onOpenDmhySearch(
+                      keyword.normalizedKeyword,
+                      animeOnly: keyword.animeOnly,
+                    );
+                  },
             onDeleted: isBusy
                 ? null
                 : () {
@@ -369,9 +428,14 @@ class _SubscriptionKeywordWrap extends StatelessWidget {
 }
 
 class _SubscriptionCheckSummaryView extends StatelessWidget {
-  const _SubscriptionCheckSummaryView({required this.summary});
+  const _SubscriptionCheckSummaryView({
+    required this.summary,
+    required this.onOpenDmhySearch,
+  });
 
   final DmhySubscriptionCheckSummary summary;
+  final void Function(String keyword, {required bool animeOnly})
+  onOpenDmhySearch;
 
   @override
   Widget build(BuildContext context) {
@@ -402,7 +466,10 @@ class _SubscriptionCheckSummaryView extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         for (final result in summary.results) ...[
-          _SubscriptionResultSection(result: result),
+          _SubscriptionResultSection(
+            result: result,
+            onOpenDmhySearch: onOpenDmhySearch,
+          ),
           const SizedBox(height: 8),
         ],
       ],
@@ -411,9 +478,14 @@ class _SubscriptionCheckSummaryView extends StatelessWidget {
 }
 
 class _SubscriptionResultSection extends StatelessWidget {
-  const _SubscriptionResultSection({required this.result});
+  const _SubscriptionResultSection({
+    required this.result,
+    required this.onOpenDmhySearch,
+  });
 
   final DmhySubscriptionCheckResult result;
+  final void Function(String keyword, {required bool animeOnly})
+  onOpenDmhySearch;
 
   @override
   Widget build(BuildContext context) {
@@ -448,6 +520,17 @@ class _SubscriptionResultSection extends StatelessWidget {
                     color: scheme.tertiary,
                     fontWeight: FontWeight.w800,
                   ),
+                ),
+                const SizedBox(width: 8),
+                IconButton(
+                  onPressed: () {
+                    onOpenDmhySearch(
+                      result.subscription.normalizedKeyword,
+                      animeOnly: result.subscription.animeOnly,
+                    );
+                  },
+                  icon: const Icon(Icons.travel_explore_outlined),
+                  tooltip: '去 DMHY 搜索',
                 ),
               ],
             ),

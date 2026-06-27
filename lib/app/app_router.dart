@@ -20,10 +20,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             state.uri.queryParameters['tab'],
           );
           final dmhyKeyword = state.uri.queryParameters['keyword'];
+          final dmhyAnimeOnly = _initialDmhyAnimeOnlyFromQuery(
+            state.uri.queryParameters['animeOnly'],
+          );
 
           return HomeScreen(
             initialTabIndex: initialTabIndex,
             initialDmhyKeyword: dmhyKeyword,
+            initialDmhyAnimeOnly: dmhyAnimeOnly,
           );
         },
       ),
@@ -54,5 +58,18 @@ int _initialTabIndexFromQuery(String? tab) {
     'playback' => 3,
     'background' => 4,
     _ => 0,
+  };
+}
+
+/// 将首页 `animeOnly` 查询参数转换为 DMHY 初始搜索范围。
+///
+/// 参数缺省时保持动画分类默认值；订阅模块从“全站”订阅回流到 DMHY 搜索时会
+/// 显式传入 `false`，避免用户看到的搜索范围和订阅范围不一致。
+bool _initialDmhyAnimeOnlyFromQuery(String? value) {
+  return switch (value?.trim().toLowerCase()) {
+    'false' => false,
+    '0' => false,
+    'all' => false,
+    _ => true,
   };
 }

@@ -17,10 +17,13 @@ import '../domain/dmhy_resource_metadata.dart';
 /// 种子文件显式交给用户操作。模块不下载 BT 视频内容，也不管理外部客户端
 /// 的下载进度。
 class DmhyTab extends ConsumerStatefulWidget {
-  const DmhyTab({this.initialKeyword, super.key});
+  const DmhyTab({this.initialKeyword, this.initialAnimeOnly = true, super.key});
 
   /// 从其他模块跳转过来时预填并自动搜索的关键词。
   final String? initialKeyword;
+
+  /// 从其他模块跳转过来时使用的初始搜索范围。
+  final bool initialAnimeOnly;
 
   @override
   ConsumerState<DmhyTab> createState() => _DmhyTabState();
@@ -35,15 +38,24 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
   @override
   void initState() {
     super.initState();
-    _applyInitialKeyword(widget.initialKeyword, notify: false);
+    _applyInitialKeyword(
+      widget.initialKeyword,
+      animeOnly: widget.initialAnimeOnly,
+      notify: false,
+    );
   }
 
   @override
   void didUpdateWidget(covariant DmhyTab oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    if (oldWidget.initialKeyword != widget.initialKeyword) {
-      _applyInitialKeyword(widget.initialKeyword, notify: true);
+    if (oldWidget.initialKeyword != widget.initialKeyword ||
+        oldWidget.initialAnimeOnly != widget.initialAnimeOnly) {
+      _applyInitialKeyword(
+        widget.initialKeyword,
+        animeOnly: widget.initialAnimeOnly,
+        notify: true,
+      );
     }
   }
 
@@ -55,9 +67,13 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
 
   /// 应用来自 Bangumi 等外部入口的初始搜索关键词。
   ///
-  /// 空关键词不覆盖用户当前输入；非空关键词会同步输入框并触发一次动画分类
+  /// 空关键词不覆盖用户当前输入；非空关键词会同步输入框并按指定范围触发一次
   /// RSS 搜索，保持跨模块跳转后用户能直接看到候选资源。
-  void _applyInitialKeyword(String? value, {required bool notify}) {
+  void _applyInitialKeyword(
+    String? value, {
+    required bool animeOnly,
+    required bool notify,
+  }) {
     final keyword = value?.trim();
     if (keyword == null || keyword.isEmpty) {
       return;
@@ -65,8 +81,11 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
 
     void apply() {
       _keywordController.text = keyword;
-      _searchRequest = DmhySearchRequest(keyword: keyword, animeOnly: true);
-      _animeOnly = true;
+      _searchRequest = DmhySearchRequest(
+        keyword: keyword,
+        animeOnly: animeOnly,
+      );
+      _animeOnly = animeOnly;
     }
 
     if (notify && mounted) {
