@@ -185,6 +185,35 @@ void main() {
         'magnet 2 · .torrent 直开 1 · 分享 0 · SDK 35',
       );
     });
+
+    test('可以识别同一条本机实测记录', () {
+      const capabilities = TorrentClientCapabilities(
+        isPlatformBridgeAvailable: true,
+        canOpenMagnet: true,
+        canOpenTorrentFile: false,
+        canShareTorrentFile: true,
+        magnetHandlerCount: 1,
+        torrentViewHandlerCount: 0,
+        torrentShareHandlerCount: 1,
+        androidSdkInt: 35,
+      );
+      final record = TorrentClientCompatibilityRecord.capture(
+        outcome: TorrentCompatibilityOutcome.shareImportSucceeded,
+        capabilities: capabilities,
+        recordedAt: DateTime(2026, 6, 27, 12),
+      );
+      final sameRecord = TorrentClientCompatibilityRecord.fromJson(
+        record.toJson(),
+      );
+      final differentRecord = TorrentClientCompatibilityRecord.capture(
+        outcome: TorrentCompatibilityOutcome.directOpenSucceeded,
+        capabilities: capabilities,
+        recordedAt: DateTime(2026, 6, 27, 12),
+      );
+
+      expect(record.hasSameIdentityAs(sameRecord), isTrue);
+      expect(record.hasSameIdentityAs(differentRecord), isFalse);
+    });
   });
 
   group('TorrentCompatibilitySummary', () {
@@ -463,6 +492,38 @@ void main() {
 
       await repository.clearRecords();
       expect(await repository.loadRecords(), isEmpty);
+    });
+
+    test('可以删除单条本机兼容实测记录并保留其他样本', () async {
+      const repository =
+          SharedPreferencesTorrentCompatibilityRecordRepository();
+      const capabilities = TorrentClientCapabilities(
+        isPlatformBridgeAvailable: true,
+        canOpenMagnet: true,
+        canOpenTorrentFile: true,
+        canShareTorrentFile: true,
+        magnetHandlerCount: 1,
+        torrentViewHandlerCount: 1,
+        torrentShareHandlerCount: 1,
+      );
+      final firstRecord = TorrentClientCompatibilityRecord.capture(
+        outcome: TorrentCompatibilityOutcome.directOpenSucceeded,
+        capabilities: capabilities,
+        recordedAt: DateTime.fromMillisecondsSinceEpoch(1000),
+      );
+      final secondRecord = TorrentClientCompatibilityRecord.capture(
+        outcome: TorrentCompatibilityOutcome.shareImportSucceeded,
+        capabilities: capabilities,
+        recordedAt: DateTime.fromMillisecondsSinceEpoch(2000),
+      );
+
+      await repository.addRecord(firstRecord);
+      await repository.addRecord(secondRecord);
+      await repository.removeRecord(secondRecord);
+
+      final records = await repository.loadRecords();
+      expect(records, hasLength(1));
+      expect(records.single.hasSameIdentityAs(firstRecord), isTrue);
     });
 
     test('最多保留最近 20 条本机兼容实测记录', () async {

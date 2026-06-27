@@ -133,6 +133,19 @@ class TorrentHandoffTab extends ConsumerWidget {
       }
     }
 
+    Future<void> deleteCompatibilityRecord(
+      TorrentClientCompatibilityRecord record,
+    ) async {
+      final repository = ref.read(torrentCompatibilityRecordRepositoryProvider);
+      await repository.removeRecord(record);
+      ref.invalidate(torrentCompatibilityRecordsProvider);
+      if (context.mounted) {
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.clearSnackBars();
+        messenger.showSnackBar(const SnackBar(content: Text('已删除本机兼容记录')));
+      }
+    }
+
     Future<void> copyCompatibilityReport(
       TorrentClientCapabilities capabilities,
       List<TorrentClientCompatibilityRecord> records,
@@ -275,6 +288,7 @@ class TorrentHandoffTab extends ConsumerWidget {
           records: compatibilityRecords,
           onRecord: recordCompatibility,
           onClear: clearCompatibilityRecords,
+          onDeleteRecord: deleteCompatibilityRecord,
           onCopyReport: copyCompatibilityReport,
           onCopyTemplate: copyCompatibilityTemplate,
           onCopySummaryRow: copyCompatibilitySummaryRow,
@@ -584,6 +598,7 @@ class _CompatibilityRecordPanel extends StatelessWidget {
     required this.records,
     required this.onRecord,
     required this.onClear,
+    required this.onDeleteRecord,
     required this.onCopyReport,
     required this.onCopyTemplate,
     required this.onCopySummaryRow,
@@ -597,6 +612,8 @@ class _CompatibilityRecordPanel extends StatelessWidget {
   )
   onRecord;
   final Future<void> Function() onClear;
+  final Future<void> Function(TorrentClientCompatibilityRecord record)
+  onDeleteRecord;
   final Future<void> Function(
     TorrentClientCapabilities capabilities,
     List<TorrentClientCompatibilityRecord> records,
@@ -685,6 +702,7 @@ class _CompatibilityRecordPanel extends StatelessWidget {
                 return _CompatibilityRecordList(
                   records: records,
                   onClear: onClear,
+                  onDeleteRecord: onDeleteRecord,
                 );
               },
               error: (error, _) {
@@ -1084,10 +1102,13 @@ class _CompatibilityRecordList extends StatelessWidget {
   const _CompatibilityRecordList({
     required this.records,
     required this.onClear,
+    required this.onDeleteRecord,
   });
 
   final List<TorrentClientCompatibilityRecord> records;
   final Future<void> Function() onClear;
+  final Future<void> Function(TorrentClientCompatibilityRecord record)
+  onDeleteRecord;
 
   @override
   Widget build(BuildContext context) {
@@ -1106,7 +1127,10 @@ class _CompatibilityRecordList extends StatelessWidget {
         for (final record in visibleRecords)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: _CompatibilityRecordTile(record: record),
+            child: _CompatibilityRecordTile(
+              record: record,
+              onDelete: onDeleteRecord,
+            ),
           ),
         Align(
           alignment: Alignment.centerLeft,
@@ -1123,9 +1147,13 @@ class _CompatibilityRecordList extends StatelessWidget {
 
 /// 单条本机兼容实测记录。
 class _CompatibilityRecordTile extends StatelessWidget {
-  const _CompatibilityRecordTile({required this.record});
+  const _CompatibilityRecordTile({
+    required this.record,
+    required this.onDelete,
+  });
 
   final TorrentClientCompatibilityRecord record;
+  final Future<void> Function(TorrentClientCompatibilityRecord record) onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -1156,6 +1184,12 @@ class _CompatibilityRecordTile extends StatelessWidget {
               ),
             ],
           ),
+        ),
+        const SizedBox(width: 8),
+        TextButton.icon(
+          onPressed: () => onDelete(record),
+          icon: const Icon(Icons.delete_outline, size: 18),
+          label: const Text('删除本条'),
         ),
       ],
     );

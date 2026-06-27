@@ -463,6 +463,16 @@ void main() {
     expect(copiedText, contains('| 可用（候选 1 个） | 待实测 |'));
     expect(copiedText, contains('| .torrent 分享导入 | 本机样本 1/1 条可用；'));
     expect(find.text('已复制汇总行'), findsOneWidget);
+
+    await tester.ensureVisible(find.widgetWithText(TextButton, '删除本条'));
+    await tester.tap(find.widgetWithText(TextButton, '删除本条'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(find.text('已删除本机兼容记录'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text('暂无本机实测记录'), findsOneWidget);
+    expect(find.textContaining('暂无实测样本'), findsOneWidget);
   });
 
   testWidgets('种子交接页可以删除单条最近种子记录', (tester) async {

@@ -171,6 +171,24 @@ class TorrentClientCompatibilityRecord {
     return parts.join(' · ');
   }
 
+  /// 判断另一条记录是否代表同一条本机实测样本。
+  ///
+  /// 兼容实测记录当前没有单独的 UUID；它只保存在本机 `SharedPreferences`
+  /// 列表中。删除单条记录时使用记录时间、用户标记结果和 resolver 摘要共同
+  /// 作为稳定身份，避免只按时间或只按结果删除到相邻样本。
+  bool hasSameIdentityAs(TorrentClientCompatibilityRecord other) {
+    return outcome == other.outcome &&
+        recordedAt.millisecondsSinceEpoch ==
+            other.recordedAt.millisecondsSinceEpoch &&
+        canOpenMagnet == other.canOpenMagnet &&
+        canOpenTorrentFile == other.canOpenTorrentFile &&
+        canShareTorrentFile == other.canShareTorrentFile &&
+        magnetHandlerCount == other.magnetHandlerCount &&
+        torrentViewHandlerCount == other.torrentViewHandlerCount &&
+        torrentShareHandlerCount == other.torrentShareHandlerCount &&
+        androidSdkInt == other.androidSdkInt;
+  }
+
   /// 读取整数，兼容 JSON 中的 `num`。
   static int _readInt(Object? value) {
     if (value is int) {

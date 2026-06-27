@@ -87,6 +87,12 @@ abstract class TorrentCompatibilityRecordRepository {
   /// 新增一条兼容实测记录。
   Future<void> addRecord(TorrentClientCompatibilityRecord record);
 
+  /// 删除一条本机兼容实测记录。
+  ///
+  /// 用户可能手滑记录了错误结果；允许删除单条样本可以保留其他真实记录，
+  /// 比只能清空全部更适合长期沉淀当前设备的兼容清单。
+  Future<void> removeRecord(TorrentClientCompatibilityRecord record);
+
   /// 清空本机兼容实测记录。
   Future<void> clearRecords();
 }
@@ -344,6 +350,19 @@ class SharedPreferencesTorrentCompatibilityRecordRepository
       ...await loadRecords(),
     ].take(_maxCompatibilityRecords).toList();
     final encodedRecords = records
+        .map((item) => jsonEncode(item.toJson()))
+        .toList();
+    await prefs.setStringList(_compatibilityRecordsKey, encodedRecords);
+  }
+
+  @override
+  Future<void> removeRecord(TorrentClientCompatibilityRecord record) async {
+    final prefs = await SharedPreferences.getInstance();
+    final records = await loadRecords();
+    final remainingRecords = records
+        .where((existingRecord) => !existingRecord.hasSameIdentityAs(record))
+        .toList();
+    final encodedRecords = remainingRecords
         .map((item) => jsonEncode(item.toJson()))
         .toList();
     await prefs.setStringList(_compatibilityRecordsKey, encodedRecords);
