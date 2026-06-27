@@ -28,12 +28,17 @@ void main() {
       expect(options.mediaFormats, ['MKV', 'MP4']);
       expect(options.videoCodecs, ['AVC/H.264', 'HEVC/H.265']);
       expect(options.subtitleLabels, ['简繁内封', '英文字幕']);
+      expect(options.subtitleLanguages, [
+        DmhySubtitleLanguage.simplifiedChinese,
+        DmhySubtitleLanguage.traditionalChinese,
+        DmhySubtitleLanguage.english,
+      ]);
       expect(options.hasSize, isTrue);
       expect(options.hasSeedCount, isTrue);
       expect(options.hasKeywordContent, isTrue);
     });
 
-    test('可以组合字幕组、分辨率、片源、封装、编码、字幕说明、大小区间、最小种子数和排除关键词过滤资源', () {
+    test('可以组合字幕组、分辨率、片源、封装、编码、字幕说明、字幕语言、大小区间、最小种子数和排除关键词过滤资源', () {
       final resources = [
         _buildResource(
           title: '[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV',
@@ -62,6 +67,7 @@ void main() {
         mediaFormat: 'MKV',
         videoCodec: 'HEVC/H.265',
         subtitleLabel: '简繁内封',
+        subtitleLanguage: DmhySubtitleLanguage.simplifiedChinese,
         sizeRange: DmhyResourceSizeRange.oneToTwoGiB,
         minSeedCount: 10,
         excludedKeywords: '英文字幕 BDRip',

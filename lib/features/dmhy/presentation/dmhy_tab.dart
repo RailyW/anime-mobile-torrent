@@ -784,6 +784,18 @@ class _DmhyFilterBar extends StatelessWidget {
                       );
                     },
                   ),
+                if (options.subtitleLanguages.isNotEmpty)
+                  _DmhySubtitleLanguageFilterDropdown(
+                    value: filter.subtitleLanguage,
+                    options: options.subtitleLanguages,
+                    onChanged: (value) {
+                      onChanged(
+                        filter.copyWith(
+                          subtitleLanguage: DmhyFilterValue(value),
+                        ),
+                      );
+                    },
+                  ),
                 if (options.hasSize)
                   _DmhySizeRangeFilterDropdown(
                     value: filter.sizeRange,
@@ -854,6 +866,56 @@ class _DmhyStringFilterDropdown extends StatelessWidget {
             DropdownMenuItem<String>(
               value: option,
               child: Text(option, overflow: TextOverflow.ellipsis),
+            ),
+        ],
+        onChanged: onChanged,
+      ),
+    );
+  }
+}
+
+/// DMHY 前台筛选栏中的归一化字幕语言下拉框。
+///
+/// 它和“字幕说明筛选”互补：字幕说明保留发布者原文，字幕语言则把
+/// `简繁内封`、`CHS&CHT` 等不同写法归并成稳定语言选项。
+class _DmhySubtitleLanguageFilterDropdown extends StatelessWidget {
+  const _DmhySubtitleLanguageFilterDropdown({
+    required this.value,
+    required this.options,
+    required this.onChanged,
+  });
+
+  /// 当前选择的字幕语言；null 表示不过滤。
+  final DmhySubtitleLanguage? value;
+
+  /// 当前结果集中可用的归一化字幕语言。
+  final List<DmhySubtitleLanguage> options;
+
+  /// 用户切换字幕语言筛选时回传给父级筛选值对象。
+  final ValueChanged<DmhySubtitleLanguage?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 176,
+      child: DropdownButtonFormField<DmhySubtitleLanguage>(
+        key: const Key('dmhy-filter-subtitle-language'),
+        initialValue: value,
+        isExpanded: true,
+        decoration: const InputDecoration(
+          border: OutlineInputBorder(),
+          labelText: '字幕语言筛选',
+          prefixIcon: Icon(Icons.translate_outlined),
+        ),
+        items: [
+          const DropdownMenuItem<DmhySubtitleLanguage>(
+            value: null,
+            child: Text('全部'),
+          ),
+          for (final option in options)
+            DropdownMenuItem<DmhySubtitleLanguage>(
+              value: option,
+              child: Text(option.label, overflow: TextOverflow.ellipsis),
             ),
         ],
         onChanged: onChanged,
@@ -1829,6 +1891,7 @@ IconData _metadataChipIcon(DmhyResourceMetadataKind kind) {
     DmhyResourceMetadataKind.videoCodec => Icons.memory_outlined,
     DmhyResourceMetadataKind.mediaFormat => Icons.movie_creation_outlined,
     DmhyResourceMetadataKind.subtitle => Icons.subtitles_outlined,
+    DmhyResourceMetadataKind.subtitleLanguage => Icons.translate_outlined,
     DmhyResourceMetadataKind.size => Icons.storage_outlined,
   };
 }

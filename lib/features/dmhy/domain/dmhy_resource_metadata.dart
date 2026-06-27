@@ -11,7 +11,26 @@ enum DmhyResourceMetadataKind {
   videoCodec,
   mediaFormat,
   subtitle,
+  subtitleLanguage,
   size,
+}
+
+/// DMHY 字幕语言的归一化分类。
+///
+/// 发布标题中常见“简繁内封”“英文字幕”“无字幕”等非结构化文本。该枚举把
+/// 这些描述归并为少量稳定选项，供前台筛选使用；原始字幕说明仍保存在
+/// `subtitleLabel` 中，用于展示发布者的完整表述。
+enum DmhySubtitleLanguage {
+  simplifiedChinese('简体'),
+  traditionalChinese('繁体'),
+  japanese('日文'),
+  english('英文'),
+  noSubtitles('无字幕');
+
+  const DmhySubtitleLanguage(this.label);
+
+  /// 面向用户展示的字幕语言名称。
+  final String label;
 }
 
 /// DMHY 资源卡片可展示的一枚元数据标签。
@@ -38,6 +57,7 @@ class DmhyResourceMetadata {
     this.videoCodec,
     this.mediaFormat,
     this.subtitleLabel,
+    this.subtitleLanguages = const [],
     this.sizeLabel,
   });
 
@@ -50,6 +70,7 @@ class DmhyResourceMetadata {
       videoCodec = null,
       mediaFormat = null,
       subtitleLabel = null,
+      subtitleLanguages = const [],
       sizeLabel = null;
 
   final String? releaseGroup;
@@ -59,6 +80,7 @@ class DmhyResourceMetadata {
   final String? videoCodec;
   final String? mediaFormat;
   final String? subtitleLabel;
+  final List<DmhySubtitleLanguage> subtitleLanguages;
   final String? sizeLabel;
 
   /// 当前是否没有任何可展示标签。
@@ -77,6 +99,11 @@ class DmhyResourceMetadata {
     _addChip(chips, DmhyResourceMetadataKind.videoCodec, videoCodec);
     _addChip(chips, DmhyResourceMetadataKind.mediaFormat, mediaFormat);
     _addChip(chips, DmhyResourceMetadataKind.subtitle, subtitleLabel);
+    _addChip(
+      chips,
+      DmhyResourceMetadataKind.subtitleLanguage,
+      _formatSubtitleLanguages(subtitleLanguages),
+    );
     _addChip(chips, DmhyResourceMetadataKind.size, sizeLabel);
     return List.unmodifiable(chips);
   }
@@ -91,6 +118,7 @@ class DmhyResourceMetadata {
   }) {
     final normalizedTitle = _normalizeText(title);
     final combinedText = _normalizeText('$title $descriptionText');
+    final subtitleLabel = _extractSubtitleLabel(combinedText);
 
     return DmhyResourceMetadata(
       releaseGroup: _extractReleaseGroup(normalizedTitle),
@@ -99,7 +127,11 @@ class DmhyResourceMetadata {
       source: _extractSource(combinedText),
       videoCodec: _extractVideoCodec(combinedText),
       mediaFormat: _extractMediaFormat(combinedText),
-      subtitleLabel: _extractSubtitleLabel(combinedText),
+      subtitleLabel: subtitleLabel,
+      subtitleLanguages: _extractSubtitleLanguages(
+        text: combinedText,
+        subtitleLabel: subtitleLabel,
+      ),
       sizeLabel: _extractSizeLabel(combinedText),
     );
   }
@@ -290,6 +322,66 @@ String? _extractSubtitleLabel(String text) {
   }
 
   return null;
+}
+
+List<DmhySubtitleLanguage> _extractSubtitleLanguages({
+  required String text,
+  required String? subtitleLabel,
+}) {
+  // 已经命中明确字幕说明时，优先只在该说明中判断语言，避免动画标题或简介
+  // 中的普通“日”“英”等字样被误判为字幕语言；没有字幕说明时，再从完整
+  // 标题/简介中识别 CHS、CHT、ENG、JPN、RAW 等常见资源标记。
+  final sourceText = _normalizeText(subtitleLabel ?? text).toLowerCase();
+  final languages = <DmhySubtitleLanguage>[];
+
+  if (sourceText.contains('无字幕') ||
+      sourceText.contains('無字幕') ||
+      RegExp(r'\braw\b').hasMatch(sourceText)) {
+    return const [DmhySubtitleLanguage.noSubtitles];
+  }
+
+  if (RegExp(r'(?:简|簡|\bchs\b|\bsc\b|gb2312)').hasMatch(sourceText)) {
+    _addSubtitleLanguage(languages, DmhySubtitleLanguage.simplifiedChinese);
+  }
+  if (RegExp(r'(?:繁|\bcht\b|\btc\b|big5)').hasMatch(sourceText)) {
+    _addSubtitleLanguage(languages, DmhySubtitleLanguage.traditionalChinese);
+  }
+  if (sourceText.contains('日文') ||
+      sourceText.contains('日语') ||
+      sourceText.contains('日語') ||
+      sourceText.contains('日字') ||
+      RegExp(r'\b(?:jpn|japanese)\b').hasMatch(sourceText) ||
+      (subtitleLabel != null && sourceText.contains('日'))) {
+    _addSubtitleLanguage(languages, DmhySubtitleLanguage.japanese);
+  }
+  if (sourceText.contains('英文') ||
+      sourceText.contains('英语') ||
+      sourceText.contains('英語') ||
+      sourceText.contains('英字') ||
+      RegExp(r'\b(?:eng|english)\b').hasMatch(sourceText)) {
+    _addSubtitleLanguage(languages, DmhySubtitleLanguage.english);
+  }
+
+  return List.unmodifiable(languages);
+}
+
+void _addSubtitleLanguage(
+  List<DmhySubtitleLanguage> languages,
+  DmhySubtitleLanguage language,
+) {
+  if (languages.contains(language)) {
+    return;
+  }
+
+  languages.add(language);
+}
+
+String? _formatSubtitleLanguages(List<DmhySubtitleLanguage> languages) {
+  if (languages.isEmpty) {
+    return null;
+  }
+
+  return '字幕：${languages.map((language) => language.label).join('/')}';
 }
 
 String? _extractSizeLabel(String text) {

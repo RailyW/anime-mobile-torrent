@@ -1,4 +1,5 @@
 import '../domain/dmhy_resource.dart';
+import '../domain/dmhy_resource_metadata.dart';
 import 'dmhy_resource_size.dart';
 
 /// DMHY 前台资源筛选条件。
@@ -14,6 +15,7 @@ class DmhyResourceFilter {
     this.mediaFormat,
     this.videoCodec,
     this.subtitleLabel,
+    this.subtitleLanguage,
     this.sizeRange,
     this.minSeedCount,
     this.excludedKeywords,
@@ -27,6 +29,7 @@ class DmhyResourceFilter {
       mediaFormat = null,
       videoCodec = null,
       subtitleLabel = null,
+      subtitleLanguage = null,
       sizeRange = null,
       minSeedCount = null,
       excludedKeywords = null;
@@ -49,6 +52,9 @@ class DmhyResourceFilter {
   /// 字幕说明，例如 `简繁内封`、`英文字幕` 或 `无字幕`。
   final String? subtitleLabel;
 
+  /// 归一化字幕语言，例如简体、繁体、英文或无字幕。
+  final DmhySubtitleLanguage? subtitleLanguage;
+
   /// 文件大小区间。
   final DmhyResourceSizeRange? sizeRange;
 
@@ -66,6 +72,7 @@ class DmhyResourceFilter {
       mediaFormat == null &&
       videoCodec == null &&
       subtitleLabel == null &&
+      subtitleLanguage == null &&
       sizeRange == null &&
       minSeedCount == null &&
       !_hasExcludedKeywords(excludedKeywords);
@@ -94,6 +101,7 @@ class DmhyResourceFilter {
         _matchesText(mediaFormat, metadata.mediaFormat) &&
         _matchesText(videoCodec, metadata.videoCodec) &&
         _matchesText(subtitleLabel, metadata.subtitleLabel) &&
+        _matchesSubtitleLanguage(subtitleLanguage, resource) &&
         _matchesSizeRange(sizeRange, resource) &&
         _matchesMinSeedCount(minSeedCount, resource) &&
         _matchesExcludedKeywords(excludedKeywords, resource);
@@ -110,6 +118,7 @@ class DmhyResourceFilter {
     DmhyFilterValue<String>? mediaFormat,
     DmhyFilterValue<String>? videoCodec,
     DmhyFilterValue<String>? subtitleLabel,
+    DmhyFilterValue<DmhySubtitleLanguage>? subtitleLanguage,
     DmhyFilterValue<DmhyResourceSizeRange>? sizeRange,
     DmhyFilterValue<int>? minSeedCount,
     DmhyFilterValue<String>? excludedKeywords,
@@ -125,6 +134,9 @@ class DmhyResourceFilter {
       subtitleLabel: subtitleLabel == null
           ? this.subtitleLabel
           : subtitleLabel.value,
+      subtitleLanguage: subtitleLanguage == null
+          ? this.subtitleLanguage
+          : subtitleLanguage.value,
       sizeRange: sizeRange == null ? this.sizeRange : sizeRange.value,
       minSeedCount: minSeedCount == null
           ? this.minSeedCount
@@ -153,6 +165,21 @@ class DmhyResourceFilter {
 
     final sizeBytes = dmhyResourceSizeBytes(resource);
     return sizeBytes != null && expected.contains(sizeBytes);
+  }
+
+  /// 判断资源是否包含用户选择的归一化字幕语言。
+  ///
+  /// 一个资源可以同时包含多种字幕语言，例如“简繁日内封”会同时匹配简体、
+  /// 繁体和日文；无字幕资源只匹配 `noSubtitles`。
+  static bool _matchesSubtitleLanguage(
+    DmhySubtitleLanguage? expected,
+    DmhyResource resource,
+  ) {
+    if (expected == null) {
+      return true;
+    }
+
+    return resource.metadata.subtitleLanguages.contains(expected);
   }
 
   static bool _matchesMinSeedCount(int? expected, DmhyResource resource) {
@@ -268,6 +295,7 @@ class DmhyResourceFilterOptions {
     required this.mediaFormats,
     required this.videoCodecs,
     required this.subtitleLabels,
+    required this.subtitleLanguages,
     required this.hasSize,
     required this.hasSeedCount,
     required this.hasKeywordContent,
@@ -285,6 +313,7 @@ class DmhyResourceFilterOptions {
     final mediaFormats = <String>{};
     final videoCodecs = <String>{};
     final subtitleLabels = <String>{};
+    final subtitleLanguages = <DmhySubtitleLanguage>{};
     var hasSize = false;
     var hasSeedCount = false;
     var hasKeywordContent = false;
@@ -296,6 +325,7 @@ class DmhyResourceFilterOptions {
       _addOption(mediaFormats, resource.metadata.mediaFormat);
       _addOption(videoCodecs, resource.metadata.videoCodec);
       _addOption(subtitleLabels, resource.metadata.subtitleLabel);
+      subtitleLanguages.addAll(resource.metadata.subtitleLanguages);
       hasSize = hasSize || dmhyResourceSizeBytes(resource) != null;
       hasSeedCount = hasSeedCount || resource.stats.seedCount != null;
       hasKeywordContent =
@@ -311,6 +341,7 @@ class DmhyResourceFilterOptions {
       mediaFormats: _sortedOptions(mediaFormats),
       videoCodecs: _sortedOptions(videoCodecs),
       subtitleLabels: _sortedOptions(subtitleLabels),
+      subtitleLanguages: _sortedSubtitleLanguages(subtitleLanguages),
       hasSize: hasSize,
       hasSeedCount: hasSeedCount,
       hasKeywordContent: hasKeywordContent,
@@ -323,6 +354,12 @@ class DmhyResourceFilterOptions {
   final List<String> mediaFormats;
   final List<String> videoCodecs;
   final List<String> subtitleLabels;
+
+  /// 当前结果集中可用于筛选的归一化字幕语言列表。
+  ///
+  /// 顺序按 `DmhySubtitleLanguage` 枚举声明固定，避免不同搜索结果因为字符串
+  /// 排序规则变化导致筛选菜单跳动。
+  final List<DmhySubtitleLanguage> subtitleLanguages;
   final bool hasSize;
   final bool hasSeedCount;
 
@@ -340,6 +377,7 @@ class DmhyResourceFilterOptions {
       mediaFormats.isEmpty &&
       videoCodecs.isEmpty &&
       subtitleLabels.isEmpty &&
+      subtitleLanguages.isEmpty &&
       !hasSize &&
       !hasSeedCount &&
       !hasKeywordContent;
@@ -358,5 +396,13 @@ class DmhyResourceFilterOptions {
 
   static List<String> _sortedOptions(Set<String> values) {
     return List.unmodifiable(values.toList()..sort());
+  }
+
+  static List<DmhySubtitleLanguage> _sortedSubtitleLanguages(
+    Set<DmhySubtitleLanguage> values,
+  ) {
+    final sortedValues = values.toList()
+      ..sort((left, right) => left.index.compareTo(right.index));
+    return List.unmodifiable(sortedValues);
   }
 }

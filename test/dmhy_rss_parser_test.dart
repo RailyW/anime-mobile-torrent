@@ -53,6 +53,10 @@ void main() {
     expect(resource.metadata.videoCodec, 'HEVC/H.265');
     expect(resource.metadata.mediaFormat, 'MP4');
     expect(resource.metadata.subtitleLabel, '简繁内封');
+    expect(resource.metadata.subtitleLanguages, [
+      DmhySubtitleLanguage.simplifiedChinese,
+      DmhySubtitleLanguage.traditionalChinese,
+    ]);
     expect(resource.metadata.sizeLabel, '1.25 GB');
     expect(resource.metadata.displayChips.map((chip) => chip.label), [
       '字幕组',
@@ -60,6 +64,7 @@ void main() {
       'HEVC/H.265',
       'MP4',
       '简繁内封',
+      '字幕：简体/繁体',
       '1.25 GB',
     ]);
   });
@@ -75,6 +80,11 @@ void main() {
     expect(metadata.resolution, '1080p');
     expect(metadata.videoCodec, 'HEVC/H.265');
     expect(metadata.subtitleLabel, '简繁日内封');
+    expect(metadata.subtitleLanguages, [
+      DmhySubtitleLanguage.simplifiedChinese,
+      DmhySubtitleLanguage.traditionalChinese,
+      DmhySubtitleLanguage.japanese,
+    ]);
     expect(metadata.sizeLabel, '846.5 MB');
     expect(
       metadata.displayChips.map((chip) => chip.kind),
@@ -84,8 +94,21 @@ void main() {
         DmhyResourceMetadataKind.resolution,
         DmhyResourceMetadataKind.videoCodec,
         DmhyResourceMetadataKind.subtitle,
+        DmhyResourceMetadataKind.subtitleLanguage,
         DmhyResourceMetadataKind.size,
       ]),
     );
+  });
+
+  test('DmhyResourceMetadata 可以从字幕缩写归一化语言', () {
+    final metadata = DmhyResourceMetadata.fromText(
+      title: '[字幕组] 测试动画 01 [1080p][CHS&CHT&ENG][MP4]',
+    );
+
+    expect(metadata.subtitleLanguages, [
+      DmhySubtitleLanguage.simplifiedChinese,
+      DmhySubtitleLanguage.traditionalChinese,
+      DmhySubtitleLanguage.english,
+    ]);
   });
 }
