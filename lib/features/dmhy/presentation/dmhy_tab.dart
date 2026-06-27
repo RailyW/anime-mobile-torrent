@@ -391,6 +391,27 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
                     icon: _metadataChipIcon(chip.kind),
                     label: chip.label,
                   ),
+                if (resource.stats.sizeLabel != null &&
+                    resource.stats.sizeLabel != resource.metadata.sizeLabel)
+                  _DmhyInfoChip(
+                    icon: Icons.storage_outlined,
+                    label: '大小 ${resource.stats.sizeLabel}',
+                  ),
+                if (resource.stats.seedCount != null)
+                  _DmhyInfoChip(
+                    icon: Icons.cloud_upload_outlined,
+                    label: '种子 ${resource.stats.seedCount}',
+                  ),
+                if (resource.stats.downloadCount != null)
+                  _DmhyInfoChip(
+                    icon: Icons.cloud_download_outlined,
+                    label: '下载 ${resource.stats.downloadCount}',
+                  ),
+                if (resource.stats.completedCount != null)
+                  _DmhyInfoChip(
+                    icon: Icons.done_all_outlined,
+                    label: '完成 ${resource.stats.completedCount}',
+                  ),
               ],
             ),
             if (resource.descriptionText.isNotEmpty) ...[

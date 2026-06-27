@@ -453,6 +453,9 @@ void main() {
     expect(find.text('MP4'), findsOneWidget);
     expect(find.text('简繁内封'), findsOneWidget);
     expect(find.text('1.25 GB'), findsOneWidget);
+    expect(find.text('种子 12'), findsOneWidget);
+    expect(find.text('下载 34'), findsOneWidget);
+    expect(find.text('完成 56'), findsOneWidget);
     expect(find.text('動畫'), findsOneWidget);
     expect(find.text('test_team'), findsOneWidget);
     expect(find.text('复制'), findsOneWidget);
@@ -789,6 +792,12 @@ class _FakeDmhyRepository implements DmhyRepository {
         metadata: DmhyResourceMetadata.fromText(
           title: '[字幕组] 测试动画 01 1080p HEVC MP4',
           descriptionText: '测试简介 第一集 1.25 GB 简繁内封',
+        ),
+        stats: const DmhyResourceStats(
+          sizeLabel: '1.25 GB',
+          seedCount: 12,
+          downloadCount: 34,
+          completedCount: 56,
         ),
       ),
     ];

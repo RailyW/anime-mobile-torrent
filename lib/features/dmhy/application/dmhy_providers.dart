@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../data/dmhy_rss_client.dart';
 import '../data/dmhy_torrent_client.dart';
+import '../data/dmhy_topic_list_parser.dart';
 import '../domain/dmhy_resource.dart';
 import '../domain/dmhy_torrent_file.dart';
 
@@ -29,12 +30,38 @@ class DmhyRssRepository implements DmhyRepository {
   final DmhyTorrentClient _torrentClient;
 
   @override
-  Future<List<DmhyResource>> searchResources(DmhySearchRequest request) {
-    return _rssClient.searchResources(
+  Future<List<DmhyResource>> searchResources(DmhySearchRequest request) async {
+    final resources = await _rssClient.searchResources(
       keyword: request.normalizedKeyword,
       animeOnly: request.animeOnly,
       limit: request.limit,
     );
+
+    if (!request.includeHtmlStats || resources.isEmpty) {
+      return resources;
+    }
+
+    try {
+      final statsByResource = await _rssClient.fetchTopicListStats(
+        keyword: request.normalizedKeyword,
+        animeOnly: request.animeOnly,
+      );
+      if (statsByResource.isEmpty) {
+        return resources;
+      }
+
+      return [
+        for (final resource in resources)
+          resource.withStats(
+            statsByResource[dmhyResourceStatsKey(resource.detailUri)] ??
+                resource.stats,
+          ),
+      ];
+    } catch (_) {
+      // HTML 统计只是 RSS 结果的增强信息。DMHY 页面结构或临时网络问题不应
+      // 阻断用户看到 RSS 资源、复制 magnet 或继续下载种子文件。
+      return resources;
+    }
   }
 
   @override
@@ -57,11 +84,18 @@ class DmhySearchRequest {
     required this.keyword,
     this.animeOnly = true,
     this.limit = 30,
+    this.includeHtmlStats = true,
   });
 
   final String keyword;
   final bool animeOnly;
   final int limit;
+
+  /// 是否额外请求 DMHY HTML 列表页来补充大小、種子、下載和完成统计。
+  ///
+  /// 前台搜索默认开启，帮助用户筛选资源；后台订阅检查应关闭，避免每个
+  /// 订阅关键词额外访问 HTML 页面。
+  final bool includeHtmlStats;
 
   /// 去除用户输入首尾空白后的关键词。
   String get normalizedKeyword => keyword.trim();
@@ -71,11 +105,13 @@ class DmhySearchRequest {
     return other is DmhySearchRequest &&
         other.normalizedKeyword == normalizedKeyword &&
         other.animeOnly == animeOnly &&
-        other.limit == limit;
+        other.limit == limit &&
+        other.includeHtmlStats == includeHtmlStats;
   }
 
   @override
-  int get hashCode => Object.hash(normalizedKeyword, animeOnly, limit);
+  int get hashCode =>
+      Object.hash(normalizedKeyword, animeOnly, limit, includeHtmlStats);
 }
 
 /// DMHY RSS 客户端 Provider。
@@ -113,6 +149,7 @@ final dmhySearchProvider = FutureProvider.autoDispose
           keyword: normalizedKeyword,
           animeOnly: request.animeOnly,
           limit: request.limit,
+          includeHtmlStats: request.includeHtmlStats,
         ),
       );
     });

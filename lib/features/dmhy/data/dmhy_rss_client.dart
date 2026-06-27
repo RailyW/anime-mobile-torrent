@@ -4,6 +4,7 @@ import 'package:xml/xml.dart';
 import '../domain/dmhy_resource.dart';
 import 'dmhy_rate_limit_retry.dart';
 import 'dmhy_rss_parser.dart';
+import 'dmhy_topic_list_parser.dart';
 
 /// DMHY RSS 调用异常。
 ///
@@ -39,6 +40,7 @@ class DmhyRssClient {
 
   final Dio _dio;
   final DmhyRssParser _parser = const DmhyRssParser();
+  final DmhyTopicListParser _topicListParser = const DmhyTopicListParser();
   final DmhyRateLimitRetry _rateLimitRetry;
 
   /// 复用同一套 DMHY HTTP 配置给详情页和种子文件下载客户端。
@@ -103,6 +105,46 @@ class DmhyRssClient {
       throw DmhyRssException('DMHY RSS 解析失败：${error.message}');
     } on FormatException catch (error) {
       throw DmhyRssException('DMHY RSS 格式异常：${error.message}');
+    }
+  }
+
+  /// 读取 DMHY HTML 列表页中的资源统计。
+  ///
+  /// 该方法只提供 RSS 搜索的增强信息：大小、種子、下載和完成。调用方应把
+  /// 它视为可选数据源，失败时保留 RSS 结果即可。
+  Future<Map<String, DmhyResourceStats>> fetchTopicListStats({
+    required String keyword,
+    bool animeOnly = true,
+  }) async {
+    final normalizedKeyword = keyword.trim();
+    if (normalizedKeyword.isEmpty) {
+      return const {};
+    }
+
+    final path = animeOnly ? '/topics/list/sort_id/2' : '/topics/list';
+    final listUri = Uri.parse(
+      baseUrl,
+    ).replace(path: path, queryParameters: {'keyword': normalizedKeyword});
+
+    try {
+      final response = await _rateLimitRetry.send<String>(
+        () => _dio.get<String>(
+          path,
+          queryParameters: {'keyword': normalizedKeyword},
+          options: Options(responseType: ResponseType.plain),
+        ),
+      );
+
+      final htmlText = response.data;
+      if (htmlText == null || htmlText.trim().isEmpty) {
+        return const {};
+      }
+
+      return _topicListParser.parseStats(htmlText: htmlText, listUri: listUri);
+    } on DioException catch (error) {
+      throw _mapDioException(error);
+    } on FormatException catch (error) {
+      throw DmhyRssException('DMHY HTML 列表格式异常：${error.message}');
     }
   }
 

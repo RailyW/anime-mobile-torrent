@@ -151,6 +151,7 @@ class DmhySubscriptionRepository {
           keyword: keyword.normalizedKeyword,
           animeOnly: keyword.animeOnly,
           limit: limitPerKeyword,
+          includeHtmlStats: false,
         ),
       );
       results.add(

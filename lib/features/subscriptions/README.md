@@ -8,7 +8,7 @@
 - `data/dmhy_subscription_storage.dart`：订阅关键词本地存储接口和 `SharedPreferences` 实现，负责把关键词列表编码为 JSON 字符串并容错读取旧版本或损坏记录。
 - `data/dmhy_subscription_auto_check_storage.dart`：订阅自动检查记录存储接口和 `SharedPreferences` 实现，只保存最近一次检查状态、时间、关键词数量、资源命中数量、最新标题摘要和失败原因。
 - `application/dmhy_subscription_auto_check_service.dart`：订阅自动检查服务，负责读取关键词、按最小间隔节流、调用 DMHY RSS、保存成功或失败检查摘要，并向后台服务返回可展示结果。
-- `application/dmhy_subscription_providers.dart`：订阅 Repository、业务异常、Riverpod Provider 和页面控制器，负责关键词增删去重、读取持久化配置、复用 DMHY Repository 执行 RSS 检查，并把手动检查结果和后台自动检查记录转换为 UI 状态。
+- `application/dmhy_subscription_providers.dart`：订阅 Repository、业务异常、Riverpod Provider 和页面控制器，负责关键词增删去重、读取持久化配置、复用 DMHY Repository 执行轻量 RSS 检查，并把手动检查结果和后台自动检查记录转换为 UI 状态；订阅检查会关闭 DMHY HTML 统计增强，避免后台检查额外访问列表页。
 - `presentation/dmhy_subscription_panel.dart`：DMHY 订阅检查面板，提供关键词输入、动画分类开关、添加/删除、手动检查、后台自动检查记录刷新和最近结果摘要展示；当前嵌入后台常驻页使用。
 
 ## 设计边界
@@ -18,3 +18,4 @@
 3. 本模块不负责资源交接。命中的 RSS 资源只做摘要展示，magnet 打开和 `.torrent` 下载仍由 DMHY 页面与 `torrent_handoff` 模块处理。
 4. 持久化内容只包含关键词、搜索范围、创建时间和后台自动检查聚合摘要，不保存第三方 RSS 条目正文，降低本地缓存和合规风险。
 5. 后台 `TaskHandler` 只调用 application 层自动检查服务，不直接写死 DMHY RSS 请求规则。
+6. 订阅检查只需要知道是否有资源命中，不展示资源大小或热度统计，因此关闭前台搜索才需要的 HTML 列表增强。
