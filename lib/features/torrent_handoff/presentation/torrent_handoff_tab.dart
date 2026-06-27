@@ -808,6 +808,7 @@ class _DeviceDetectionContent extends StatelessWidget {
           description: '系统中可响应 magnet 链接的外部应用。',
           isAvailable: capabilities.canOpenMagnet,
           handlerCount: capabilities.magnetHandlerCount,
+          handlers: capabilities.magnetHandlers,
           isDetectionAvailable: capabilities.isPlatformBridgeAvailable,
         ),
         const SizedBox(height: 10),
@@ -817,6 +818,7 @@ class _DeviceDetectionContent extends StatelessWidget {
           description: '系统中可直开 application/x-bittorrent 文件的外部应用。',
           isAvailable: capabilities.canOpenTorrentFile,
           handlerCount: capabilities.torrentViewHandlerCount,
+          handlers: capabilities.torrentViewHandlers,
           isDetectionAvailable: capabilities.isPlatformBridgeAvailable,
         ),
         const SizedBox(height: 10),
@@ -826,6 +828,7 @@ class _DeviceDetectionContent extends StatelessWidget {
           description: '系统分享面板中可接收种子文件的外部应用。',
           isAvailable: capabilities.canShareTorrentFile,
           handlerCount: capabilities.torrentShareHandlerCount,
+          handlers: capabilities.torrentShareHandlers,
           isDetectionAvailable: capabilities.isPlatformBridgeAvailable,
         ),
         const SizedBox(height: 12),
@@ -896,6 +899,7 @@ class _ProbeLine extends StatelessWidget {
     required this.description,
     required this.isAvailable,
     required this.handlerCount,
+    required this.handlers,
     required this.isDetectionAvailable,
   });
 
@@ -904,6 +908,7 @@ class _ProbeLine extends StatelessWidget {
   final String description;
   final bool isAvailable;
   final int handlerCount;
+  final List<TorrentClientAppCandidate> handlers;
   final bool isDetectionAvailable;
 
   @override
@@ -945,6 +950,10 @@ class _ProbeLine extends StatelessWidget {
                   color: scheme.onSecondaryContainer,
                 ),
               ),
+              if (handlers.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                _ClientCandidateWrap(handlers: handlers),
+              ],
             ],
           ),
         ),
@@ -961,6 +970,112 @@ class _ProbeLine extends StatelessWidget {
       return '可用 $handlerCount 个';
     }
     return '未发现';
+  }
+}
+
+/// resolver 候选客户端列表。
+///
+/// 这里展示系统 resolver 返回的应用名和包名，帮助用户确认当前手机上是哪几个
+/// 外部 BT 客户端可以接住对应 Intent。列表不代表官方推荐或导入成功承诺。
+class _ClientCandidateWrap extends StatelessWidget {
+  const _ClientCandidateWrap({required this.handlers});
+
+  final List<TorrentClientAppCandidate> handlers;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        for (final handler in handlers.take(4))
+          _ClientCandidateChip(handler: handler),
+        if (handlers.length > 4)
+          _ClientCandidateOverflowChip(extraCount: handlers.length - 4),
+      ],
+    );
+  }
+}
+
+/// 单个外部客户端候选标签。
+class _ClientCandidateChip extends StatelessWidget {
+  const _ClientCandidateChip({required this.handler});
+
+  final TorrentClientAppCandidate handler;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final subtitle = handler.packageName.isEmpty ? null : handler.packageName;
+
+    return Tooltip(
+      message: subtitle == null
+          ? handler.displayName
+          : '${handler.displayName}\n$subtitle',
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: scheme.surface,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.apps_outlined,
+                size: 14,
+                color: scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 4),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 140),
+                child: Text(
+                  handler.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: scheme.onSurfaceVariant,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 候选项过多时的折叠数量标签。
+class _ClientCandidateOverflowChip extends StatelessWidget {
+  const _ClientCandidateOverflowChip({required this.extraCount});
+
+  final int extraCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Text(
+          '+$extraCount',
+          style: TextStyle(
+            color: scheme.onSurfaceVariant,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
   }
 }
 

@@ -5,7 +5,7 @@
 ## 当前包含文件与目录
 
 - `app/src/main/AndroidManifest.xml`：声明网络权限、前台服务权限、前台服务类型权限、启动 Activity、Flutter embedding、Bangumi OAuth 回跳兼容设置、`flutter_foreground_task` 服务、外部 BT 客户端查询能力和 `video/*` 播放器查询能力。
-- `app/src/main/kotlin/com/railyw/anime_mobile_torrent/MainActivity.kt`：Flutter 安卓宿主 Activity，当前注册 `anime_mobile_torrent/torrent_client_detection` MethodChannel，通过 PackageManager 查询 magnet、`.torrent` 直开和 `.torrent` 分享导入的 resolver 候选数量。
+- `app/src/main/kotlin/com/railyw/anime_mobile_torrent/MainActivity.kt`：Flutter 安卓宿主 Activity，当前注册 `anime_mobile_torrent/torrent_client_detection` MethodChannel，通过 PackageManager 查询 magnet、`.torrent` 直开和 `.torrent` 分享导入的 resolver 候选数量、应用名称、包名和 Activity 名称。
 - `app/src/main/res/`：启动背景、图标和主题资源。
 - `build.gradle.kts`、`settings.gradle.kts`、`gradle.properties`：Android Gradle 构建配置，其中 app 模块通过 `appAuthRedirectScheme` manifest placeholder 注册 Bangumi OAuth 自定义 scheme。
 - `gradle/wrapper/`：Gradle Wrapper 配置。

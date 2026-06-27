@@ -1070,7 +1070,7 @@ class _SeedHandoffHint {
       return _SeedHandoffHint(
         icon: Icons.check_circle_outline,
         message:
-            '当前设备支持 .torrent 直开（${capabilities.torrentViewHandlerCount} 个候选）',
+            '当前设备支持 .torrent 直开：${_handlerSummary(capabilities.torrentViewHandlers, capabilities.torrentViewHandlerCount)}',
         isWarning: false,
       );
     }
@@ -1079,7 +1079,7 @@ class _SeedHandoffHint {
       return _SeedHandoffHint(
         icon: Icons.ios_share_outlined,
         message:
-            '未发现 .torrent 直开客户端，将依赖分享面板导入（${capabilities.torrentShareHandlerCount} 个候选）',
+            '未发现 .torrent 直开客户端，将依赖分享面板导入：${_handlerSummary(capabilities.torrentShareHandlers, capabilities.torrentShareHandlerCount)}',
         isWarning: false,
       );
     }
@@ -1097,6 +1097,30 @@ class _SeedHandoffHint {
       message: '未发现外部 BT 客户端，主按钮已切换为复制 magnet',
       isWarning: true,
     );
+  }
+
+  /// 生成候选客户端摘要。
+  ///
+  /// Android resolver 可能只返回数量，也可能返回具体候选列表。这里优先展示
+  /// 应用名称；没有列表时保留原先的数量提示。
+  static String _handlerSummary(
+    List<TorrentClientAppCandidate> handlers,
+    int count,
+  ) {
+    if (handlers.isEmpty) {
+      return '$count 个候选';
+    }
+
+    final names = handlers
+        .take(2)
+        .map((handler) => handler.displayName)
+        .join('、');
+    final extraCount = handlers.length - 2;
+    if (extraCount > 0) {
+      return '$names 等 ${handlers.length} 个候选';
+    }
+
+    return names;
   }
 }
 

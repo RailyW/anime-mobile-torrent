@@ -142,6 +142,58 @@ void main() {
     expect(find.text('后台自动检查'), findsOneWidget);
   });
 
+  testWidgets('种子交接页可以展示外部客户端候选应用', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(
+              capabilities: TorrentClientCapabilities(
+                isPlatformBridgeAvailable: true,
+                canOpenMagnet: true,
+                canOpenTorrentFile: true,
+                canShareTorrentFile: true,
+                magnetHandlerCount: 1,
+                torrentViewHandlerCount: 1,
+                torrentShareHandlerCount: 1,
+                magnetHandlers: [
+                  TorrentClientAppCandidate(
+                    label: '测试磁力客户端',
+                    packageName: 'com.example.magnet',
+                    activityName: 'MagnetActivity',
+                  ),
+                ],
+                torrentViewHandlers: [
+                  TorrentClientAppCandidate(
+                    label: '测试直开客户端',
+                    packageName: 'com.example.view',
+                    activityName: 'ViewActivity',
+                  ),
+                ],
+                torrentShareHandlers: [
+                  TorrentClientAppCandidate(
+                    label: '测试分享客户端',
+                    packageName: 'com.example.share',
+                    activityName: 'ShareActivity',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('种子').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('测试磁力客户端'), findsOneWidget);
+    expect(find.text('测试直开客户端'), findsOneWidget);
+    expect(find.text('测试分享客户端'), findsOneWidget);
+  });
+
   testWidgets('DMHY 订阅关键词可以跳转到搜索页并保留全站范围', (tester) async {
     final dmhyRepository = _FakeDmhyRepository();
 

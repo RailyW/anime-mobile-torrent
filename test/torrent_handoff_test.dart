@@ -65,6 +65,20 @@ void main() {
         'magnetHandlerCount': 2,
         'torrentViewHandlerCount': 0,
         'torrentShareHandlerCount': 1,
+        'magnetHandlers': [
+          {
+            'label': '测试 BT',
+            'packageName': 'com.example.bt',
+            'activityName': 'com.example.bt.MagnetActivity',
+          },
+        ],
+        'torrentShareHandlers': [
+          {
+            'label': '分享 BT',
+            'packageName': 'com.example.sharebt',
+            'activityName': 'com.example.sharebt.ImportActivity',
+          },
+        ],
         'androidSdkInt': 35,
         'checkedAtMillis': 1710000000000,
       });
@@ -76,6 +90,14 @@ void main() {
       expect(capabilities.magnetHandlerCount, 2);
       expect(capabilities.torrentViewHandlerCount, 0);
       expect(capabilities.torrentShareHandlerCount, 1);
+      expect(capabilities.magnetHandlers.single.displayName, '测试 BT');
+      expect(capabilities.magnetHandlers.single.packageName, 'com.example.bt');
+      expect(capabilities.torrentViewHandlers, isEmpty);
+      expect(capabilities.torrentShareHandlers.single.displayName, '分享 BT');
+      expect(
+        capabilities.handlersFor(TorrentClientHandoffPath.magnet),
+        capabilities.magnetHandlers,
+      );
       expect(capabilities.androidSdkInt, 35);
       expect(
         capabilities.checkedAt,

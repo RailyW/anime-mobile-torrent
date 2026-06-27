@@ -42,17 +42,20 @@ class MainActivity : FlutterActivity() {
      * 直接转换，不需要额外引入序列化库。
      */
     private fun detectTorrentClientCapabilities(): Map<String, Any> {
-        val magnetCount = countResolvableActivities(createMagnetProbeIntent())
-        val torrentViewCount = countResolvableActivities(createTorrentViewProbeIntent())
-        val torrentShareCount = countResolvableActivities(createTorrentShareProbeIntent())
+        val magnetHandlers = queryIntentActivitiesCompat(createMagnetProbeIntent())
+        val torrentViewHandlers = queryIntentActivitiesCompat(createTorrentViewProbeIntent())
+        val torrentShareHandlers = queryIntentActivitiesCompat(createTorrentShareProbeIntent())
 
         return mapOf(
-            "canOpenMagnet" to (magnetCount > 0),
-            "canOpenTorrentFile" to (torrentViewCount > 0),
-            "canShareTorrentFile" to (torrentShareCount > 0),
-            "magnetHandlerCount" to magnetCount,
-            "torrentViewHandlerCount" to torrentViewCount,
-            "torrentShareHandlerCount" to torrentShareCount,
+            "canOpenMagnet" to magnetHandlers.isNotEmpty(),
+            "canOpenTorrentFile" to torrentViewHandlers.isNotEmpty(),
+            "canShareTorrentFile" to torrentShareHandlers.isNotEmpty(),
+            "magnetHandlerCount" to magnetHandlers.size,
+            "torrentViewHandlerCount" to torrentViewHandlers.size,
+            "torrentShareHandlerCount" to torrentShareHandlers.size,
+            "magnetHandlers" to magnetHandlers.map { it.toClientMap() },
+            "torrentViewHandlers" to torrentViewHandlers.map { it.toClientMap() },
+            "torrentShareHandlers" to torrentShareHandlers.map { it.toClientMap() },
             "androidSdkInt" to Build.VERSION.SDK_INT,
             "checkedAtMillis" to System.currentTimeMillis(),
         )
@@ -95,16 +98,6 @@ class MainActivity : FlutterActivity() {
             .addCategory(Intent.CATEGORY_DEFAULT)
     }
 
-    /**
-     * 统计可处理 Intent 的 Activity 数量。
-     *
-     * Android 13 起 PackageManager 查询 API 使用 ResolveInfoFlags；低版本仍走
-     * 兼容重载。MATCH_DEFAULT_ONLY 与系统 resolver 的默认可见行为保持一致。
-     */
-    private fun countResolvableActivities(intent: Intent): Int {
-        return queryIntentActivitiesCompat(intent).size
-    }
-
     @Suppress("DEPRECATION")
     private fun queryIntentActivitiesCompat(intent: Intent): List<ResolveInfo> {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -117,6 +110,23 @@ class MainActivity : FlutterActivity() {
         } else {
             packageManager.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
         }
+    }
+
+    /**
+     * 将 Android resolver 候选项转换为 Flutter MethodChannel 可直接编码的 Map。
+     *
+     * label 来自系统应用名，packageName 和 activityName 用于排查同名客户端或
+     * 同一个应用内的多个入口。这里不返回图标，避免在 MethodChannel 里传输
+     * 大对象，也不暴露额外权限敏感信息。
+     */
+    private fun ResolveInfo.toClientMap(): Map<String, String> {
+        val activity = activityInfo
+        val label = loadLabel(packageManager)?.toString()?.trim().orEmpty()
+        return mapOf(
+            "label" to label,
+            "packageName" to activity?.packageName.orEmpty(),
+            "activityName" to activity?.name.orEmpty(),
+        )
     }
 
     private companion object {
