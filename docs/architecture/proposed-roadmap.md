@@ -251,7 +251,7 @@ flowchart LR
 1. 已接入 `flutter_foreground_task`，在 `lib/features/background` 中封装后台常驻状态、Repository、Riverpod 控制器和首页标签页。
 2. 已在 `main.dart` 初始化 foreground task 通信端口，并使用 `WithForegroundTask` 处理服务运行时的返回键最小化行为。
 3. 已在 Android Manifest 中声明 `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_DATA_SYNC`、Android 13+ `POST_NOTIFICATIONS` 和插件固定服务 `com.pravera.flutter_foreground_task.service.ForegroundService`。
-4. 已提供“后台”首页标签页，支持启动、停止、刷新状态，并展示持续通知、通知权限启动前检查和低频心跳接入情况。
+4. 已提供“后台”首页标签页，支持启动、停止、手动刷新状态，并在后台 tab 激活时自动刷新一次服务状态；页面会展示持续通知、通知权限启动前检查和低频心跳接入情况。
 5. 已新增 `lib/features/subscriptions`，支持从后台订阅面板或 DMHY 搜索结果页保存 DMHY RSS 订阅关键词、选择动画分类或全站范围、手动检查 RSS、后台低频自动检查、新命中识别，并在前台展示最近自动检查摘要和失败原因。
 6. 已把订阅自动检查接入前台服务心跳：服务运行时按最小间隔读取关键词、检查 DMHY RSS，把成功或失败摘要写入本地记录，并通过持续通知展示检查摘要；新命中识别只比较“关键词 + 搜索范围 + 最新标题”，不保存完整 RSS 条目列表。
 7. 已支持后台通知默认打开 `/?tab=background` 回到后台页；如果最近一次订阅自动检查发现新资源命中且携带最新关键词，则通知点击会直接打开 `/?tab=dmhy&keyword=...&animeOnly=...` 进入 DMHY 搜索页；重复命中同一最新标题时回到后台摘要页；同时提供“查看后台”通知按钮通过主 isolate 消息桥请求打开后台页，以及“停止后台”通知按钮请求停止前台服务。

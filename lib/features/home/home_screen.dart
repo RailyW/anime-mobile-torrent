@@ -128,11 +128,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         label: '播放',
         child: PlaybackTab(entryContext: widget.initialPlaybackEntryContext),
       ),
-      const _HomeTab(
+      _HomeTab(
         icon: Icons.notifications_active_outlined,
         selectedIcon: Icons.notifications_active,
         label: '后台',
-        child: BackgroundTab(),
+        child: BackgroundTab(isActive: _selectedIndex == 4),
       ),
     ];
 

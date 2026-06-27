@@ -8,7 +8,9 @@ import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_collection.
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_episode_collection.dart';
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_subject.dart';
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_user.dart';
+import 'package:anime_mobile_torrent/features/background/application/background_residency_providers.dart';
 import 'package:anime_mobile_torrent/features/background/data/background_residency_repository.dart';
+import 'package:anime_mobile_torrent/features/background/domain/background_residency_state.dart';
 import 'package:anime_mobile_torrent/features/dmhy/application/dmhy_providers.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_resource.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_resource_metadata.dart';
@@ -37,6 +39,9 @@ Widget _buildTestApp() {
     overrides: [
       torrentClientCapabilityRepositoryProvider.overrideWithValue(
         const _FakeTorrentClientCapabilityRepository(),
+      ),
+      backgroundResidencyRepositoryProvider.overrideWithValue(
+        _FakeWidgetBackgroundResidencyRepository(),
       ),
     ],
     child: const AnimeMobileTorrentApp(),
@@ -138,6 +143,7 @@ void main() {
     expect(find.widgetWithText(FilledButton, '启动后台'), findsOneWidget);
     expect(find.text('通知权限'), findsOneWidget);
     expect(find.text('启动前检查'), findsOneWidget);
+    expect(find.text('后台常驻服务未启动'), findsWidgets);
     expect(find.text('DMHY 订阅检查'), findsOneWidget);
     expect(find.text('后台自动检查'), findsOneWidget);
     expect(find.text('暂无后台自动检查记录'), findsOneWidget);
@@ -262,6 +268,7 @@ void main() {
 
     expect(find.text('后台常驻'), findsOneWidget);
     expect(find.text('服务控制'), findsOneWidget);
+    expect(find.text('后台常驻服务未启动'), findsWidgets);
     expect(find.text('后台自动检查'), findsOneWidget);
   });
 
@@ -290,6 +297,7 @@ void main() {
 
     expect(find.text('后台常驻'), findsOneWidget);
     expect(find.text('服务控制'), findsOneWidget);
+    expect(find.text('后台常驻服务未启动'), findsWidgets);
     expect(find.text('后台自动检查'), findsOneWidget);
   });
 
@@ -552,6 +560,9 @@ void main() {
         overrides: [
           torrentClientCapabilityRepositoryProvider.overrideWithValue(
             const _FakeTorrentClientCapabilityRepository(),
+          ),
+          backgroundResidencyRepositoryProvider.overrideWithValue(
+            _FakeWidgetBackgroundResidencyRepository(),
           ),
           dmhyRepositoryProvider.overrideWithValue(dmhyRepository),
         ],
@@ -964,6 +975,9 @@ void main() {
         overrides: [
           torrentClientCapabilityRepositoryProvider.overrideWithValue(
             const _FakeTorrentClientCapabilityRepository(),
+          ),
+          backgroundResidencyRepositoryProvider.overrideWithValue(
+            _FakeWidgetBackgroundResidencyRepository(),
           ),
           dmhyRepositoryProvider.overrideWithValue(_FakeDmhyRepository()),
         ],
@@ -1955,5 +1969,43 @@ class _FakeTorrentHandoffRepository implements TorrentHandoffRepository {
     TorrentSeedFile file,
   ) {
     return openSeedFile(file);
+  }
+}
+
+class _FakeWidgetBackgroundResidencyRepository
+    implements BackgroundResidencyRepository {
+  bool isRunning = false;
+
+  @override
+  Future<BackgroundResidencySnapshot> refreshStatus() async {
+    return _snapshot(
+      isRunning
+          ? BackgroundResidencyStatus.running
+          : BackgroundResidencyStatus.stopped,
+      isRunning ? '后台常驻服务正在运行' : '后台常驻服务未启动',
+    );
+  }
+
+  @override
+  Future<BackgroundResidencySnapshot> start() async {
+    isRunning = true;
+    return _snapshot(BackgroundResidencyStatus.running, '后台常驻服务已启动');
+  }
+
+  @override
+  Future<BackgroundResidencySnapshot> stop() async {
+    isRunning = false;
+    return _snapshot(BackgroundResidencyStatus.stopped, '后台常驻服务已停止');
+  }
+
+  BackgroundResidencySnapshot _snapshot(
+    BackgroundResidencyStatus status,
+    String message,
+  ) {
+    return BackgroundResidencySnapshot(
+      status: status,
+      message: message,
+      checkedAt: DateTime(2026, 6, 27, 16),
+    );
   }
 }

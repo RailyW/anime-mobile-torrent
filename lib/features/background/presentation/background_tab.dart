@@ -9,11 +9,63 @@ import '../domain/background_residency_state.dart';
 ///
 /// 页面只负责展示状态和触发控制器命令，不直接调用 Android 插件。启动服务
 /// 必须由用户点击按钮触发，避免 APP 打开后自动申请通知权限或自动常驻。
-class BackgroundTab extends ConsumerWidget {
-  const BackgroundTab({super.key});
+class BackgroundTab extends ConsumerStatefulWidget {
+  const BackgroundTab({this.isActive = false, super.key});
+
+  /// 当前后台页是否是首页底部导航正在展示的 tab。
+  ///
+  /// 首页使用 `IndexedStack` 保留所有 tab 状态，因此后台页即使不可见也会被
+  /// 构建。只有该值为 true 时才允许自动刷新平台服务状态，避免 APP 启动时
+  /// 就触发前台服务 MethodChannel。
+  final bool isActive;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<BackgroundTab> createState() => _BackgroundTabState();
+}
+
+class _BackgroundTabState extends ConsumerState<BackgroundTab> {
+  @override
+  void initState() {
+    super.initState();
+    _refreshStatusAfterActivation();
+  }
+
+  @override
+  void didUpdateWidget(covariant BackgroundTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (!oldWidget.isActive && widget.isActive) {
+      _refreshStatusAfterActivation();
+    }
+  }
+
+  /// 在后台页真正可见后刷新一次服务状态。
+  ///
+  /// 这里故意放到 frame 之后执行，避免在 build 生命周期中直接修改 Riverpod
+  /// 状态；用户点击“刷新状态”仍然可以随时手动重新读取平台状态。
+  void _refreshStatusAfterActivation() {
+    if (!widget.isActive) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      final state = ref.read(backgroundResidencyControllerProvider);
+      if (state.isBusy) {
+        return;
+      }
+
+      ref
+          .read(backgroundResidencyControllerProvider.notifier)
+          .refreshStatus(showActionMessage: false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final state = ref.watch(backgroundResidencyControllerProvider);
     final controller = ref.read(backgroundResidencyControllerProvider.notifier);
 
