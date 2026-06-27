@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app_router.dart';
 import 'app_theme.dart';
+import 'foreground_task_navigation_bridge.dart';
 
 /// APP 根组件。
 ///
@@ -16,12 +17,15 @@ class AnimeMobileTorrentApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(appRouterProvider);
 
-    return MaterialApp.router(
-      title: 'Anime Mobile Torrent',
-      debugShowCheckedModeBanner: false,
-      theme: buildLightTheme(),
-      darkTheme: buildDarkTheme(),
-      routerConfig: router,
+    return ForegroundTaskNavigationBridge(
+      router: router,
+      child: MaterialApp.router(
+        title: 'Anime Mobile Torrent',
+        debugShowCheckedModeBanner: false,
+        theme: buildLightTheme(),
+        darkTheme: buildDarkTheme(),
+        routerConfig: router,
+      ),
     );
   }
 }

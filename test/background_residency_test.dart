@@ -80,6 +80,17 @@ void main() {
     expect(noKeywordRoute, '/?tab=background');
   });
 
+  test('后台通知查看后台按钮会生成主 isolate 路由请求', () {
+    final message = buildBackgroundNotificationOpenRouteRequest(
+      timestamp: DateTime.utc(2026, 6, 27, 15, 30),
+    );
+
+    expect(message['type'], backgroundResidencyOpenRouteRequestedMessageType);
+    expect(message['route'], backgroundResidencyBackgroundRoute);
+    expect(message['source'], 'notificationButton');
+    expect(message['timestamp'], '2026-06-27T15:30:00.000Z');
+  });
+
   test('BackgroundResidencyController 可以启动、刷新和停止服务', () async {
     final repository = _FakeBackgroundResidencyRepository();
     final container = ProviderContainer(

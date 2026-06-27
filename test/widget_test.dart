@@ -8,6 +8,7 @@ import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_collection.
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_episode_collection.dart';
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_subject.dart';
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_user.dart';
+import 'package:anime_mobile_torrent/features/background/data/background_residency_repository.dart';
 import 'package:anime_mobile_torrent/features/dmhy/application/dmhy_providers.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_resource.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_resource_metadata.dart';
@@ -21,6 +22,7 @@ import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_han
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_history_item.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_file.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -249,6 +251,34 @@ void main() {
     );
 
     await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('后台常驻'), findsOneWidget);
+    expect(find.text('服务控制'), findsOneWidget);
+    expect(find.text('后台自动检查'), findsOneWidget);
+  });
+
+  testWidgets('前台服务查看后台消息可以导航到后台标签页', (tester) async {
+    FlutterForegroundTask.resetStatic();
+    FlutterForegroundTask.initCommunicationPort();
+    addTearDown(FlutterForegroundTask.resetStatic);
+
+    await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('登录/搜索'), findsOneWidget);
+
+    final callbacks = List.of(FlutterForegroundTask.dataCallbacks);
+    expect(callbacks, isNotEmpty);
+
+    // 插件自己的端口投递属于 flutter_foreground_task 的实现边界；这里聚焦
+    // 验证 APP 根组件注册的消息回调是否能把通知按钮请求转换成首页路由。
+    callbacks.last(
+      buildBackgroundNotificationOpenRouteRequest(
+        timestamp: DateTime.utc(2026, 6, 27, 15, 30),
+      ),
+    );
+    await tester.pump();
     await tester.pumpAndSettle();
 
     expect(find.text('后台常驻'), findsOneWidget);

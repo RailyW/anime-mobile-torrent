@@ -6,6 +6,18 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import '../../subscriptions/application/dmhy_subscription_auto_check_service.dart';
 import '../domain/background_residency_state.dart';
 
+/// 后台通知默认回到后台常驻页的首页路由。
+///
+/// 该路由同时用于通知主点击兜底和“查看后台”通知按钮的主 isolate 导航请求。
+const String backgroundResidencyBackgroundRoute = '/?tab=background';
+
+/// 后台服务请求主 isolate 打开某个 APP 路由时使用的消息类型。
+///
+/// `FlutterForegroundTask.sendDataToMain` 只传递 Map，APP 根组件会识别该
+/// 类型并使用 GoRouter 导航。这里保持公共常量，避免 app 层硬编码字符串。
+const String backgroundResidencyOpenRouteRequestedMessageType =
+    'backgroundResidencyOpenRouteRequested';
+
 /// 后台常驻服务仓库接口。
 ///
 /// presentation 层只依赖该接口，从而可以在 widget test 中替换为 fake，
@@ -27,9 +39,11 @@ class FlutterForegroundTaskResidencyRepository
 
   static const _serviceId = 977;
   static const _heartbeatIntervalMs = 15 * 60 * 1000;
-  static const _notificationRoute = '/?tab=background';
+  static const _notificationRoute = backgroundResidencyBackgroundRoute;
+  static const _openBackgroundButtonId = 'open_background_residency';
   static const _stopButtonId = 'stop_background_residency';
   static const _notificationButtons = [
+    NotificationButton(id: _openBackgroundButtonId, text: '查看后台'),
     NotificationButton(id: _stopButtonId, text: '停止后台'),
   ];
 
@@ -78,7 +92,7 @@ class FlutterForegroundTaskResidencyRepository
         if (result is ServiceRequestSuccess) {
           await FlutterForegroundTask.updateService(
             notificationTitle: 'Anime Mobile Torrent 正在后台运行',
-            notificationText: '点击查看后台订阅检查，或点“停止后台”结束服务。',
+            notificationText: '点击通知查看后台订阅检查，或用按钮查看后台/停止服务。',
             notificationButtons: _notificationButtons,
             notificationInitialRoute: _notificationRoute,
           );
@@ -88,7 +102,7 @@ class FlutterForegroundTaskResidencyRepository
           serviceId: _serviceId,
           serviceTypes: const [ForegroundServiceTypes.dataSync],
           notificationTitle: 'Anime Mobile Torrent 正在后台运行',
-          notificationText: '点击查看后台订阅检查，或点“停止后台”结束服务。',
+          notificationText: '点击通知查看后台订阅检查，或用按钮查看后台/停止服务。',
           notificationButtons: _notificationButtons,
           notificationInitialRoute: _notificationRoute,
           callback: startBackgroundResidencyService,
@@ -320,6 +334,14 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
 
   @override
   void onNotificationButtonPressed(String id) {
+    if (id ==
+        FlutterForegroundTaskResidencyRepository._openBackgroundButtonId) {
+      FlutterForegroundTask.sendDataToMain(
+        buildBackgroundNotificationOpenRouteRequest(timestamp: DateTime.now()),
+      );
+      return;
+    }
+
     if (id != FlutterForegroundTaskResidencyRepository._stopButtonId) {
       return;
     }
@@ -331,6 +353,22 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
     });
     unawaited(FlutterForegroundTask.stopService());
   }
+}
+
+/// 生成通知按钮请求主 isolate 打开后台页的消息。
+///
+/// 这个消息不调用 `FlutterForegroundTask.launchApp`，因此不需要悬浮窗权限。
+/// 当 APP 主 isolate 仍在内存中时，根组件会收到该消息并导航到后台页；如果
+/// 主 isolate 不存在，通知主点击仍会使用 `notificationInitialRoute` 兜底。
+Map<String, Object?> buildBackgroundNotificationOpenRouteRequest({
+  required DateTime timestamp,
+}) {
+  return {
+    'type': backgroundResidencyOpenRouteRequestedMessageType,
+    'route': backgroundResidencyBackgroundRoute,
+    'timestamp': timestamp.toIso8601String(),
+    'source': 'notificationButton',
+  };
 }
 
 /// 计算后台持续通知点击时应进入的首页路由。
