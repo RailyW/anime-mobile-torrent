@@ -232,6 +232,43 @@ void main() {
       expect(page.episodes.last.updatedAt, isNull);
     });
 
+    test('可以计算批量标记到目标话数的未看本篇章节', () {
+      final page = BangumiEpisodeCollectionPage(
+        total: 4,
+        limit: 100,
+        offset: 0,
+        episodes: [
+          _buildEpisodeCollection(
+            id: 1,
+            ep: 1,
+            type: BangumiEpisodeCollectionType.done,
+          ),
+          _buildEpisodeCollection(
+            id: 2,
+            ep: 2,
+            type: BangumiEpisodeCollectionType.none,
+          ),
+          _buildEpisodeCollection(
+            id: 3,
+            ep: 3,
+            type: BangumiEpisodeCollectionType.wish,
+          ),
+          _buildEpisodeCollection(
+            id: 4,
+            ep: 1,
+            episodeType: BangumiEpisodeType.special,
+            type: BangumiEpisodeCollectionType.none,
+          ),
+        ],
+      );
+
+      final targetEpisodes = page.unwatchedMainStoriesThrough(page.episodes[2]);
+
+      expect(page.mainStoryEpisodes.map((item) => item.episode.id), [1, 2, 3]);
+      expect(targetEpisodes.map((item) => item.episode.id), [2, 3]);
+      expect(page.firstUnwatchedMainStory?.episode.id, 2);
+    });
+
     test('可以序列化章节状态修改请求并过滤非法 ID', () {
       final update = BangumiEpisodeCollectionUpdate(
         episodeIds: [1, 0, -1, 3],
@@ -244,6 +281,32 @@ void main() {
       });
     });
   });
+}
+
+BangumiEpisodeCollection _buildEpisodeCollection({
+  required int id,
+  required double ep,
+  required BangumiEpisodeCollectionType type,
+  BangumiEpisodeType episodeType = BangumiEpisodeType.mainStory,
+}) {
+  return BangumiEpisodeCollection(
+    episode: BangumiEpisode(
+      id: id,
+      type: episodeType,
+      name: 'Episode $id',
+      nameCn: '第 $id 话',
+      sort: ep,
+      ep: ep,
+      airDate: '2026-01-0$id',
+      commentCount: 0,
+      duration: '',
+      description: '',
+      disc: 0,
+      durationSeconds: 0,
+    ),
+    type: type,
+    updatedAt: null,
+  );
 }
 
 class _FakeBangumiMyCollectionRepository

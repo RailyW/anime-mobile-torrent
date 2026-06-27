@@ -157,6 +157,13 @@ class BangumiEpisode {
 
     return formatted.isEmpty ? type.label : '${type.label} $formatted';
   }
+
+  /// 章节进度排序值。
+  ///
+  /// Bangumi 的本篇章节通常同时有 `ep` 和 `sort`。用户执行“标记到第 N
+  /// 话”时优先使用更贴近正片话数的 `ep`，缺失时回退到 `sort`，让批量
+  /// 标记在普通 TV 动画和少数字段缺省条目中都能保持稳定顺序。
+  double get progressOrder => ep > 0 ? ep : sort;
 }
 
 /// 当前用户对单集的收藏状态。
@@ -206,16 +213,53 @@ class BangumiEpisodeCollectionPage {
     }).length;
   }
 
+  /// 当前分页内的本篇章节。
+  ///
+  /// Bangumi API 可能返回 SP、OP、ED 等非本篇章节；追番进度和批量标记只
+  /// 操作本篇，避免误把特典或 OP/ED 写成看过。
+  List<BangumiEpisodeCollection> get mainStoryEpisodes {
+    return List.unmodifiable(
+      episodes.where((item) {
+        return item.episode.type == BangumiEpisodeType.mainStory &&
+            item.episode.id > 0;
+      }),
+    );
+  }
+
   /// 本页内第一集尚未标记为看过的本篇章节。
   BangumiEpisodeCollection? get firstUnwatchedMainStory {
-    for (final item in episodes) {
-      if (item.episode.type == BangumiEpisodeType.mainStory &&
-          item.type != BangumiEpisodeCollectionType.done) {
+    for (final item in mainStoryEpisodes) {
+      if (item.type != BangumiEpisodeCollectionType.done) {
         return item;
       }
     }
 
     return null;
+  }
+
+  /// 计算从开头到目标章节之间尚未看过的本篇章节。
+  ///
+  /// 返回值用于批量 PATCH 章节状态。已经看过的章节会被排除，减少不必要的
+  /// API 写入；目标如果不是本篇章节或没有有效排序，则返回空列表。
+  List<BangumiEpisodeCollection> unwatchedMainStoriesThrough(
+    BangumiEpisodeCollection target,
+  ) {
+    if (target.episode.type != BangumiEpisodeType.mainStory) {
+      return const [];
+    }
+
+    final targetOrder = target.episode.progressOrder;
+    if (targetOrder <= 0) {
+      return const [];
+    }
+
+    return List.unmodifiable(
+      mainStoryEpisodes.where((item) {
+        return item.episode.progressOrder > 0 &&
+            item.episode.progressOrder <= targetOrder &&
+            item.type != BangumiEpisodeCollectionType.done;
+      }),
+    );
   }
 
   /// 从官方分页 JSON 中解析章节收藏列表。

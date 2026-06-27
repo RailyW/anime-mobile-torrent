@@ -489,6 +489,8 @@ class _EpisodeProgressList extends ConsumerStatefulWidget {
 
 class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
   int? _savingEpisodeId;
+  bool _isSavingBatch = false;
+  int? _selectedBatchEpisodeId;
 
   @override
   Widget build(BuildContext context) {
@@ -497,6 +499,11 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
     final page = widget.page;
     final total = page.total > 0 ? page.total : page.episodes.length;
     final nextEpisode = page.firstUnwatchedMainStory;
+    final mainStoryEpisodes = page.mainStoryEpisodes;
+    final selectedBatchTarget = _resolveBatchTarget(
+      mainStoryEpisodes: mainStoryEpisodes,
+      nextEpisode: nextEpisode,
+    );
     final visibleEpisodes = page.episodes.take(8).toList(growable: false);
 
     if (page.episodes.isEmpty) {
@@ -547,7 +554,10 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
               runSpacing: 8,
               children: [
                 FilledButton.icon(
-                  onPressed: nextEpisode == null || _savingEpisodeId != null
+                  onPressed:
+                      nextEpisode == null ||
+                          _savingEpisodeId != null ||
+                          _isSavingBatch
                       ? null
                       : () => _saveEpisodeStatus(
                           nextEpisode,
@@ -557,7 +567,7 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
                   label: const Text('标记下一话看过'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: _savingEpisodeId == null
+                  onPressed: _savingEpisodeId == null && !_isSavingBatch
                       ? () {
                           ref.invalidate(
                             bangumiMySubjectEpisodeCollectionsProvider(
@@ -571,6 +581,25 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
                 ),
               ],
             ),
+            if (mainStoryEpisodes.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              _EpisodeBatchProgressControl(
+                episodes: mainStoryEpisodes,
+                selectedEpisodeId: selectedBatchTarget?.episode.id,
+                isSaving: _isSavingBatch,
+                onChanged: (episodeId) {
+                  setState(() {
+                    _selectedBatchEpisodeId = episodeId;
+                  });
+                },
+                onSubmit:
+                    selectedBatchTarget == null ||
+                        _savingEpisodeId != null ||
+                        _isSavingBatch
+                    ? null
+                    : () => _saveEpisodesThrough(selectedBatchTarget),
+              ),
+            ],
             const SizedBox(height: 10),
             for (final item in visibleEpisodes)
               _EpisodeProgressTile(
@@ -581,7 +610,7 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
             if (total > visibleEpisodes.length) ...[
               const SizedBox(height: 6),
               Text(
-                '已展示前 ${visibleEpisodes.length} 话，后续会加入完整分页列表。',
+                '已展示前 ${visibleEpisodes.length} 话，批量标记只作用于当前已加载章节。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),
@@ -641,6 +670,150 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
         });
       }
     }
+  }
+
+  BangumiEpisodeCollection? _resolveBatchTarget({
+    required List<BangumiEpisodeCollection> mainStoryEpisodes,
+    required BangumiEpisodeCollection? nextEpisode,
+  }) {
+    if (mainStoryEpisodes.isEmpty) {
+      return null;
+    }
+
+    final selectedEpisodeId = _selectedBatchEpisodeId;
+    if (selectedEpisodeId != null) {
+      for (final item in mainStoryEpisodes) {
+        if (item.episode.id == selectedEpisodeId) {
+          return item;
+        }
+      }
+    }
+
+    return nextEpisode ?? mainStoryEpisodes.last;
+  }
+
+  Future<void> _saveEpisodesThrough(BangumiEpisodeCollection target) async {
+    if (_savingEpisodeId != null || _isSavingBatch) {
+      return;
+    }
+
+    final targetEpisodes = widget.page.unwatchedMainStoriesThrough(target);
+    if (targetEpisodes.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('目标范围内已全部标记为看过')));
+      return;
+    }
+
+    setState(() {
+      _isSavingBatch = true;
+      _selectedBatchEpisodeId = target.episode.id;
+    });
+
+    try {
+      final repository = ref.read(bangumiMyCollectionRepositoryProvider);
+      await repository.saveMySubjectEpisodeStatus(
+        subjectId: widget.subject.id,
+        episodeIds: targetEpisodes
+            .map((item) => item.episode.id)
+            .toList(growable: false),
+        type: BangumiEpisodeCollectionType.done,
+      );
+
+      ref.invalidate(
+        bangumiMySubjectEpisodeCollectionsProvider(widget.request),
+      );
+      ref.invalidate(bangumiMySubjectCollectionProvider(widget.subject.id));
+      ref.invalidate(bangumiSubjectDetailProvider(widget.subject.id));
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '已标记到${target.episode.sortLabel}看过，共 ${targetEpisodes.length} 话',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSavingBatch = false;
+        });
+      }
+    }
+  }
+}
+
+class _EpisodeBatchProgressControl extends StatelessWidget {
+  const _EpisodeBatchProgressControl({
+    required this.episodes,
+    required this.selectedEpisodeId,
+    required this.isSaving,
+    required this.onChanged,
+    required this.onSubmit,
+  });
+
+  final List<BangumiEpisodeCollection> episodes;
+  final int? selectedEpisodeId;
+  final bool isSaving;
+  final ValueChanged<int?> onChanged;
+  final VoidCallback? onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: DropdownButtonFormField<int>(
+            initialValue: selectedEpisodeId,
+            isExpanded: true,
+            decoration: const InputDecoration(
+              labelText: '标记到',
+              border: OutlineInputBorder(),
+              prefixIcon: Icon(Icons.playlist_add_check_outlined),
+            ),
+            items: [
+              for (final item in episodes)
+                DropdownMenuItem<int>(
+                  value: item.episode.id,
+                  child: Text(
+                    '${item.episode.sortLabel} · ${item.episode.displayName}',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+            onChanged: isSaving ? null : onChanged,
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          height: 56,
+          child: FilledButton.icon(
+            onPressed: onSubmit,
+            icon: isSaving
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.done_all_outlined),
+            label: Text(isSaving ? '同步中' : '批量看过'),
+          ),
+        ),
+      ],
+    );
   }
 }
 
