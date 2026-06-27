@@ -412,14 +412,72 @@ void main() {
       expect(await seedFile.exists(), isFalse);
     });
 
+    test('清空最近种子时会移除记录并清理关联本地文件', () async {
+      const repository = SharedPreferencesTorrentSeedHistoryRepository();
+      final tempDir = await Directory.systemTemp.createTemp(
+        'torrent_seed_history_clear_test_',
+      );
+      addTearDown(() async {
+        if (await tempDir.exists()) {
+          await tempDir.delete(recursive: true);
+        }
+      });
+      final firstSeedFile = File('${tempDir.path}/episode-01.torrent');
+      final secondSeedFile = File('${tempDir.path}/episode-02.torrent');
+      await firstSeedFile.writeAsBytes([1, 2, 3]);
+      await secondSeedFile.writeAsBytes([4, 5, 6]);
+
+      await repository.addItem(
+        TorrentSeedHistoryItem.capture(
+          seedFile: TorrentSeedFile(
+            localPath: firstSeedFile.path,
+            fileName: 'episode-01.torrent',
+            length: 3,
+          ),
+          title: '第 1 话',
+          savedAt: DateTime.fromMillisecondsSinceEpoch(1000),
+        ),
+      );
+      await repository.addItem(
+        TorrentSeedHistoryItem.capture(
+          seedFile: TorrentSeedFile(
+            localPath: secondSeedFile.path,
+            fileName: 'episode-02.torrent',
+            length: 3,
+          ),
+          title: '第 2 话',
+          savedAt: DateTime.fromMillisecondsSinceEpoch(2000),
+        ),
+      );
+
+      await repository.clearItems();
+
+      expect(await repository.loadItems(), isEmpty);
+      expect(await firstSeedFile.exists(), isFalse);
+      expect(await secondSeedFile.exists(), isFalse);
+    });
+
     test('最多保留最近 20 条种子记录', () async {
       const repository = SharedPreferencesTorrentSeedHistoryRepository();
+      final tempDir = await Directory.systemTemp.createTemp(
+        'torrent_seed_history_limit_test_',
+      );
+      addTearDown(() async {
+        if (await tempDir.exists()) {
+          await tempDir.delete(recursive: true);
+        }
+      });
+      final seedFiles = <File>[];
 
       for (var index = 0; index < 25; index++) {
+        final seedFile = File('${tempDir.path}/episode-$index.torrent');
+        await seedFile.writeAsBytes([index]);
+        seedFiles.add(seedFile);
+
         await repository.addItem(
           TorrentSeedHistoryItem.capture(
             seedFile: TorrentSeedFile(
-              localPath: '/tmp/episode-$index.torrent',
+              localPath: seedFile.path,
               fileName: 'episode-$index.torrent',
               length: index,
             ),
@@ -434,6 +492,12 @@ void main() {
       expect(items, hasLength(20));
       expect(items.first.title, '第 24 话');
       expect(items.last.title, '第 5 话');
+      for (var index = 0; index < 5; index++) {
+        expect(await seedFiles[index].exists(), isFalse);
+      }
+      for (var index = 5; index < 25; index++) {
+        expect(await seedFiles[index].exists(), isTrue);
+      }
     });
   });
 }

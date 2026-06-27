@@ -94,6 +94,9 @@ abstract class TorrentSeedHistoryRepository {
   });
 
   /// 清空本机最近种子记录。
+  ///
+  /// 当前记录都指向 APP 显式下载的 `.torrent` 文件，因此清空记录时也会
+  /// 尝试清理这些本地种子文件，避免 APP 专属持久目录长期堆积孤立文件。
   Future<void> clearItems();
 }
 
@@ -302,13 +305,21 @@ class SharedPreferencesTorrentSeedHistoryRepository
     final prefs = await SharedPreferences.getInstance();
     final existingItems = await loadItems();
     final mergedItems = <TorrentSeedHistoryItem>[item];
+    final evictedItems = <TorrentSeedHistoryItem>[];
+    final retainedKeys = <String>{item.dedupeKey};
 
     for (final existingItem in existingItems) {
-      if (existingItem.dedupeKey != item.dedupeKey) {
-        mergedItems.add(existingItem);
+      if (retainedKeys.contains(existingItem.dedupeKey)) {
+        // 相同本地路径表示同一个种子文件被刷新记录；保留新记录即可，不能删除
+        // 旧记录指向的同一路径，否则会误删刚写入的新种子文件。
+        continue;
       }
-      if (mergedItems.length >= _maxSeedHistoryItems) {
-        break;
+
+      if (mergedItems.length < _maxSeedHistoryItems) {
+        mergedItems.add(existingItem);
+        retainedKeys.add(existingItem.dedupeKey);
+      } else {
+        evictedItems.add(existingItem);
       }
     }
 
@@ -316,6 +327,10 @@ class SharedPreferencesTorrentSeedHistoryRepository
         .map((item) => jsonEncode(item.toJson()))
         .toList();
     await prefs.setStringList(_seedHistoryKey, encodedItems);
+
+    for (final evictedItem in evictedItems) {
+      await _deleteSeedFileIfExists(evictedItem.seedFile.localPath);
+    }
   }
 
   @override
@@ -341,15 +356,24 @@ class SharedPreferencesTorrentSeedHistoryRepository
   @override
   Future<void> clearItems() async {
     final prefs = await SharedPreferences.getInstance();
+    final existingItems = await loadItems();
     await prefs.remove(_seedHistoryKey);
+
+    for (final item in existingItems) {
+      await _deleteSeedFileIfExists(item.seedFile.localPath);
+    }
   }
 
-  /// 尝试删除 APP 缓存中的 `.torrent` 文件。
+  /// 尝试删除 APP 本地目录中的 `.torrent` 文件。
   ///
-  /// 最近种子记录可能因为系统缓存清理、用户手动删除或旧版本路径变化而指向
-  /// 已不存在的文件；这种情况下只需要保留“删除记录成功”的用户体验。
+  /// 最近种子记录可能因为系统清理、用户手动删除或旧版本路径变化而指向
+  /// 已不存在的文件；这种情况下只需要保留“删除记录成功”的用户体验。只删除
+  /// `.torrent` 后缀文件，避免异常记录指向非种子文件时误删其他内容。
   Future<void> _deleteSeedFileIfExists(String localPath) async {
     try {
+      if (!localPath.toLowerCase().endsWith('.torrent')) {
+        return;
+      }
       final file = File(localPath);
       if (await file.exists()) {
         await file.delete();
