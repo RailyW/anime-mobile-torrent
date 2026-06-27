@@ -4,11 +4,11 @@
 
 ## 当前包含文件
 
-- `home_screen.dart`：Material 3 首页壳，使用底部 `NavigationBar` 和 `IndexedStack` 切换功能模块，并支持通过路由参数初始选中 DMHY 标签页和注入搜索关键词。
+- `home_screen.dart`：Material 3 首页壳，使用底部 `NavigationBar` 和 `IndexedStack` 切换功能模块，并支持通过路由参数初始选中 DMHY 或后台标签页；DMHY 跳转可以额外注入搜索关键词。
 
 ## 设计边界
 
 1. 首页只做模块导航，不直接调用外部 API、下载种子文件、启动前台服务或调起 Android Intent。
 2. `IndexedStack` 用于保留模块页面状态，后续搜索输入、分页位置和登录状态展示不会因切换 tab 丢失。
-3. 跨模块跳转只传递轻量展示参数，例如 DMHY 初始关键词；实际搜索、下载和交接仍由目标模块自己处理。
+3. 跨模块跳转只传递轻量展示参数，例如 DMHY 初始关键词或后台标签页入口；实际搜索、下载、订阅检查和交接仍由目标模块自己处理。
 4. 新增底部导航项时，需要同步更新 `features/README.md` 和本 README。

@@ -59,6 +59,21 @@ void main() {
     expect(find.text('暂无订阅关键词'), findsOneWidget);
   });
 
+  testWidgets('通知初始路由可以直接打开后台标签页', (tester) async {
+    tester.binding.platformDispatcher.defaultRouteNameTestValue =
+        '/?tab=background';
+    addTearDown(
+      tester.binding.platformDispatcher.clearDefaultRouteNameTestValue,
+    );
+
+    await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('后台常驻'), findsOneWidget);
+    expect(find.text('服务控制'), findsOneWidget);
+    expect(find.text('后台自动检查'), findsOneWidget);
+  });
+
   testWidgets('Bangumi 搜索可以渲染动画条目结果', (tester) async {
     await tester.pumpWidget(
       ProviderScope(

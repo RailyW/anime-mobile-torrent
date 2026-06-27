@@ -27,6 +27,11 @@ class FlutterForegroundTaskResidencyRepository
 
   static const _serviceId = 977;
   static const _heartbeatIntervalMs = 15 * 60 * 1000;
+  static const _notificationRoute = '/?tab=background';
+  static const _stopButtonId = 'stop_background_residency';
+  static const _notificationButtons = [
+    NotificationButton(id: _stopButtonId, text: '停止后台'),
+  ];
 
   @override
   Future<BackgroundResidencySnapshot> refreshStatus() async {
@@ -70,13 +75,22 @@ class FlutterForegroundTaskResidencyRepository
       final ServiceRequestResult result;
       if (await FlutterForegroundTask.isRunningService) {
         result = await FlutterForegroundTask.restartService();
+        if (result is ServiceRequestSuccess) {
+          await FlutterForegroundTask.updateService(
+            notificationTitle: 'Anime Mobile Torrent 正在后台运行',
+            notificationText: '点击查看后台订阅检查，或点“停止后台”结束服务。',
+            notificationButtons: _notificationButtons,
+            notificationInitialRoute: _notificationRoute,
+          );
+        }
       } else {
         result = await FlutterForegroundTask.startService(
           serviceId: _serviceId,
           serviceTypes: const [ForegroundServiceTypes.dataSync],
           notificationTitle: 'Anime Mobile Torrent 正在后台运行',
-          notificationText: '点击返回应用，或在应用内停止后台常驻。',
-          notificationInitialRoute: '/',
+          notificationText: '点击查看后台订阅检查，或点“停止后台”结束服务。',
+          notificationButtons: _notificationButtons,
+          notificationInitialRoute: _notificationRoute,
           callback: startBackgroundResidencyService,
         );
       }
@@ -225,7 +239,11 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
     final timeLabel = _formatClock(timestamp.toLocal());
     await FlutterForegroundTask.updateService(
       notificationTitle: 'Anime Mobile Torrent 正在后台运行',
-      notificationText: '最近保活心跳 $timeLabel，点击返回应用。',
+      notificationText: '最近保活心跳 $timeLabel，点击查看后台订阅检查。',
+      notificationButtons:
+          FlutterForegroundTaskResidencyRepository._notificationButtons,
+      notificationInitialRoute:
+          FlutterForegroundTaskResidencyRepository._notificationRoute,
     );
     FlutterForegroundTask.sendDataToMain({
       'type': 'backgroundResidencyHeartbeat',
@@ -250,7 +268,11 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
         final detail = _formatSubscriptionNotificationDetail(outcome);
         await FlutterForegroundTask.updateService(
           notificationTitle: isFailed ? 'DMHY 订阅检查失败' : 'DMHY 订阅检查已完成',
-          notificationText: '$detail · $timeLabel，点击返回应用。',
+          notificationText: '$detail · $timeLabel，点击查看后台订阅检查。',
+          notificationButtons:
+              FlutterForegroundTaskResidencyRepository._notificationButtons,
+          notificationInitialRoute:
+              FlutterForegroundTaskResidencyRepository._notificationRoute,
         );
       }
     } catch (error) {
@@ -262,11 +284,29 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
       });
       await FlutterForegroundTask.updateService(
         notificationTitle: 'DMHY 订阅检查失败',
-        notificationText: '保活仍在运行，稍后会再次尝试。',
+        notificationText: '保活仍在运行，点击查看后台订阅检查。',
+        notificationButtons:
+            FlutterForegroundTaskResidencyRepository._notificationButtons,
+        notificationInitialRoute:
+            FlutterForegroundTaskResidencyRepository._notificationRoute,
       );
     } finally {
       _isCheckingSubscription = false;
     }
+  }
+
+  @override
+  void onNotificationButtonPressed(String id) {
+    if (id != FlutterForegroundTaskResidencyRepository._stopButtonId) {
+      return;
+    }
+
+    FlutterForegroundTask.sendDataToMain({
+      'type': 'backgroundResidencyStopRequested',
+      'timestamp': DateTime.now().toIso8601String(),
+      'source': 'notificationButton',
+    });
+    unawaited(FlutterForegroundTask.stopService());
   }
 }
 

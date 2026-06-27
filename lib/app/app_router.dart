@@ -11,14 +11,14 @@ import '../features/home/home_screen.dart';
 /// 命名路由，并让功能模块只暴露页面入口而不直接创建全局路由器。
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
-    initialLocation: '/',
     routes: [
       GoRoute(
         path: '/',
         name: 'home',
         builder: (context, state) {
-          final tab = state.uri.queryParameters['tab'];
-          final initialTabIndex = tab == 'dmhy' ? 1 : 0;
+          final initialTabIndex = _initialTabIndexFromQuery(
+            state.uri.queryParameters['tab'],
+          );
           final dmhyKeyword = state.uri.queryParameters['keyword'];
 
           return HomeScreen(
@@ -40,3 +40,19 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+/// 将首页 `tab` 查询参数转换为底部导航下标。
+///
+/// 通知点击、Bangumi 详情页资源搜索跳转和未来外部深链都会复用首页路由。
+/// 这里集中维护字符串到 tab 下标的映射，避免各模块直接依赖
+/// `HomeScreen` 内部的导航顺序。
+int _initialTabIndexFromQuery(String? tab) {
+  return switch (tab) {
+    'bangumi' => 0,
+    'dmhy' => 1,
+    'torrent' => 2,
+    'playback' => 3,
+    'background' => 4,
+    _ => 0,
+  };
+}
