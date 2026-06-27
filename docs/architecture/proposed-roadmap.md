@@ -235,10 +235,11 @@ flowchart LR
 2. 已在 `main.dart` 初始化 foreground task 通信端口，并使用 `WithForegroundTask` 处理服务运行时的返回键最小化行为。
 3. 已在 Android Manifest 中声明 `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_DATA_SYNC` 和插件固定服务 `com.pravera.flutter_foreground_task.service.ForegroundService`。
 4. 已提供“后台”首页标签页，支持启动、停止、刷新状态，并展示持续通知和低频心跳接入情况。
+5. 已新增 `lib/features/subscriptions`，支持保存 DMHY RSS 订阅关键词、选择动画分类或全站范围、手动检查 RSS 并展示最近结果摘要。
 
 后续建议：
 
-1. 把 DMHY RSS 订阅检查做成显式配置的低频任务。
+1. 把已保存的 DMHY RSS 订阅关键词接入用户显式开启后的低频后台调度。
 2. 增加通知动作按钮，例如“停止后台”或“打开 DMHY”。
 3. 按 Android 15 `dataSync` 限制评估订阅检查频率，避免把前台服务当作无限运行下载器。
 
@@ -254,8 +255,9 @@ flowchart LR
 6. 通过系统 Intent、分享或复制，把 magnet 或 `.torrent` 种子文件交给外部 BT 客户端。
 7. 已提供手动选择本地视频并调用播放器的入口，不自动追踪外部 BT 客户端的下载结果。
 8. 已提供用户显式开启的 Android 前台服务后台常驻入口。
+9. 已提供 DMHY RSS 订阅关键词保存和手动检查入口。
 
-复杂过滤、收藏分页、章节完整分页、批量进度操作、RSS 自动订阅、外部客户端兼容性清单、公共目录导出和内置下载器可以在基础闭环跑通后逐步补齐。
+复杂过滤、收藏分页、章节完整分页、批量进度操作、RSS 自动检查调度、外部客户端兼容性清单、公共目录导出和内置下载器可以在基础闭环跑通后逐步补齐。
 
 ## 关键风险
 

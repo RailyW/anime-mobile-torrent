@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../subscriptions/presentation/dmhy_subscription_panel.dart';
 import '../application/background_residency_providers.dart';
 import '../domain/background_residency_state.dart';
 
@@ -29,6 +30,8 @@ class BackgroundTab extends ConsumerWidget {
         ),
         const SizedBox(height: 16),
         const _BackgroundCapabilityPanel(),
+        const SizedBox(height: 16),
+        const DmhySubscriptionPanel(),
       ],
     );
   }
@@ -206,7 +209,7 @@ class _BackgroundCapabilityPanel extends StatelessWidget {
             _BackgroundCapabilityLine(
               icon: Icons.rss_feed_outlined,
               title: 'RSS 订阅检查',
-              status: '后续',
+              status: '手动已接入',
             ),
           ],
         ),

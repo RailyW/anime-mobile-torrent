@@ -10,6 +10,7 @@ import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_see
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// 构建测试用根组件。
 ///
@@ -19,6 +20,10 @@ Widget _buildTestApp() {
 }
 
 void main() {
+  setUp(() {
+    SharedPreferences.setMockInitialValues({});
+  });
+
   testWidgets('首页可以展示并切换主要模块', (tester) async {
     await tester.pumpWidget(_buildTestApp());
     await tester.pumpAndSettle();
@@ -48,6 +53,8 @@ void main() {
     expect(find.text('后台常驻'), findsOneWidget);
     expect(find.text('服务控制'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '启动后台'), findsOneWidget);
+    expect(find.text('DMHY 订阅检查'), findsOneWidget);
+    expect(find.text('暂无订阅关键词'), findsOneWidget);
   });
 
   testWidgets('Bangumi 搜索可以渲染动画条目结果', (tester) async {
