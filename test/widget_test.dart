@@ -1219,10 +1219,19 @@ void main() {
     expect(fakeHandoffRepository.lastFile?.fileName, 'test.torrent');
     expect(fakeHandoffRepository.lastFile?.length, 128);
     expect(find.textContaining('已交给外部 BT 客户端'), findsOneWidget);
+    expect(find.text('去播放'), findsOneWidget);
     expect(find.textContaining('种子 128 B'), findsOneWidget);
+
+    await tester.tap(find.text('去播放'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('手动选择'), findsOneWidget);
+    expect(find.text('选择视频'), findsOneWidget);
+    expect(find.text('最近视频'), findsOneWidget);
 
     await tester.tap(find.text('种子').last);
     await tester.pumpAndSettle();
+
     await tester.scrollUntilVisible(
       find.text('最近种子'),
       220,

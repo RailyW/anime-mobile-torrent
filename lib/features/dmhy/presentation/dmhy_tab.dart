@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../subscriptions/application/dmhy_subscription_providers.dart';
@@ -1383,6 +1384,12 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
           content: Text(
             '${result.userMessage}（种子 ${_formatBytes(torrentFile.length)}）',
           ),
+          action: result.isHandled
+              ? SnackBarAction(
+                  label: '去播放',
+                  onPressed: () => _openPlaybackTab(context),
+                )
+              : null,
         ),
       );
     } catch (error) {
@@ -1400,6 +1407,14 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
         });
       }
     }
+  }
+
+  /// 跳转到播放页，让用户在外部 BT 客户端完成视频下载后手动选择本地文件。
+  ///
+  /// DMHY 页只负责 `.torrent` 种子交接；这里的动作不读取外部客户端下载目录，
+  /// 也不假设视频已经下载完成，只是把用户带到系统文件选择器所在的播放入口。
+  void _openPlaybackTab(BuildContext context) {
+    context.go(Uri(path: '/', queryParameters: {'tab': 'playback'}).toString());
   }
 }
 
