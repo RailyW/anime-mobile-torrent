@@ -9,6 +9,7 @@ import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_cli
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_handoff_result.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_file.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -277,14 +278,73 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('将依赖分享面板导入'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '分享种子'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(FilledButton, '种子'));
+    await tester.tap(find.widgetWithText(FilledButton, '分享种子'));
     await tester.pumpAndSettle();
 
     expect(fakeHandoffRepository.lastFile?.fileName, 'test.torrent');
     expect(fakeHandoffRepository.lastFile?.length, 128);
     expect(find.textContaining('已交给外部 BT 客户端'), findsOneWidget);
     expect(find.textContaining('种子 128 B'), findsOneWidget);
+  });
+
+  testWidgets('DMHY 未发现 BT 客户端时主按钮切换为复制磁力', (tester) async {
+    String? copiedText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          final arguments = call.arguments as Map<dynamic, dynamic>;
+          copiedText = arguments['text']?.toString();
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(
+              capabilities: TorrentClientCapabilities(
+                isPlatformBridgeAvailable: true,
+                canOpenMagnet: false,
+                canOpenTorrentFile: false,
+                canShareTorrentFile: false,
+                magnetHandlerCount: 0,
+                torrentViewHandlerCount: 0,
+                torrentShareHandlerCount: 0,
+              ),
+            ),
+          ),
+          dmhyRepositoryProvider.overrideWithValue(_FakeDmhyRepository()),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('DMHY').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '测试动画 1080');
+    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('未发现外部 BT 客户端，主按钮已切换为复制 magnet'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '复制磁力'), findsOneWidget);
+
+    await tester.ensureVisible(find.widgetWithText(FilledButton, '复制磁力'));
+    await tester.tap(find.widgetWithText(FilledButton, '复制磁力'));
+    await tester.pump(const Duration(milliseconds: 100));
+
+    expect(copiedText, 'magnet:?xt=urn:btih:ABCDEF');
   });
 }
 

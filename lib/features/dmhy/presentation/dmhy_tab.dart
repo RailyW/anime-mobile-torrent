@@ -339,6 +339,12 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
     final scheme = theme.colorScheme;
     final resource = widget.resource;
     final clientCapabilities = ref.watch(torrentClientCapabilitiesProvider);
+    final torrentAction = _SeedHandoffAction.fromCapabilities(
+      capabilities: clientCapabilities,
+      isHandingOffTorrent: _isHandingOffTorrent,
+      onCopyMagnet: () => _copyMagnet(context),
+      onDownloadTorrent: () => _downloadAndOpenTorrent(context),
+    );
 
     return Card(
       child: Padding(
@@ -408,17 +414,9 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
                   label: const Text('打开'),
                 ),
                 FilledButton.icon(
-                  onPressed: _isHandingOffTorrent
-                      ? null
-                      : () => _downloadAndOpenTorrent(context),
-                  icon: _isHandingOffTorrent
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.description_outlined),
-                  label: Text(_isHandingOffTorrent ? '交接中' : '种子'),
+                  onPressed: torrentAction.onPressed,
+                  icon: torrentAction.icon,
+                  label: Text(torrentAction.label),
                 ),
               ],
             ),
@@ -515,6 +513,88 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
         });
       }
     }
+  }
+}
+
+/// DMHY 卡片中主种子按钮的展示和行为配置。
+///
+/// 检测结果只影响按钮文案和最醒目的兜底入口，不改变已有 `.torrent` 交接函数：
+/// 可交接时仍下载种子并交给外部客户端，不可交接时把主按钮切到复制 magnet。
+class _SeedHandoffAction {
+  const _SeedHandoffAction({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String label;
+  final Widget icon;
+  final VoidCallback? onPressed;
+
+  /// 根据当前设备检测结果生成主操作按钮。
+  ///
+  /// 检测不可用或仍在加载时保留原始“种子”动作，避免平台检测失败阻断用户；
+  /// 明确没有 `.torrent` 接收路径时，把主按钮切换为复制 magnet。
+  factory _SeedHandoffAction.fromCapabilities({
+    required AsyncValue<TorrentClientCapabilities> capabilities,
+    required bool isHandingOffTorrent,
+    required VoidCallback onCopyMagnet,
+    required VoidCallback onDownloadTorrent,
+  }) {
+    if (isHandingOffTorrent) {
+      return const _SeedHandoffAction(
+        label: '交接中',
+        icon: SizedBox(
+          width: 16,
+          height: 16,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        onPressed: null,
+      );
+    }
+
+    return capabilities.when(
+      data: (value) {
+        if (!value.isPlatformBridgeAvailable) {
+          return _defaultTorrentAction(onDownloadTorrent);
+        }
+
+        if (value.canOpenTorrentFile) {
+          return _SeedHandoffAction(
+            label: '打开种子',
+            icon: const Icon(Icons.description_outlined),
+            onPressed: onDownloadTorrent,
+          );
+        }
+
+        if (value.canShareTorrentFile) {
+          return _SeedHandoffAction(
+            label: '分享种子',
+            icon: const Icon(Icons.ios_share_outlined),
+            onPressed: onDownloadTorrent,
+          );
+        }
+
+        return _SeedHandoffAction(
+          label: '复制磁力',
+          icon: const Icon(Icons.content_copy_outlined),
+          onPressed: onCopyMagnet,
+        );
+      },
+      error: (_, _) => _defaultTorrentAction(onDownloadTorrent),
+      loading: () => _defaultTorrentAction(onDownloadTorrent),
+    );
+  }
+
+  /// 检测不可用、检测失败或仍在加载时的默认种子交接动作。
+  static _SeedHandoffAction _defaultTorrentAction(
+    VoidCallback onDownloadTorrent,
+  ) {
+    return _SeedHandoffAction(
+      label: '种子',
+      icon: const Icon(Icons.description_outlined),
+      onPressed: onDownloadTorrent,
+    );
   }
 }
 
@@ -624,14 +704,14 @@ class _SeedHandoffHint {
     if (capabilities.canOpenMagnet) {
       return const _SeedHandoffHint(
         icon: Icons.link_outlined,
-        message: '未发现 .torrent 接收客户端，可先复制或打开 magnet',
+        message: '未发现 .torrent 接收客户端，主按钮已切换为复制 magnet',
         isWarning: true,
       );
     }
 
     return const _SeedHandoffHint(
       icon: Icons.error_outline,
-      message: '未发现外部 BT 客户端，可安装或启用客户端后重试',
+      message: '未发现外部 BT 客户端，主按钮已切换为复制 magnet',
       isWarning: true,
     );
   }
