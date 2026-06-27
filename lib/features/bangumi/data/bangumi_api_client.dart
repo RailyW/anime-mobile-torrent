@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 
 import '../domain/bangumi_collection.dart';
@@ -31,7 +33,14 @@ class BangumiApiException implements Exception {
 /// 可以通过构造参数注入 access token 读取器，并在拦截器里补充
 /// `Authorization: Bearer <token>`。
 class BangumiApiClient {
-  BangumiApiClient(this._dio);
+  BangumiApiClient(
+    this._dio, {
+    this.rateLimitDefaultRetryDelay = const Duration(seconds: 1),
+    this.rateLimitMaxRetryDelay = const Duration(seconds: 5),
+    Future<void> Function(Duration delay)? delay,
+    DateTime Function()? now,
+  }) : _delay = delay ?? Future<void>.delayed,
+       _now = now ?? DateTime.now;
 
   static const baseUrl = 'https://api.bgm.tv';
 
@@ -40,6 +49,15 @@ class BangumiApiClient {
       'anime-mobile-torrent/0.1 (https://github.com/RailyW/anime-mobile-torrent)';
 
   final Dio _dio;
+
+  /// 429 响应缺少 `Retry-After` 时使用的默认等待时长。
+  final Duration rateLimitDefaultRetryDelay;
+
+  /// 单次 429 自动重试允许等待的最大时长，防止 UI 被服务端长时间锁住。
+  final Duration rateLimitMaxRetryDelay;
+
+  final Future<void> Function(Duration delay) _delay;
+  final DateTime Function() _now;
 
   /// 创建首期默认客户端。
   ///
@@ -80,17 +98,20 @@ class BangumiApiClient {
     }
 
     try {
-      final response = await _dio.post<Map<String, dynamic>>(
-        '/v0/search/subjects',
-        queryParameters: {'limit': limit, 'offset': offset},
-        data: {
-          'keyword': normalizedKeyword,
-          'sort': sort.apiValue,
-          'filter': {
-            'type': [BangumiSubjectType.anime.apiValue],
-          },
-        },
-      );
+      final response =
+          await _sendReadRequestWithRateLimitRetry<Map<String, dynamic>>(
+            () => _dio.post<Map<String, dynamic>>(
+              '/v0/search/subjects',
+              queryParameters: {'limit': limit, 'offset': offset},
+              data: {
+                'keyword': normalizedKeyword,
+                'sort': sort.apiValue,
+                'filter': {
+                  'type': [BangumiSubjectType.anime.apiValue],
+                },
+              },
+            ),
+          );
 
       final data = response.data;
       if (data == null) {
@@ -114,9 +135,10 @@ class BangumiApiClient {
     }
 
     try {
-      final response = await _dio.get<Map<String, dynamic>>(
-        '/v0/subjects/$subjectId',
-      );
+      final response =
+          await _sendReadRequestWithRateLimitRetry<Map<String, dynamic>>(
+            () => _dio.get<Map<String, dynamic>>('/v0/subjects/$subjectId'),
+          );
 
       final data = response.data;
       if (data == null) {
@@ -141,10 +163,15 @@ class BangumiApiClient {
     }
 
     try {
-      final response = await _dio.get<Map<String, dynamic>>(
-        '/v0/me',
-        options: Options(headers: {'Authorization': 'Bearer $normalizedToken'}),
-      );
+      final response =
+          await _sendReadRequestWithRateLimitRetry<Map<String, dynamic>>(
+            () => _dio.get<Map<String, dynamic>>(
+              '/v0/me',
+              options: Options(
+                headers: {'Authorization': 'Bearer $normalizedToken'},
+              ),
+            ),
+          );
 
       final data = response.data;
       if (data == null) {
@@ -176,10 +203,13 @@ class BangumiApiClient {
     }
 
     try {
-      final response = await _dio.get<Map<String, dynamic>>(
-        '/v0/users/${Uri.encodeComponent(normalizedUsername)}/collections/$subjectId',
-        options: _authorizationOptions(accessToken),
-      );
+      final response =
+          await _sendReadRequestWithRateLimitRetry<Map<String, dynamic>>(
+            () => _dio.get<Map<String, dynamic>>(
+              '/v0/users/${Uri.encodeComponent(normalizedUsername)}/collections/$subjectId',
+              options: _authorizationOptions(accessToken),
+            ),
+          );
 
       final data = response.data;
       if (data == null) {
@@ -222,11 +252,14 @@ class BangumiApiClient {
     }
 
     try {
-      final response = await _dio.get<Map<String, dynamic>>(
-        '/v0/users/${Uri.encodeComponent(normalizedUsername)}/collections',
-        queryParameters: queryParameters,
-        options: _authorizationOptions(accessToken),
-      );
+      final response =
+          await _sendReadRequestWithRateLimitRetry<Map<String, dynamic>>(
+            () => _dio.get<Map<String, dynamic>>(
+              '/v0/users/${Uri.encodeComponent(normalizedUsername)}/collections',
+              queryParameters: queryParameters,
+              options: _authorizationOptions(accessToken),
+            ),
+          );
 
       final data = response.data;
       if (data == null) {
@@ -268,11 +301,14 @@ class BangumiApiClient {
     }
 
     try {
-      final response = await _dio.get<Map<String, dynamic>>(
-        '/v0/users/-/collections/$subjectId/episodes',
-        queryParameters: queryParameters,
-        options: _authorizationOptions(normalizedToken),
-      );
+      final response =
+          await _sendReadRequestWithRateLimitRetry<Map<String, dynamic>>(
+            () => _dio.get<Map<String, dynamic>>(
+              '/v0/users/-/collections/$subjectId/episodes',
+              queryParameters: queryParameters,
+              options: _authorizationOptions(normalizedToken),
+            ),
+          );
 
       final data = response.data;
       if (data == null) {
@@ -347,6 +383,84 @@ class BangumiApiClient {
     } on DioException catch (error) {
       throw _mapDioException(error);
     }
+  }
+
+  /// 发送 Bangumi 读取类请求，并在遇到 429 时执行一次轻量退避重试。
+  ///
+  /// Bangumi 的公开搜索、详情、当前用户信息和收藏读取都属于“读取/查询”
+  /// 语义，遇到短暂限流时可以安全地等待后再重试一次。收藏写入和章节写入
+  /// 不走这个包装器，避免网络边界不确定时重复提交用户的修改动作。
+  Future<Response<T>> _sendReadRequestWithRateLimitRetry<T>(
+    Future<Response<T>> Function() sendRequest,
+  ) async {
+    try {
+      return await sendRequest();
+    } on DioException catch (error) {
+      final retryDelay = _rateLimitRetryDelay(error);
+      if (retryDelay == null) {
+        rethrow;
+      }
+
+      await _delay(retryDelay);
+      return sendRequest();
+    }
+  }
+
+  /// 根据 429 响应计算退避时长。
+  ///
+  /// `Retry-After` 可能是秒数，也可能是 HTTP-date。字段缺失或格式异常时，
+  /// 使用短默认值；无论服务端给出多大的值，APP 内都用上限保护，避免一次
+  /// 用户搜索把界面挂起太久。
+  Duration? _rateLimitRetryDelay(DioException error) {
+    if (error.response?.statusCode != 429) {
+      return null;
+    }
+
+    final retryAfter = error.response?.headers.value('retry-after');
+    final parsedDelay =
+        _parseRetryAfter(retryAfter) ?? rateLimitDefaultRetryDelay;
+    return _clampRateLimitRetryDelay(parsedDelay);
+  }
+
+  /// 解析 HTTP `Retry-After` 响应头。
+  ///
+  /// 秒数格式最常见；HTTP-date 格式使用 `HttpDate` 解析。负数、过去的日期
+  /// 和 `0` 都被视为可以立即重试。
+  Duration? _parseRetryAfter(String? value) {
+    final normalizedValue = value?.trim();
+    if (normalizedValue == null || normalizedValue.isEmpty) {
+      return null;
+    }
+
+    final seconds = int.tryParse(normalizedValue);
+    if (seconds != null) {
+      return seconds <= 0 ? Duration.zero : Duration(seconds: seconds);
+    }
+
+    try {
+      final retryAt = HttpDate.parse(normalizedValue).toUtc();
+      final now = _now().toUtc();
+      if (!retryAt.isAfter(now)) {
+        return Duration.zero;
+      }
+
+      return retryAt.difference(now);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  /// 把退避时长限制在安全范围内。
+  Duration _clampRateLimitRetryDelay(Duration delay) {
+    final positiveDelay = delay.isNegative ? Duration.zero : delay;
+    final maxDelay = rateLimitMaxRetryDelay.isNegative
+        ? Duration.zero
+        : rateLimitMaxRetryDelay;
+    if (positiveDelay.compareTo(maxDelay) > 0) {
+      return maxDelay;
+    }
+
+    return positiveDelay;
   }
 
   BangumiApiException _mapDioException(DioException error) {

@@ -94,14 +94,15 @@ flowchart LR
 9. 已接入当前用户动画收藏列表读取，使用 `GET /v0/users/{username}/collections?subject_type=2`，并在 Bangumi 首页提供分页列表、状态筛选、刷新和加载更多。
 10. 已接入动画章节观看状态同步，使用 `GET /v0/users/-/collections/{subject_id}/episodes?episode_type=...` 读取本篇、特别篇、OP、ED、PV、MAD 或其他章节收藏状态，并使用 `PATCH /v0/users/-/collections/{subject_id}/episodes` 更新单集状态或批量标记到第 N 话看过；详情页支持章节类型筛选、展开/收起当前已加载章节、加载更多章节，并在保存后按当前类型和已加载范围刷新进度。
 11. 已接入条目详情页 DMHY 资源搜索联动，使用条目中文名优先生成关键词并跳转到 DMHY 动画分类 RSS 搜索。
-12. 更多批量管理仍是后续工作。
+12. 已为搜索、详情、当前用户信息、收藏读取和章节读取请求加入 429 `Retry-After` 退避重试一次，收藏写入和章节写入不自动重复提交。
+13. 更多批量管理仍是后续工作。
 
 推荐实现：
 
 1. 使用官方 OpenAPI 生成 `dart-dio` 客户端。
 2. 使用 Repository 隔离生成代码和 UI。
 3. 搜索默认筛选动画类型。
-4. 加入更细化的错误提示和 429 退避。
+4. 加入更细化的错误提示；429 退避已先覆盖 Bangumi 读取类请求。
 
 待确认：
 

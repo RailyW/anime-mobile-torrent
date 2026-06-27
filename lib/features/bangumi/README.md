@@ -1,6 +1,6 @@
 # bangumi 模块说明
 
-`lib/features/bangumi` 负责 Bangumi 相关能力：OAuth 授权、当前用户信息、动画条目搜索、条目详情、收藏和进度同步。当前已接入可配置 OAuth 登录、secure storage token 保存、`/v0/me` 当前用户读取、公开动画条目搜索、搜索输入防抖、搜索排序、搜索结果分页加载更多、公开条目详情读取、首页我的动画收藏分页列表、条目详情页中的个人收藏读取/修改、动画章节观看状态同步、章节类型筛选、已加载章节展开查看、章节分页加载更多、批量标记到第 N 话看过，以及从条目详情页带标题跳转到 DMHY 资源搜索。
+`lib/features/bangumi` 负责 Bangumi 相关能力：OAuth 授权、当前用户信息、动画条目搜索、条目详情、收藏和进度同步。当前已接入可配置 OAuth 登录、secure storage token 保存、`/v0/me` 当前用户读取、公开动画条目搜索、搜索输入防抖、搜索排序、搜索结果分页加载更多、读取请求 429 退避、公开条目详情读取、首页我的动画收藏分页列表、条目详情页中的个人收藏读取/修改、动画章节观看状态同步、章节类型筛选、已加载章节展开查看、章节分页加载更多、批量标记到第 N 话看过，以及从条目详情页带标题跳转到 DMHY 资源搜索。
 
 ## 当前包含文件
 
@@ -10,7 +10,7 @@
 - `domain/bangumi_collection.dart`：Bangumi 条目收藏状态、当前用户单条收藏、收藏分页、收藏列表条目摘要和收藏修改请求模型。
 - `domain/bangumi_episode_collection.dart`：Bangumi 章节类型、单集收藏状态、章节摘要、章节收藏分页、按章节类型统计、批量进度目标计算和章节状态修改请求模型。
 - `domain/bangumi_user.dart`：Bangumi 当前用户和头像模型，负责解析 `/v0/me` 的用户字段。
-- `data/bangumi_api_client.dart`：Bangumi HTTP API 客户端，封装 User-Agent、动画搜索与排序、条目详情、`/v0/me`、收藏列表读取、单条收藏读取、收藏保存、章节收藏读取、章节状态保存和错误映射。
+- `data/bangumi_api_client.dart`：Bangumi HTTP API 客户端，封装 User-Agent、动画搜索与排序、条目详情、`/v0/me`、收藏列表读取、单条收藏读取、收藏保存、章节收藏读取、章节状态保存、读取请求 429 退避和错误映射。
 - `data/bangumi_auth_client.dart`：Bangumi OAuth AppAuth 客户端，封装授权、token 交换、refresh token 刷新和授权错误映射。
 - `data/bangumi_auth_storage.dart`：Bangumi OAuth token 安全存储，使用 `flutter_secure_storage` 保存 access token、refresh token、过期时间、token 类型和 scope。
 - `application/bangumi_providers.dart`：Bangumi 条目 Repository 抽象、HTTP 实现、公开搜索分页控制器、Riverpod 搜索 Provider 和详情 Provider。
@@ -51,16 +51,16 @@ flutter run --dart-define=BANGUMI_CLIENT_ID=你的客户端ID --dart-define=BANG
 - 读取当前登录用户对动画章节的观看状态，使用 `GET /v0/users/-/collections/{subject_id}/episodes?episode_type=...`，详情页可在本篇、特别篇、OP、ED、PV、MAD 和其他类型之间切换。
 - 修改当前登录用户的一批章节状态，使用 `PATCH /v0/users/-/collections/{subject_id}/episodes`，提交 `episode_id` 和 `EpisodeCollectionType`。
 - 在 Bangumi 首页展示我的动画收藏分页列表，支持按收藏状态筛选、刷新、加载更多并进入条目详情。
-- 在 Bangumi 首页公开搜索输入停顿后自动触发防抖搜索，点击搜索按钮或键盘 search 会立即提交，排序菜单支持按相关度、热度、排名或评分重新加载当前关键词，并支持按服务端分页继续加载更多搜索结果。
+- 在 Bangumi 首页公开搜索输入停顿后自动触发防抖搜索，点击搜索按钮或键盘 search 会立即提交，排序菜单支持按相关度、热度、排名或评分重新加载当前关键词，并支持按服务端分页继续加载更多搜索结果；搜索、详情和收藏读取类请求遇到 Bangumi 429 时会按 `Retry-After` 轻量退避后重试一次，收藏写入和章节写入不会自动重复提交。
 - 在条目详情页展示收藏状态、评分、短评、私有标记、章节/卷进度摘要。
 - 在条目详情页修改收藏状态、评分、短评和私有标记。
 - 在条目详情页展示当前章节类型的进度、展开已加载章节、加载更多章节、快捷标记下一话看过、批量标记到第 N 话看过，并允许把单集标记为未收藏、想看、看过或抛弃。
 
 ## 后续文件规划
 
-- `data/`：OpenAPI 生成客户端适配、429 退避和错误体细化。
+- `data/`：OpenAPI 生成客户端适配和错误体细化。
 - `domain/`：收藏列表高级过滤请求和更细粒度的章节批量操作模型。
-- `application/`：429 退避和收藏列表缓存策略。
+- `application/`：收藏列表缓存策略。
 - `presentation/`：独立完整收藏列表页、更多批量管理和授权失败恢复。
 
 ## 设计边界
