@@ -393,6 +393,254 @@ class BangumiMyAnimeCollectionListController
   }
 }
 
+/// Bangumi 条目详情页章节进度分页控制器 Provider。
+///
+/// Provider 使用 `subjectId` 作为 family 参数，让每个条目详情页拥有互相独立
+/// 的章节加载状态。autoDispose 会在详情页离开后释放已加载章节，避免长篇条目
+/// 的章节列表长期占用内存。
+final bangumiSubjectEpisodeCollectionListControllerProvider = NotifierProvider
+    .autoDispose
+    .family<
+      BangumiSubjectEpisodeCollectionListController,
+      BangumiSubjectEpisodeCollectionListState,
+      int
+    >((subjectId) {
+      return BangumiSubjectEpisodeCollectionListController(subjectId);
+    });
+
+/// Bangumi 条目详情页章节进度分页状态。
+///
+/// 这个状态把服务端分页响应累积成“当前已加载章节列表”。UI 只读取该状态并
+/// 调用控制器动作，不直接拼接分页，从而保证刷新、加载更多和保存后重读
+/// 使用同一套边界规则。
+class BangumiSubjectEpisodeCollectionListState {
+  const BangumiSubjectEpisodeCollectionListState({
+    required this.subjectId,
+    this.episodeType = BangumiEpisodeType.mainStory,
+    this.episodes = const [],
+    this.total = 0,
+    this.limit = 100,
+    this.nextOffset = 0,
+    this.isLoading = false,
+    this.hasLoadedOnce = false,
+    this.isLoggedOut = false,
+    this.errorMessage,
+  });
+
+  static const Object _unchanged = Object();
+
+  /// 当前详情页对应的 Bangumi 条目 ID。
+  final int subjectId;
+
+  /// 当前读取的章节类型。首期固定本篇，后续可扩展为 SP/OP/ED 筛选。
+  final BangumiEpisodeType episodeType;
+
+  /// 已从 Bangumi 服务端加载到本机内存中的章节状态。
+  final List<BangumiEpisodeCollection> episodes;
+
+  /// 当前章节类型在服务端的总条数。
+  final int total;
+
+  /// 每次请求的分页大小。
+  final int limit;
+
+  /// 下一次“加载更多”请求使用的 offset。
+  final int nextOffset;
+
+  /// 当前是否正在读取第一页、刷新已加载范围或加载下一页。
+  final bool isLoading;
+
+  /// 是否已经尝试过至少一次读取。
+  final bool hasLoadedOnce;
+
+  /// 最近一次读取是否因为未登录而没有返回章节数据。
+  final bool isLoggedOut;
+
+  /// 最近一次读取失败时的中文错误信息。
+  final String? errorMessage;
+
+  /// 当前是否处于首次加载中。
+  bool get isInitialLoading => isLoading && !hasLoadedOnce;
+
+  /// 当前是否已经有可展示的章节。
+  bool get hasEpisodes => episodes.isNotEmpty;
+
+  /// 已加载章节数量。
+  int get loadedCount => episodes.length;
+
+  /// 服务端是否仍有尚未加载的章节。
+  bool get hasMore {
+    return hasLoadedOnce && !isLoggedOut && total > 0 && loadedCount < total;
+  }
+
+  /// 把已加载章节投影成既有领域分页模型。
+  ///
+  /// 详情页已有展示逻辑依赖 `BangumiEpisodeCollectionPage` 的本篇统计和
+  /// 批量目标计算方法。这里复用该领域模型，避免在 UI 中复制同样的规则。
+  BangumiEpisodeCollectionPage get loadedPage {
+    return BangumiEpisodeCollectionPage(
+      total: total > 0 ? total : episodes.length,
+      limit: limit,
+      offset: 0,
+      episodes: episodes,
+    );
+  }
+
+  /// 创建一个局部更新后的章节分页状态。
+  BangumiSubjectEpisodeCollectionListState copyWith({
+    int? subjectId,
+    BangumiEpisodeType? episodeType,
+    List<BangumiEpisodeCollection>? episodes,
+    int? total,
+    int? limit,
+    int? nextOffset,
+    bool? isLoading,
+    bool? hasLoadedOnce,
+    bool? isLoggedOut,
+    Object? errorMessage = _unchanged,
+  }) {
+    return BangumiSubjectEpisodeCollectionListState(
+      subjectId: subjectId ?? this.subjectId,
+      episodeType: episodeType ?? this.episodeType,
+      episodes: episodes ?? this.episodes,
+      total: total ?? this.total,
+      limit: limit ?? this.limit,
+      nextOffset: nextOffset ?? this.nextOffset,
+      isLoading: isLoading ?? this.isLoading,
+      hasLoadedOnce: hasLoadedOnce ?? this.hasLoadedOnce,
+      isLoggedOut: isLoggedOut ?? this.isLoggedOut,
+      errorMessage: identical(errorMessage, _unchanged)
+          ? this.errorMessage
+          : errorMessage as String?,
+    );
+  }
+}
+
+/// Bangumi 条目详情页章节进度分页控制器。
+///
+/// 控制器负责串行化章节读取请求，防止用户重复点击“加载更多”导致多次请求
+/// 交错写入。保存章节状态后，调用 `refreshLoadedEpisodes` 可以按当前已加载
+/// 范围重读，尽量保持用户已经展开或加载到的位置。
+class BangumiSubjectEpisodeCollectionListController
+    extends Notifier<BangumiSubjectEpisodeCollectionListState> {
+  BangumiSubjectEpisodeCollectionListController(this.subjectId);
+
+  /// 当前控制器负责的 Bangumi 条目 ID。
+  final int subjectId;
+
+  @override
+  BangumiSubjectEpisodeCollectionListState build() {
+    return BangumiSubjectEpisodeCollectionListState(subjectId: subjectId);
+  }
+
+  /// 重新读取第一页章节。
+  ///
+  /// 用户首次进入详情页、手动刷新或从错误状态恢复时调用。这里会清空旧列表，
+  /// 让 UI 明确展示本次读取对应的新状态。
+  Future<void> loadFirstPage() {
+    if (state.isLoading) {
+      return Future.value();
+    }
+
+    state = BangumiSubjectEpisodeCollectionListState(
+      subjectId: subjectId,
+      episodeType: state.episodeType,
+      limit: state.limit,
+    );
+    return _loadPage(offset: 0, replace: true, limit: state.limit);
+  }
+
+  /// 刷新当前已加载范围。
+  ///
+  /// 与 `loadFirstPage` 不同，该方法尽量保留用户已经加载到的范围。例如用户已
+  /// 加载 200 话后标记某一话看过，刷新会请求 200 条而不是退回首屏 100 条。
+  Future<void> refreshLoadedEpisodes() {
+    if (state.isLoading) {
+      return Future.value();
+    }
+
+    final loadedRange = state.loadedCount > state.limit
+        ? state.loadedCount
+        : state.limit;
+    return _loadPage(offset: 0, replace: true, limit: loadedRange);
+  }
+
+  /// 加载下一页章节。
+  Future<void> loadNextPage() {
+    if (state.isLoading || !state.hasMore) {
+      return Future.value();
+    }
+
+    return _loadPage(offset: state.nextOffset, replace: false);
+  }
+
+  /// 执行一次实际分页请求并合并到状态中。
+  Future<void> _loadPage({
+    required int offset,
+    required bool replace,
+    int? limit,
+  }) async {
+    if (state.isLoading) {
+      return;
+    }
+
+    final previousState = state;
+    final requestLimit = limit ?? state.limit;
+    state = state.copyWith(
+      isLoading: true,
+      isLoggedOut: false,
+      errorMessage: null,
+    );
+
+    try {
+      final repository = ref.read(bangumiMyCollectionRepositoryProvider);
+      final page = await repository.getMySubjectEpisodeCollections(
+        subjectId: subjectId,
+        limit: requestLimit,
+        offset: offset,
+        episodeType: state.episodeType,
+      );
+
+      if (page == null) {
+        state = BangumiSubjectEpisodeCollectionListState(
+          subjectId: subjectId,
+          episodeType: previousState.episodeType,
+          limit: previousState.limit,
+          hasLoadedOnce: true,
+          isLoggedOut: true,
+        );
+        return;
+      }
+
+      final nextEpisodes = replace
+          ? page.episodes
+          : [...previousState.episodes, ...page.episodes];
+      final effectiveLimit = page.limit <= 0 ? requestLimit : page.limit;
+      final receivedCount = page.episodes.length;
+      final nextOffset = receivedCount <= 0
+          ? offset + effectiveLimit
+          : page.offset + receivedCount;
+
+      state = state.copyWith(
+        episodes: List.unmodifiable(nextEpisodes),
+        total: page.total > 0 ? page.total : nextEpisodes.length,
+        limit: previousState.limit,
+        nextOffset: nextOffset,
+        isLoading: false,
+        hasLoadedOnce: true,
+        isLoggedOut: false,
+        errorMessage: null,
+      );
+    } catch (error) {
+      state = previousState.copyWith(
+        isLoading: false,
+        hasLoadedOnce: true,
+        errorMessage: error.toString(),
+      );
+    }
+  }
+}
+
 /// 当前用户动画收藏列表请求。
 ///
 /// Riverpod family 需要稳定的相等性作为缓存键；该请求描述一次收藏列表

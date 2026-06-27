@@ -416,25 +416,65 @@ class _MyCollectionContent extends ConsumerWidget {
   }
 }
 
-class _MyEpisodeProgressContent extends ConsumerWidget {
+class _MyEpisodeProgressContent extends ConsumerStatefulWidget {
   const _MyEpisodeProgressContent({required this.subject});
 
   final BangumiSubject subject;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (subject.type != BangumiSubjectType.anime) {
+  ConsumerState<_MyEpisodeProgressContent> createState() =>
+      _MyEpisodeProgressContentState();
+}
+
+class _MyEpisodeProgressContentState
+    extends ConsumerState<_MyEpisodeProgressContent> {
+  @override
+  void initState() {
+    super.initState();
+    _loadFirstPageSoon();
+  }
+
+  @override
+  void didUpdateWidget(covariant _MyEpisodeProgressContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.subject.id != widget.subject.id) {
+      _loadFirstPageSoon();
+    }
+  }
+
+  /// 在当前构建帧结束后启动章节首屏加载。
+  ///
+  /// Riverpod Notifier 的状态修改不应发生在 widget 构建过程内部，因此这里用
+  /// microtask 把首次加载安排到下一轮事件循环，同时保持用户进入详情页后
+  /// 自动读取观看进度的体验。
+  void _loadFirstPageSoon() {
+    Future.microtask(() {
+      if (!mounted || widget.subject.type != BangumiSubjectType.anime) {
+        return;
+      }
+
+      ref
+          .read(
+            bangumiSubjectEpisodeCollectionListControllerProvider(
+              widget.subject.id,
+            ).notifier,
+          )
+          .loadFirstPage();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.subject.type != BangumiSubjectType.anime) {
       return const SizedBox.shrink();
     }
 
-    const limit = 100;
-    final request = BangumiSubjectEpisodeCollectionsRequest(
-      subjectId: subject.id,
-      limit: limit,
+    final provider = bangumiSubjectEpisodeCollectionListControllerProvider(
+      widget.subject.id,
     );
-    final progressState = ref.watch(
-      bangumiMySubjectEpisodeCollectionsProvider(request),
-    );
+    final progressState = ref.watch(provider);
+    final controller = ref.read(provider.notifier);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -446,41 +486,30 @@ class _MyEpisodeProgressContent extends ConsumerWidget {
           ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
         ),
         const SizedBox(height: 10),
-        progressState.when(
-          loading: () => const _InlineLoading(label: '正在读取章节进度...'),
-          error: (error, stackTrace) => _EpisodeProgressError(
-            message: error.toString(),
-            onRetry: () => ref.invalidate(
-              bangumiMySubjectEpisodeCollectionsProvider(request),
-            ),
-          ),
-          data: (page) {
-            if (page == null) {
-              return const Text('登录 Bangumi 后，可以同步这个条目的章节观看进度。');
-            }
-
-            return _EpisodeProgressList(
-              subject: subject,
-              request: request,
-              page: page,
-            );
-          },
-        ),
+        if (progressState.isInitialLoading)
+          const _InlineLoading(label: '正在读取章节进度...')
+        else if (progressState.isLoggedOut)
+          const Text('登录 Bangumi 后，可以同步这个条目的章节观看进度。')
+        else if (progressState.errorMessage != null &&
+            !progressState.hasEpisodes)
+          _EpisodeProgressError(
+            message: progressState.errorMessage!,
+            onRetry: controller.loadFirstPage,
+          )
+        else if (!progressState.hasLoadedOnce)
+          const _InlineLoading(label: '正在准备读取章节进度...')
+        else
+          _EpisodeProgressList(subject: widget.subject, state: progressState),
       ],
     );
   }
 }
 
 class _EpisodeProgressList extends ConsumerStatefulWidget {
-  const _EpisodeProgressList({
-    required this.subject,
-    required this.request,
-    required this.page,
-  });
+  const _EpisodeProgressList({required this.subject, required this.state});
 
   final BangumiSubject subject;
-  final BangumiSubjectEpisodeCollectionsRequest request;
-  final BangumiEpisodeCollectionPage page;
+  final BangumiSubjectEpisodeCollectionListState state;
 
   @override
   ConsumerState<_EpisodeProgressList> createState() =>
@@ -497,10 +526,17 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final page = widget.page;
+    final state = widget.state;
+    final page = state.loadedPage;
+    final controller = ref.read(
+      bangumiSubjectEpisodeCollectionListControllerProvider(
+        widget.subject.id,
+      ).notifier,
+    );
     final total = page.total > 0 ? page.total : page.episodes.length;
     final nextEpisode = page.firstUnwatchedMainStory;
     final mainStoryEpisodes = page.mainStoryEpisodes;
+    final isPageLoading = state.isLoading;
     final selectedBatchTarget = _resolveBatchTarget(
       mainStoryEpisodes: mainStoryEpisodes,
       nextEpisode: nextEpisode,
@@ -562,7 +598,8 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
                   onPressed:
                       nextEpisode == null ||
                           _savingEpisodeId != null ||
-                          _isSavingBatch
+                          _isSavingBatch ||
+                          isPageLoading
                       ? null
                       : () => _saveEpisodeStatus(
                           nextEpisode,
@@ -572,18 +609,38 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
                   label: const Text('标记下一话看过'),
                 ),
                 OutlinedButton.icon(
-                  onPressed: _savingEpisodeId == null && !_isSavingBatch
-                      ? () {
-                          ref.invalidate(
-                            bangumiMySubjectEpisodeCollectionsProvider(
-                              widget.request,
-                            ),
-                          );
-                        }
+                  onPressed:
+                      _savingEpisodeId == null &&
+                          !_isSavingBatch &&
+                          !isPageLoading
+                      ? controller.refreshLoadedEpisodes
                       : null,
-                  icon: const Icon(Icons.refresh_outlined),
-                  label: const Text('刷新进度'),
+                  icon: isPageLoading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh_outlined),
+                  label: Text(isPageLoading ? '刷新中' : '刷新进度'),
                 ),
+                if (state.hasMore)
+                  OutlinedButton.icon(
+                    onPressed:
+                        _savingEpisodeId == null &&
+                            !_isSavingBatch &&
+                            !isPageLoading
+                        ? controller.loadNextPage
+                        : null,
+                    icon: isPageLoading
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.expand_more_outlined),
+                    label: Text(isPageLoading ? '加载中' : '加载更多章节'),
+                  ),
               ],
             ),
             if (mainStoryEpisodes.isNotEmpty) ...[
@@ -600,7 +657,8 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
                 onSubmit:
                     selectedBatchTarget == null ||
                         _savingEpisodeId != null ||
-                        _isSavingBatch
+                        _isSavingBatch ||
+                        isPageLoading
                     ? null
                     : () => _saveEpisodesThrough(selectedBatchTarget),
               ),
@@ -610,8 +668,18 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
               _EpisodeProgressTile(
                 item: item,
                 isSaving: _savingEpisodeId == item.episode.id,
+                isDisabled: isPageLoading || _isSavingBatch,
                 onSetStatus: (type) => _saveEpisodeStatus(item, type),
               ),
+            if (state.errorMessage != null) ...[
+              const SizedBox(height: 10),
+              _EpisodePageErrorNote(
+                message: state.errorMessage!,
+                onRetry: state.hasMore
+                    ? controller.loadNextPage
+                    : controller.refreshLoadedEpisodes,
+              ),
+            ],
             if (page.episodes.length > 8) ...[
               const SizedBox(height: 8),
               OutlinedButton.icon(
@@ -637,6 +705,7 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
                   loadedCount: page.episodes.length,
                   totalCount: total,
                   hasHiddenLoadedEpisodes: hasHiddenLoadedEpisodes,
+                  hasMore: state.hasMore,
                 ),
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: scheme.onSurfaceVariant,
@@ -669,9 +738,13 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
         type: type,
       );
 
-      ref.invalidate(
-        bangumiMySubjectEpisodeCollectionsProvider(widget.request),
-      );
+      await ref
+          .read(
+            bangumiSubjectEpisodeCollectionListControllerProvider(
+              widget.subject.id,
+            ).notifier,
+          )
+          .refreshLoadedEpisodes();
       ref.invalidate(bangumiMySubjectCollectionProvider(widget.subject.id));
       ref.invalidate(bangumiSubjectDetailProvider(widget.subject.id));
 
@@ -724,7 +797,9 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
       return;
     }
 
-    final targetEpisodes = widget.page.unwatchedMainStoriesThrough(target);
+    final targetEpisodes = widget.state.loadedPage.unwatchedMainStoriesThrough(
+      target,
+    );
     if (targetEpisodes.isEmpty) {
       ScaffoldMessenger.of(
         context,
@@ -747,9 +822,13 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
         type: BangumiEpisodeCollectionType.done,
       );
 
-      ref.invalidate(
-        bangumiMySubjectEpisodeCollectionsProvider(widget.request),
-      );
+      await ref
+          .read(
+            bangumiSubjectEpisodeCollectionListControllerProvider(
+              widget.subject.id,
+            ).notifier,
+          )
+          .refreshLoadedEpisodes();
       ref.invalidate(bangumiMySubjectCollectionProvider(widget.subject.id));
       ref.invalidate(bangumiSubjectDetailProvider(widget.subject.id));
 
@@ -848,11 +927,13 @@ class _EpisodeProgressTile extends StatelessWidget {
   const _EpisodeProgressTile({
     required this.item,
     required this.isSaving,
+    required this.isDisabled,
     required this.onSetStatus,
   });
 
   final BangumiEpisodeCollection item;
   final bool isSaving;
+  final bool isDisabled;
   final ValueChanged<BangumiEpisodeCollectionType> onSetStatus;
 
   @override
@@ -921,7 +1002,7 @@ class _EpisodeProgressTile extends StatelessWidget {
           const SizedBox(width: 8),
           PopupMenuButton<BangumiEpisodeCollectionType>(
             tooltip: '修改章节状态',
-            enabled: !isSaving,
+            enabled: !isSaving && !isDisabled,
             icon: isSaving
                 ? const SizedBox(
                     width: 18,
@@ -979,6 +1060,46 @@ class _EpisodeProgressError extends StatelessWidget {
   }
 }
 
+class _EpisodePageErrorNote extends StatelessWidget {
+  const _EpisodePageErrorNote({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.errorContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.error_outline, color: scheme.onErrorContainer, size: 18),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                message,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onErrorContainer,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            TextButton(onPressed: onRetry, child: const Text('重试')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 IconData _episodeStatusIcon(BangumiEpisodeCollectionType type) {
   switch (type) {
     case BangumiEpisodeCollectionType.none:
@@ -1001,6 +1122,7 @@ String _episodeProgressFootnote({
   required int loadedCount,
   required int totalCount,
   required bool hasHiddenLoadedEpisodes,
+  required bool hasMore,
 }) {
   final parts = <String>[];
 
@@ -1011,7 +1133,7 @@ String _episodeProgressFootnote({
   }
 
   if (totalCount > loadedCount) {
-    parts.add('服务端共 $totalCount 条，后续会继续接入分页加载');
+    parts.add(hasMore ? '服务端共 $totalCount 条，可继续加载更多章节' : '服务端共 $totalCount 条');
   }
 
   parts.add('批量标记只作用于当前已加载章节');

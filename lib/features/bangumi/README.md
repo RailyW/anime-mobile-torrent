@@ -1,6 +1,6 @@
 # bangumi 模块说明
 
-`lib/features/bangumi` 负责 Bangumi 相关能力：OAuth 授权、当前用户信息、动画条目搜索、条目详情、收藏和进度同步。当前已接入可配置 OAuth 登录、secure storage token 保存、`/v0/me` 当前用户读取、公开动画条目搜索、公开条目详情读取、首页我的动画收藏分页列表、条目详情页中的个人收藏读取/修改、动画本篇章节观看状态同步、已加载章节展开查看、批量标记到第 N 话看过，以及从条目详情页带标题跳转到 DMHY 资源搜索。
+`lib/features/bangumi` 负责 Bangumi 相关能力：OAuth 授权、当前用户信息、动画条目搜索、条目详情、收藏和进度同步。当前已接入可配置 OAuth 登录、secure storage token 保存、`/v0/me` 当前用户读取、公开动画条目搜索、公开条目详情读取、首页我的动画收藏分页列表、条目详情页中的个人收藏读取/修改、动画本篇章节观看状态同步、已加载章节展开查看、章节分页加载更多、批量标记到第 N 话看过，以及从条目详情页带标题跳转到 DMHY 资源搜索。
 
 ## 当前包含文件
 
@@ -15,9 +15,9 @@
 - `data/bangumi_auth_storage.dart`：Bangumi OAuth token 安全存储，使用 `flutter_secure_storage` 保存 access token、refresh token、过期时间、token 类型和 scope。
 - `application/bangumi_providers.dart`：Bangumi 条目 Repository 抽象、HTTP 实现、Riverpod 搜索 Provider 和详情 Provider。
 - `application/bangumi_auth_providers.dart`：Bangumi 授权 Repository、OAuth 配置、AppAuth、secure storage、当前用户 Provider。
-- `application/bangumi_collection_providers.dart`：Bangumi 当前用户收藏 Repository 契约与实现、动画收藏单页 Provider、动画收藏分页列表控制器、条目收藏 Provider 和章节收藏 Provider，组合 token 刷新、`/v0/me` 用户名读取、收藏 API 和章节进度 API。
+- `application/bangumi_collection_providers.dart`：Bangumi 当前用户收藏 Repository 契约与实现、动画收藏单页 Provider、动画收藏分页列表控制器、条目章节分页加载控制器、条目收藏 Provider 和章节收藏 Provider，组合 token 刷新、`/v0/me` 用户名读取、收藏 API 和章节进度 API。
 - `presentation/bangumi_tab.dart`：Bangumi 首页入口，提供 OAuth 登录状态卡、我的动画收藏分页列表、收藏状态筛选、加载更多、登录/退出/刷新动作、公开动画条目搜索 UI、结果列表和详情页跳转。
-- `presentation/bangumi_subject_detail_page.dart`：Bangumi 条目详情页，展示封面、标题、评分、简介、DMHY 资源搜索入口、我的收藏读写、动画本篇章节观看状态同步、已加载章节展开/收起、批量标记到第 N 话看过、收藏统计、维基信息和标签。
+- `presentation/bangumi_subject_detail_page.dart`：Bangumi 条目详情页，展示封面、标题、评分、简介、DMHY 资源搜索入口、我的收藏读写、动画本篇章节观看状态同步、已加载章节展开/收起、加载更多章节、批量标记到第 N 话看过、收藏统计、维基信息和标签。
 - `presentation/widgets/bangumi_info_chip.dart`：Bangumi 模块内复用的信息标签组件。
 - `presentation/widgets/bangumi_rating_line.dart`：Bangumi 模块内复用的评分摘要组件。
 - `presentation/widgets/bangumi_subject_cover.dart`：Bangumi 模块内复用的条目封面组件，内置缺图和加载失败占位。
@@ -53,14 +53,14 @@ flutter run --dart-define=BANGUMI_CLIENT_ID=你的客户端ID --dart-define=BANG
 - 在 Bangumi 首页展示我的动画收藏分页列表，支持按收藏状态筛选、刷新、加载更多并进入条目详情。
 - 在条目详情页展示收藏状态、评分、短评、私有标记、章节/卷进度摘要。
 - 在条目详情页修改收藏状态、评分、短评和私有标记。
-- 在条目详情页展示本篇章节进度、展开已加载章节、快捷标记下一话看过、批量标记到第 N 话看过，并允许把单集标记为未收藏、想看、看过或抛弃。
+- 在条目详情页展示本篇章节进度、展开已加载章节、加载更多章节、快捷标记下一话看过、批量标记到第 N 话看过，并允许把单集标记为未收藏、想看、看过或抛弃。
 
 ## 后续文件规划
 
 - `data/`：OpenAPI 生成客户端适配、429 退避和错误体细化。
-- `domain/`：收藏列表高级过滤请求和章节分页加载状态。
-- `application/`：章节分页加载、搜索防抖、429 退避和收藏列表缓存策略。
-- `presentation/`：独立完整收藏列表页、章节分页加载和授权失败恢复。
+- `domain/`：收藏列表高级过滤请求和更多章节类型筛选模型。
+- `application/`：搜索防抖、429 退避、章节类型筛选和收藏列表缓存策略。
+- `presentation/`：独立完整收藏列表页、章节类型筛选和授权失败恢复。
 
 ## 设计边界
 

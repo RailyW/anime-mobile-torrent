@@ -173,6 +173,50 @@ void main() {
     expect(repository.requests.last.offset, 0);
   });
 
+  test(
+    'BangumiSubjectEpisodeCollectionListController 可以加载更多并刷新已加载章节',
+    () async {
+      final repository = _FakeBangumiEpisodeCollectionRepository(total: 125);
+      final container = ProviderContainer(
+        overrides: [
+          bangumiMyCollectionRepositoryProvider.overrideWithValue(repository),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final provider = bangumiSubjectEpisodeCollectionListControllerProvider(
+        100,
+      );
+      final controller = container.read(provider.notifier);
+
+      await controller.loadFirstPage();
+      var state = container.read(provider);
+
+      expect(state.episodes, hasLength(100));
+      expect(state.total, 125);
+      expect(state.nextOffset, 100);
+      expect(state.hasMore, isTrue);
+      expect(repository.episodeRequests.single.offset, 0);
+      expect(repository.episodeRequests.single.limit, 100);
+
+      await controller.loadNextPage();
+      state = container.read(provider);
+
+      expect(state.episodes, hasLength(125));
+      expect(state.nextOffset, 125);
+      expect(state.hasMore, isFalse);
+      expect(repository.episodeRequests.last.offset, 100);
+      expect(repository.episodeRequests.last.limit, 100);
+
+      await controller.refreshLoadedEpisodes();
+      state = container.read(provider);
+
+      expect(state.episodes, hasLength(125));
+      expect(repository.episodeRequests.last.offset, 0);
+      expect(repository.episodeRequests.last.limit, 125);
+    },
+  );
+
   group('BangumiEpisodeCollection', () {
     test('可以解析单集收藏状态分页', () {
       final page = BangumiEpisodeCollectionPage.fromJson({
@@ -409,6 +453,83 @@ class _FakeBangumiMyCollectionRepository
   }
 }
 
+class _FakeBangumiEpisodeCollectionRepository
+    implements BangumiMyCollectionRepositoryContract {
+  _FakeBangumiEpisodeCollectionRepository({required this.total});
+
+  final int total;
+  final List<_EpisodePageRequestRecord> episodeRequests = [];
+
+  @override
+  Future<BangumiEpisodeCollectionPage?> getMySubjectEpisodeCollections({
+    required int subjectId,
+    int limit = 100,
+    int offset = 0,
+    BangumiEpisodeType episodeType = BangumiEpisodeType.mainStory,
+  }) async {
+    episodeRequests.add(
+      _EpisodePageRequestRecord(
+        subjectId: subjectId,
+        limit: limit,
+        offset: offset,
+        episodeType: episodeType,
+      ),
+    );
+
+    final start = offset.clamp(0, total).toInt();
+    final end = (offset + limit).clamp(0, total).toInt();
+    final episodes = <BangumiEpisodeCollection>[
+      for (var index = start; index < end; index++)
+        _buildEpisodeCollection(
+          id: 2000 + index,
+          ep: (index + 1).toDouble(),
+          type: index == 0
+              ? BangumiEpisodeCollectionType.done
+              : BangumiEpisodeCollectionType.none,
+          episodeType: episodeType,
+        ),
+    ];
+
+    return BangumiEpisodeCollectionPage(
+      total: total,
+      limit: limit,
+      offset: offset,
+      episodes: episodes,
+    );
+  }
+
+  @override
+  Future<BangumiSubjectCollectionPage?> getMyAnimeCollections({
+    BangumiCollectionType? type,
+    int limit = 20,
+    int offset = 0,
+  }) {
+    throw UnimplementedError('章节分页控制器测试不需要读取收藏列表');
+  }
+
+  @override
+  Future<BangumiSubjectCollection?> getMySubjectCollection(int subjectId) {
+    throw UnimplementedError('章节分页控制器测试不需要读取单条收藏');
+  }
+
+  @override
+  Future<BangumiSubjectCollection?> saveMySubjectCollection({
+    required int subjectId,
+    required BangumiSubjectCollectionUpdate update,
+  }) {
+    throw UnimplementedError('章节分页控制器测试不需要保存单条收藏');
+  }
+
+  @override
+  Future<BangumiEpisodeCollectionPage?> saveMySubjectEpisodeStatus({
+    required int subjectId,
+    required List<int> episodeIds,
+    required BangumiEpisodeCollectionType type,
+  }) {
+    throw UnimplementedError('章节分页控制器测试不需要保存章节状态');
+  }
+}
+
 class _CollectionPageRequestRecord {
   const _CollectionPageRequestRecord({
     required this.type,
@@ -419,4 +540,18 @@ class _CollectionPageRequestRecord {
   final BangumiCollectionType? type;
   final int limit;
   final int offset;
+}
+
+class _EpisodePageRequestRecord {
+  const _EpisodePageRequestRecord({
+    required this.subjectId,
+    required this.limit,
+    required this.offset,
+    required this.episodeType,
+  });
+
+  final int subjectId;
+  final int limit;
+  final int offset;
+  final BangumiEpisodeType episodeType;
 }
