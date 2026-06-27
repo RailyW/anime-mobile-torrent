@@ -1,6 +1,11 @@
 import 'package:anime_mobile_torrent/app/anime_mobile_torrent_app.dart';
+import 'package:anime_mobile_torrent/features/bangumi/application/bangumi_auth_providers.dart';
+import 'package:anime_mobile_torrent/features/bangumi/application/bangumi_collection_providers.dart';
 import 'package:anime_mobile_torrent/features/bangumi/application/bangumi_providers.dart';
+import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_collection.dart';
+import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_episode_collection.dart';
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_subject.dart';
+import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_user.dart';
 import 'package:anime_mobile_torrent/features/dmhy/application/dmhy_providers.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_resource.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_torrent_file.dart';
@@ -199,6 +204,65 @@ void main() {
 
     expect(find.text('用户标签'), findsOneWidget);
     expect(find.text('治愈 128'), findsOneWidget);
+  });
+
+  testWidgets('Bangumi 条目详情可以展开已加载章节进度', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
+          bangumiRepositoryProvider.overrideWithValue(_FakeBangumiRepository()),
+          bangumiCurrentUserProvider.overrideWith(
+            (ref) async => const BangumiUser(
+              id: 1,
+              username: 'tester',
+              nickname: '测试用户',
+              userGroup: 10,
+              avatar: BangumiUserAvatar(),
+              sign: '',
+            ),
+          ),
+          bangumiMyCollectionRepositoryProvider.overrideWithValue(
+            _FakeBangumiDetailCollectionRepository(),
+          ),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '测试动画');
+    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('测试动画 中文名'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('观看进度'),
+      260,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('已看 1 / 10 本篇'), findsOneWidget);
+    expect(find.text('展开已加载章节'), findsOneWidget);
+    expect(find.text('测试第 10 话'), findsNothing);
+
+    await tester.scrollUntilVisible(
+      find.widgetWithText(OutlinedButton, '展开已加载章节'),
+      220,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, '展开已加载章节'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('收起章节'), findsOneWidget);
+    expect(find.text('测试第 10 话'), findsOneWidget);
   });
 
   testWidgets('Bangumi 条目详情可以带关键词跳转到 DMHY 搜索', (tester) async {
@@ -434,6 +498,95 @@ class _FakeBangumiRepository implements BangumiRepository {
         BangumiInfoBoxItem(key: '导演', values: ['测试监督']),
       ],
     );
+  }
+}
+
+class _FakeBangumiDetailCollectionRepository
+    implements BangumiMyCollectionRepositoryContract {
+  @override
+  Future<BangumiSubjectCollection?> getMySubjectCollection(
+    int subjectId,
+  ) async {
+    return BangumiSubjectCollection(
+      subjectId: subjectId,
+      subjectType: BangumiSubjectType.anime,
+      type: BangumiCollectionType.doing,
+      rate: 8,
+      comment: '正在追',
+      tags: const ['测试'],
+      epStatus: 1,
+      volStatus: 0,
+      updatedAt: DateTime.utc(2026, 6, 27, 12),
+      isPrivate: false,
+    );
+  }
+
+  @override
+  Future<BangumiEpisodeCollectionPage?> getMySubjectEpisodeCollections({
+    required int subjectId,
+    int limit = 100,
+    int offset = 0,
+    BangumiEpisodeType episodeType = BangumiEpisodeType.mainStory,
+  }) async {
+    return BangumiEpisodeCollectionPage(
+      total: 10,
+      limit: limit,
+      offset: offset,
+      episodes: [
+        for (var index = 1; index <= 10; index++)
+          BangumiEpisodeCollection(
+            episode: BangumiEpisode(
+              id: 1000 + index,
+              type: episodeType,
+              name: 'Episode $index',
+              nameCn: '测试第 $index 话',
+              sort: index.toDouble(),
+              ep: index.toDouble(),
+              airDate: '2026-01-${index.toString().padLeft(2, '0')}',
+              commentCount: index,
+              duration: '24m',
+              description: '',
+              disc: 0,
+              durationSeconds: 1440,
+            ),
+            type: index == 1
+                ? BangumiEpisodeCollectionType.done
+                : BangumiEpisodeCollectionType.none,
+            updatedAt: null,
+          ),
+      ],
+    );
+  }
+
+  @override
+  Future<BangumiSubjectCollectionPage?> getMyAnimeCollections({
+    BangumiCollectionType? type,
+    int limit = 20,
+    int offset = 0,
+  }) async {
+    return const BangumiSubjectCollectionPage(
+      total: 0,
+      limit: 20,
+      offset: 0,
+      collections: [],
+    );
+  }
+
+  @override
+  Future<BangumiSubjectCollection?> saveMySubjectCollection({
+    required int subjectId,
+    required BangumiSubjectCollectionUpdate update,
+  }) {
+    return getMySubjectCollection(subjectId);
+  }
+
+  @override
+  Future<BangumiEpisodeCollectionPage?> saveMySubjectEpisodeStatus({
+    required int subjectId,
+    required List<int> episodeIds,
+    required BangumiEpisodeCollectionType type,
+  }) {
+    return getMySubjectEpisodeCollections(subjectId: subjectId);
   }
 }
 

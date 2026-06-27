@@ -491,6 +491,7 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
   int? _savingEpisodeId;
   bool _isSavingBatch = false;
   int? _selectedBatchEpisodeId;
+  bool _showAllLoadedEpisodes = false;
 
   @override
   Widget build(BuildContext context) {
@@ -504,7 +505,11 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
       mainStoryEpisodes: mainStoryEpisodes,
       nextEpisode: nextEpisode,
     );
-    final visibleEpisodes = page.episodes.take(8).toList(growable: false);
+    final visibleEpisodes = _showAllLoadedEpisodes
+        ? page.episodes
+        : page.episodes.take(8).toList(growable: false);
+    final hasHiddenLoadedEpisodes =
+        page.episodes.length > visibleEpisodes.length;
 
     if (page.episodes.isEmpty) {
       return DecoratedBox(
@@ -607,10 +612,32 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
                 isSaving: _savingEpisodeId == item.episode.id,
                 onSetStatus: (type) => _saveEpisodeStatus(item, type),
               ),
-            if (total > visibleEpisodes.length) ...[
+            if (page.episodes.length > 8) ...[
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _showAllLoadedEpisodes = !_showAllLoadedEpisodes;
+                  });
+                },
+                icon: Icon(
+                  _showAllLoadedEpisodes
+                      ? Icons.unfold_less_outlined
+                      : Icons.unfold_more_outlined,
+                ),
+                label: Text(_showAllLoadedEpisodes ? '收起章节' : '展开已加载章节'),
+              ),
+            ],
+            if (total > visibleEpisodes.length ||
+                total > page.episodes.length) ...[
               const SizedBox(height: 6),
               Text(
-                '已展示前 ${visibleEpisodes.length} 话，批量标记只作用于当前已加载章节。',
+                _episodeProgressFootnote(
+                  visibleCount: visibleEpisodes.length,
+                  loadedCount: page.episodes.length,
+                  totalCount: total,
+                  hasHiddenLoadedEpisodes: hasHiddenLoadedEpisodes,
+                ),
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),
@@ -963,6 +990,32 @@ IconData _episodeStatusIcon(BangumiEpisodeCollectionType type) {
     case BangumiEpisodeCollectionType.dropped:
       return Icons.block_outlined;
   }
+}
+
+/// 生成章节列表底部说明。
+///
+/// 说明需要区分“只是当前收起了已加载章节”和“服务端仍有更多章节未加载”，
+/// 避免用户误以为批量操作已经覆盖了完整长篇条目。
+String _episodeProgressFootnote({
+  required int visibleCount,
+  required int loadedCount,
+  required int totalCount,
+  required bool hasHiddenLoadedEpisodes,
+}) {
+  final parts = <String>[];
+
+  if (hasHiddenLoadedEpisodes) {
+    parts.add('已展示前 $visibleCount / $loadedCount 条已加载章节');
+  } else {
+    parts.add('已展示 $visibleCount 条已加载章节');
+  }
+
+  if (totalCount > loadedCount) {
+    parts.add('服务端共 $totalCount 条，后续会继续接入分页加载');
+  }
+
+  parts.add('批量标记只作用于当前已加载章节');
+  return '${parts.join('；')}。';
 }
 
 class _MyCollectionError extends StatelessWidget {
