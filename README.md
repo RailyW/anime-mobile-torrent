@@ -19,7 +19,7 @@
 当前仓库已完成 Flutter Android 工程初始化，并建立了应用壳、模块目录和首期外部 BT 客户端交接边界。已确认的优先方向如下：
 
 1. 安卓前端使用 Flutter。
-2. Bangumi 接入优先使用官方 OpenAPI；当前 OAuth 登录使用 `flutter_appauth`，token 使用 `flutter_secure_storage` 保存。
+2. Bangumi 接入优先使用官方 OpenAPI；当前 OAuth 登录使用 `flutter_appauth`，token 使用 `flutter_secure_storage` 保存，并提供本机 OAuth client 设置页。
 3. 首期不内置 BT 下载器，只负责 DMHY 磁力链接、`.torrent` 种子文件获取，以及直开或分享给外部 BT 客户端处理。
 4. DMHY 首期优先使用官方 RSS，并已按需解析详情页获取 `.torrent` 文件链接；RSS 结果会展示从标题/简介中提取的轻量资源标签。
 5. 播放首期使用系统文件选择器和外部播放器交接，不内置视频播放器，也不扫描外部 BT 客户端下载目录。
@@ -58,7 +58,7 @@ flutter test
 flutter build apk --debug
 ```
 
-Bangumi OAuth 登录需要在运行时注入客户端配置，仓库不会提交 client secret：
+Bangumi OAuth 登录需要客户端配置，仓库不会提交 client secret。普通安装包可以在 APP 右上角设置页填写自己的 Bangumi OAuth client；开发运行时也可以通过 `--dart-define` 注入默认配置：
 
 ```powershell
 flutter run --dart-define=BANGUMI_CLIENT_ID=你的客户端ID --dart-define=BANGUMI_CLIENT_SECRET=你的客户端密钥
@@ -70,6 +70,8 @@ Bangumi 开发者后台的 redirect URI 应配置为：
 com.railyw.anime_mobile_torrent:/oauth/bangumi
 ```
 
+当前 Android 包只注册 `com.railyw.anime_mobile_torrent` scheme；设置页会拒绝其他 scheme 的 redirect URI，避免授权后无法回跳 APP。
+
 ## 当前状态
 
-本仓库目前包含项目规则、调研文档、Android Flutter 工程骨架、首页导航壳、功能模块 README、Bangumi 可配置 OAuth 登录、当前用户信息读取、公开动画条目搜索与输入防抖、搜索排序、搜索结果分页加载更多、Bangumi 读取请求 429 退避、条目详情、首页我的动画收藏分页列表、条目详情页个人收藏读取/修改、动画章节观看状态同步、章节类型筛选、已加载章节展开查看、章节分页加载更多、批量标记到第 N 话看过、条目详情页 DMHY 资源搜索联动、DMHY RSS 关键词搜索、DMHY RSS 与种子请求 429 退避、RSS 结果中的资源标题元数据标签、DMHY HTML 列表真实大小和资源热度统计、前台 DMHY 资源排序和包含片源/字幕说明/字幕语言/最小种子数/排除关键词的前台筛选、字幕组偏好保存与自动套用、RSS 结果中的 magnet 复制/打开入口、DMHY 详情页 `.torrent` 种子文件解析、下载、最近种子记录和单条种子缓存清理、资源卡片外部 BT 客户端预提示、按检测结果动态调整种子主按钮、外部 BT 客户端直开和系统分享兜底、Android resolver 外部 BT 客户端能力检测和候选客户端展示、种子交接页当前设备检测、真实设备兼容实测记录、兼容报告复制与失败处理引导、手动选择本地视频、最近视频本机记录、单条最近视频记录删除并调用系统或第三方播放器、用户显式开启的 Android 前台服务后台常驻入口、后台通知默认回到后台页、订阅命中通知直达 DMHY 搜索、通知停止按钮，以及 DMHY RSS 订阅关键词保存、手动检查、后台低频自动检查、前台最近摘要刷新和订阅结果回流 DMHY 搜索。下一步应优先继续用兼容报告观察不同 Android 设备和 BT 客户端对 `.torrent` 直开、分享导入和 magnet 打开的真实兼容性，并按设备测试结果补充更可复用的兼容清单。
+本仓库目前包含项目规则、调研文档、Android Flutter 工程骨架、首页导航壳、功能模块 README、Bangumi 可配置 OAuth 登录、本机 OAuth client 设置页、当前用户信息读取、公开动画条目搜索与输入防抖、搜索排序、搜索结果分页加载更多、Bangumi 读取请求 429 退避、条目详情、首页我的动画收藏分页列表、条目详情页个人收藏读取/修改、动画章节观看状态同步、章节类型筛选、已加载章节展开查看、章节分页加载更多、批量标记到第 N 话看过、条目详情页 DMHY 资源搜索联动、DMHY RSS 关键词搜索、DMHY RSS 与种子请求 429 退避、RSS 结果中的资源标题元数据标签、DMHY HTML 列表真实大小和资源热度统计、前台 DMHY 资源排序和包含片源/字幕说明/字幕语言/最小种子数/排除关键词的前台筛选、字幕组偏好保存与自动套用、RSS 结果中的 magnet 复制/打开入口、DMHY 详情页 `.torrent` 种子文件解析、下载、最近种子记录和单条种子缓存清理、资源卡片外部 BT 客户端预提示、按检测结果动态调整种子主按钮、外部 BT 客户端直开和系统分享兜底、Android resolver 外部 BT 客户端能力检测和候选客户端展示、种子交接页当前设备检测、真实设备兼容实测记录、兼容报告复制与失败处理引导、手动选择本地视频、最近视频本机记录、单条最近视频记录删除并调用系统或第三方播放器、用户显式开启的 Android 前台服务后台常驻入口、后台通知默认回到后台页、订阅命中通知直达 DMHY 搜索、通知停止按钮，以及 DMHY RSS 订阅关键词保存、手动检查、后台低频自动检查、前台最近摘要刷新和订阅结果回流 DMHY 搜索。下一步应优先继续用兼容报告观察不同 Android 设备和 BT 客户端对 `.torrent` 直开、分享导入和 magnet 打开的真实兼容性，并按设备测试结果补充更可复用的兼容清单。

@@ -18,7 +18,8 @@ import 'widgets/bangumi_subject_cover.dart';
 /// Bangumi 功能首页入口。
 ///
 /// 当前阶段已落地公开动画条目搜索和可配置 OAuth 登录。OAuth 客户端信息
-/// 通过 `--dart-define` 注入；未配置时，公开搜索仍可正常使用。
+/// 可以通过 `--dart-define` 注入，也可以在本机设置页填写；未配置时，
+/// 公开搜索仍可正常使用。
 class BangumiTab extends ConsumerStatefulWidget {
   const BangumiTab({super.key});
 
@@ -242,6 +243,7 @@ class _BangumiAccountPanelState extends ConsumerState<_BangumiAccountPanel> {
                 config: config,
                 isBusy: _isBusy,
                 onLogin: () => _login(context),
+                onConfigure: () => _openOAuthSettings(context),
               );
             }
 
@@ -255,6 +257,26 @@ class _BangumiAccountPanelState extends ConsumerState<_BangumiAccountPanel> {
         ),
       ),
     );
+  }
+
+  /// 打开 Bangumi OAuth 设置页，并在页面返回后刷新运行期配置。
+  ///
+  /// 设置页只负责写入本机配置和清理旧 token。这里等 route 返回且首页重新可见后，
+  /// 再在下一帧刷新 OAuth 配置和账号状态，避免首页处于 offstage 时收到 provider
+  /// 更新，触发 Riverpod 暂停订阅恢复阶段的构建期刷新。
+  Future<void> _openOAuthSettings(BuildContext context) async {
+    await context.pushNamed('bangumi-oauth-settings');
+    if (!mounted) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      ref.invalidate(bangumiOAuthConfigControllerProvider);
+      ref.invalidate(bangumiCurrentUserProvider);
+    });
   }
 
   /// 发起 Bangumi OAuth 登录。
@@ -360,11 +382,13 @@ class _BangumiLoggedOutAccount extends StatelessWidget {
     required this.config,
     required this.isBusy,
     required this.onLogin,
+    required this.onConfigure,
   });
 
   final BangumiOAuthConfig config;
   final bool isBusy;
   final VoidCallback onLogin;
+  final VoidCallback onConfigure;
 
   @override
   Widget build(BuildContext context) {
@@ -401,16 +425,28 @@ class _BangumiLoggedOutAccount extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
-        FilledButton.icon(
-          onPressed: configured && !isBusy ? onLogin : null,
-          icon: isBusy
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.login_outlined),
-          label: Text(isBusy ? '登录中' : '登录 Bangumi'),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            FilledButton.icon(
+              onPressed: configured && !isBusy ? onLogin : null,
+              icon: isBusy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.login_outlined),
+              label: Text(isBusy ? '登录中' : '登录 Bangumi'),
+            ),
+            if (!configured)
+              OutlinedButton.icon(
+                onPressed: isBusy ? null : onConfigure,
+                icon: const Icon(Icons.settings_outlined),
+                label: const Text('配置 OAuth'),
+              ),
+          ],
         ),
       ],
     );

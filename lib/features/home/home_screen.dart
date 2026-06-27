@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../background/presentation/background_tab.dart';
+import '../bangumi/application/bangumi_auth_providers.dart';
 import '../bangumi/presentation/bangumi_tab.dart';
 import '../dmhy/presentation/dmhy_tab.dart';
 import '../playback/presentation/playback_tab.dart';
@@ -8,9 +11,10 @@ import '../torrent_handoff/presentation/torrent_handoff_tab.dart';
 
 /// APP 首页壳。
 ///
-/// 首页只承担顶层导航职责，不直接访问 Bangumi、DMHY 或 Android 平台能力。
-/// 每个底部导航项都对应一个独立 feature，后续可以按模块逐步替换为真实页面。
-class HomeScreen extends StatefulWidget {
+/// 首页承担顶层导航和轻量设置入口职责，不直接调用 Bangumi、DMHY 或
+/// Android 平台能力。每个底部导航项都对应一个独立 feature，后续可以按模块
+/// 逐步替换为真实页面。
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({
     this.initialTabIndex = 0,
     this.initialDmhyKeyword,
@@ -32,10 +36,10 @@ class HomeScreen extends StatefulWidget {
   final bool initialDmhyAnimeOnly;
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   late int _selectedIndex;
 
   @override
@@ -64,6 +68,25 @@ class _HomeScreenState extends State<HomeScreen> {
   void _selectTab(int index) {
     setState(() {
       _selectedIndex = index;
+    });
+  }
+
+  /// 打开 Bangumi OAuth 设置页，并在返回后刷新 Bangumi 授权运行期状态。
+  ///
+  /// 设置页保存的是 SharedPreferences 中的本机配置。这里等 route 返回后再刷新
+  /// active provider，可以让首页所有 Bangumi 卡片在重新可见后统一读取新配置。
+  Future<void> _openBangumiOAuthSettings() async {
+    await context.pushNamed('bangumi-oauth-settings');
+    if (!mounted) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      ref.invalidate(bangumiOAuthConfigControllerProvider);
+      ref.invalidate(bangumiCurrentUserProvider);
     });
   }
 
@@ -111,7 +134,7 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           IconButton(
             tooltip: '设置',
-            onPressed: null,
+            onPressed: _openBangumiOAuthSettings,
             icon: const Icon(Icons.settings_outlined),
           ),
         ],

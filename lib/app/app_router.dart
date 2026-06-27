@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/bangumi/presentation/bangumi_oauth_settings_page.dart';
 import '../features/bangumi/presentation/bangumi_subject_detail_page.dart';
 import '../features/home/home_screen.dart';
 
@@ -29,6 +30,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             initialDmhyKeyword: dmhyKeyword,
             initialDmhyAnimeOnly: dmhyAnimeOnly,
           );
+        },
+      ),
+      GoRoute(
+        path: '/settings/bangumi-oauth',
+        name: 'bangumi-oauth-settings',
+        builder: (context, state) {
+          return const BangumiOAuthSettingsPage();
         },
       ),
       GoRoute(

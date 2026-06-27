@@ -1,5 +1,11 @@
+import 'package:anime_mobile_torrent/features/bangumi/application/bangumi_auth_providers.dart';
+import 'package:anime_mobile_torrent/features/bangumi/data/bangumi_auth_storage.dart';
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_auth.dart';
+import 'package:anime_mobile_torrent/features/bangumi/data/bangumi_oauth_config_storage.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('BangumiOAuthToken', () {
@@ -69,5 +75,147 @@ void main() {
       expect(config.redirectUri, BangumiOAuthConfig.defaultRedirectUri);
       expect(config.scopes, ['write:collection']);
     });
+
+    test('可以从用户输入归一化 OAuth 配置', () {
+      final config = BangumiOAuthConfig.fromUserInput(
+        clientId: ' client-id ',
+        clientSecret: ' secret ',
+        redirectUri: '',
+        scopes: 'write:collection, read',
+      );
+
+      expect(config.isConfigured, isTrue);
+      expect(config.clientId, 'client-id');
+      expect(config.clientSecret, 'secret');
+      expect(config.redirectUri, BangumiOAuthConfig.defaultRedirectUri);
+      expect(config.scopes, ['write:collection', 'read']);
+      expect(config.scopesText, 'write:collection read');
+    });
+
+    test('可以序列化并从本机 JSON 恢复 OAuth 配置', () {
+      final config = BangumiOAuthConfig.fromUserInput(
+        clientId: 'client-id',
+        clientSecret: 'secret',
+        redirectUri: '${BangumiOAuthConfig.defaultRedirectScheme}:/callback',
+        scopes: 'write:collection',
+      );
+
+      final restored = BangumiOAuthConfig.fromJson(config.toJson());
+
+      expect(restored.clientId, 'client-id');
+      expect(restored.clientSecret, 'secret');
+      expect(
+        restored.redirectUri,
+        '${BangumiOAuthConfig.defaultRedirectScheme}:/callback',
+      );
+      expect(restored.scopes, ['write:collection']);
+    });
+
+    test('不支持当前 APK scheme 的 redirect URI 不视为可登录配置', () {
+      final config = BangumiOAuthConfig.fromUserInput(
+        clientId: 'client-id',
+        clientSecret: 'secret',
+        redirectUri: 'com.example:/oauth/bangumi',
+        scopes: 'write:collection',
+      );
+
+      expect(config.isConfigured, isFalse);
+      expect(
+        BangumiOAuthConfig.hasSupportedRedirectScheme(config.redirectUri),
+        isFalse,
+      );
+    });
   });
+
+  group('SharedPreferencesBangumiOAuthConfigStorage', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('可以保存、读取并清除本机 OAuth 配置', () async {
+      const storage = SharedPreferencesBangumiOAuthConfigStorage();
+      final config = BangumiOAuthConfig.fromUserInput(
+        clientId: 'client-id',
+        clientSecret: 'secret',
+        redirectUri: BangumiOAuthConfig.defaultRedirectUri,
+        scopes: 'write:collection',
+      );
+
+      await storage.saveConfig(config);
+      final saved = await storage.loadConfig();
+
+      expect(saved?.clientId, 'client-id');
+      expect(saved?.clientSecret, 'secret');
+      expect(saved?.redirectUri, BangumiOAuthConfig.defaultRedirectUri);
+
+      await storage.clearConfig();
+      expect(await storage.loadConfig(), isNull);
+    });
+  });
+
+  group('BangumiOAuthConfigController', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+      FlutterSecureStorage.setMockInitialValues({});
+    });
+
+    test('保存本机 OAuth 配置时会清理旧 token', () async {
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final tokenStorage = container.read(bangumiAuthStorageProvider);
+      await _saveFakeToken(tokenStorage);
+
+      final config = BangumiOAuthConfig.fromUserInput(
+        clientId: 'client-id',
+        clientSecret: 'secret',
+        redirectUri: BangumiOAuthConfig.defaultRedirectUri,
+        scopes: 'write:collection',
+      );
+
+      await container
+          .read(bangumiOAuthConfigControllerProvider.notifier)
+          .saveUserConfig(config, activateImmediately: false);
+
+      final savedConfig =
+          await const SharedPreferencesBangumiOAuthConfigStorage().loadConfig();
+      expect(savedConfig?.clientId, 'client-id');
+      expect(await tokenStorage.readToken(), isNull);
+    });
+
+    test('清除本机 OAuth 配置时会清理旧 token', () async {
+      const configStorage = SharedPreferencesBangumiOAuthConfigStorage();
+      final config = BangumiOAuthConfig.fromUserInput(
+        clientId: 'client-id',
+        clientSecret: 'secret',
+        redirectUri: BangumiOAuthConfig.defaultRedirectUri,
+        scopes: 'write:collection',
+      );
+      await configStorage.saveConfig(config);
+
+      final container = ProviderContainer();
+      addTearDown(container.dispose);
+      final tokenStorage = container.read(bangumiAuthStorageProvider);
+      await _saveFakeToken(tokenStorage);
+
+      await container
+          .read(bangumiOAuthConfigControllerProvider.notifier)
+          .clearUserConfig(activateImmediately: false);
+
+      expect(await configStorage.loadConfig(), isNull);
+      expect(await tokenStorage.readToken(), isNull);
+    });
+  });
+}
+
+/// 写入一个测试用 Bangumi token，供配置控制器清理。
+Future<void> _saveFakeToken(BangumiAuthStorage tokenStorage) {
+  return tokenStorage.saveToken(
+    BangumiOAuthToken(
+      accessToken: 'access-token',
+      refreshToken: 'refresh-token',
+      tokenType: 'Bearer',
+      expiresAt: DateTime.utc(2026, 6, 27, 12),
+      scopes: const ['write:collection'],
+    ),
+  );
 }

@@ -5,6 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../data/bangumi_api_client.dart';
 import '../data/bangumi_auth_client.dart';
 import '../data/bangumi_auth_storage.dart';
+import '../data/bangumi_oauth_config_storage.dart';
 import '../domain/bangumi_auth.dart';
 import '../domain/bangumi_user.dart';
 import 'bangumi_providers.dart';
@@ -78,10 +79,114 @@ class BangumiAuthRepository {
   }
 }
 
-/// Bangumi OAuth 配置 Provider。
-final bangumiOAuthConfigProvider = Provider<BangumiOAuthConfig>((ref) {
+/// 编译期 Bangumi OAuth 配置 Provider。
+///
+/// 该配置来自 `--dart-define`，作为本机用户配置不存在时的默认回退。
+final bangumiEnvironmentOAuthConfigProvider = Provider<BangumiOAuthConfig>((
+  ref,
+) {
   return BangumiOAuthConfig.fromEnvironment();
 });
+
+/// Bangumi OAuth 本机配置存储 Provider。
+final bangumiOAuthConfigStorageProvider = Provider<BangumiOAuthConfigStorage>((
+  ref,
+) {
+  return const SharedPreferencesBangumiOAuthConfigStorage();
+});
+
+/// Bangumi OAuth 配置控制器 Provider。
+///
+/// 初次构建时优先读取用户在设置页保存的本机配置；没有本机配置时回退到
+/// 编译期环境配置。这样开发构建仍可使用 `--dart-define`，普通安装包也能
+/// 在设置页填写自己的 Bangumi OAuth client。
+final bangumiOAuthConfigControllerProvider =
+    AsyncNotifierProvider<BangumiOAuthConfigController, BangumiOAuthConfig>(
+      BangumiOAuthConfigController.new,
+    );
+
+/// 当前可用的 Bangumi OAuth 配置 Provider。
+///
+/// 大多数业务代码需要同步读取配置，因此这里把异步控制器折叠为一个普通
+/// Provider：加载中或读取失败时先使用编译期配置，控制器完成后自动重建。
+final bangumiOAuthConfigProvider = Provider<BangumiOAuthConfig>((ref) {
+  final environmentConfig = ref.watch(bangumiEnvironmentOAuthConfigProvider);
+  final configState = ref.watch(bangumiOAuthConfigControllerProvider);
+  return configState.when(
+    data: (config) => config,
+    error: (_, _) => environmentConfig,
+    loading: () => environmentConfig,
+  );
+});
+
+/// Bangumi OAuth 配置控制器。
+class BangumiOAuthConfigController extends AsyncNotifier<BangumiOAuthConfig> {
+  @override
+  Future<BangumiOAuthConfig> build() async {
+    final environmentConfig = ref.watch(bangumiEnvironmentOAuthConfigProvider);
+    final storage = ref.watch(bangumiOAuthConfigStorageProvider);
+    final savedConfig = await storage.loadConfig();
+    return savedConfig ?? environmentConfig;
+  }
+
+  /// 保存用户填写的本机 OAuth 配置。
+  ///
+  /// OAuth client 改变后，旧 token 可能属于另一个 client。这里会同步清理
+  /// 已保存 token。`activateImmediately` 用于控制是否立刻更新当前运行中的
+  /// provider 状态：设置页位于首页 route 之上时会先持久化，等 route 返回后
+  /// 再刷新 active config，避免 offstage 首页订阅恢复时触发构建期刷新。
+  Future<void> saveUserConfig(
+    BangumiOAuthConfig config, {
+    bool activateImmediately = true,
+  }) async {
+    if (activateImmediately) {
+      state = const AsyncValue.loading();
+    }
+    try {
+      final storage = ref.read(bangumiOAuthConfigStorageProvider);
+      await storage.saveConfig(config);
+      await _clearToken();
+      if (activateImmediately) {
+        state = AsyncValue.data(config);
+      }
+    } catch (error, stackTrace) {
+      if (activateImmediately) {
+        state = AsyncValue.error(error, stackTrace);
+      }
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
+  /// 清除本机 OAuth 配置并回退到编译期环境配置。
+  ///
+  /// `activateImmediately` 的语义与 [saveUserConfig] 相同。
+  Future<void> clearUserConfig({bool activateImmediately = true}) async {
+    if (activateImmediately) {
+      state = const AsyncValue.loading();
+    }
+    try {
+      final storage = ref.read(bangumiOAuthConfigStorageProvider);
+      await storage.clearConfig();
+      await _clearToken();
+      if (activateImmediately) {
+        state = AsyncValue.data(
+          ref.read(bangumiEnvironmentOAuthConfigProvider),
+        );
+      }
+    } catch (error, stackTrace) {
+      if (activateImmediately) {
+        state = AsyncValue.error(error, stackTrace);
+      }
+      Error.throwWithStackTrace(error, stackTrace);
+    }
+  }
+
+  /// 清理旧 token。
+  Future<void> _clearToken() async {
+    final tokenStorage = ref.read(bangumiAuthStorageProvider);
+    await tokenStorage.clearToken();
+  }
+}
 
 /// Flutter AppAuth Provider。
 final flutterAppAuthProvider = Provider<FlutterAppAuth>((ref) {

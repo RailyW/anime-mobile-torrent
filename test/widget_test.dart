@@ -1,7 +1,9 @@
 import 'package:anime_mobile_torrent/app/anime_mobile_torrent_app.dart';
+import 'package:anime_mobile_torrent/features/bangumi/data/bangumi_oauth_config_storage.dart';
 import 'package:anime_mobile_torrent/features/bangumi/application/bangumi_auth_providers.dart';
 import 'package:anime_mobile_torrent/features/bangumi/application/bangumi_collection_providers.dart';
 import 'package:anime_mobile_torrent/features/bangumi/application/bangumi_providers.dart';
+import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_auth.dart';
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_collection.dart';
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_episode_collection.dart';
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_subject.dart';
@@ -21,6 +23,7 @@ import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_see
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -41,6 +44,7 @@ Widget _buildTestApp() {
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+    FlutterSecureStorage.setMockInitialValues({});
   });
 
   testWidgets('首页可以展示并切换主要模块', (tester) async {
@@ -129,6 +133,90 @@ void main() {
     expect(find.text('后台自动检查'), findsOneWidget);
     expect(find.text('暂无后台自动检查记录'), findsOneWidget);
     expect(find.text('暂无订阅关键词'), findsOneWidget);
+  });
+
+  testWidgets('可以在设置页保存 Bangumi OAuth 本机配置', (tester) async {
+    await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('OAuth 客户端未配置'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, '配置 OAuth'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, '配置 OAuth'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Bangumi OAuth 设置'), findsOneWidget);
+    expect(find.text('本机 OAuth 配置'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextFormField).at(0), 'client-id');
+    await tester.enterText(find.byType(TextFormField).at(1), 'client-secret');
+    await tester.enterText(
+      find.byType(TextFormField).at(2),
+      'com.railyw.anime_mobile_torrent:/oauth/bangumi',
+    );
+    await tester.enterText(
+      find.byType(TextFormField).at(3),
+      'write:collection read',
+    );
+
+    await tester.ensureVisible(find.widgetWithText(FilledButton, '保存配置'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '保存配置'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(find.text('已保存 Bangumi OAuth 配置'), findsOneWidget);
+    final storedConfig =
+        await const SharedPreferencesBangumiOAuthConfigStorage().loadConfig();
+    expect(storedConfig?.clientId, 'client-id');
+    expect(storedConfig?.clientSecret, 'client-secret');
+    expect(storedConfig?.isConfigured, isTrue);
+
+    Navigator.of(tester.element(find.text('Bangumi OAuth 设置'))).pop();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 250));
+    await tester.pumpAndSettle();
+
+    expect(find.text('未登录 Bangumi'), findsOneWidget);
+    expect(find.text('可登录'), findsOneWidget);
+    expect(find.text('OAuth 客户端未配置'), findsNothing);
+  });
+
+  testWidgets('设置页会回填已保存的 Bangumi OAuth 本机配置', (tester) async {
+    const storage = SharedPreferencesBangumiOAuthConfigStorage();
+    await storage.saveConfig(
+      BangumiOAuthConfig.fromUserInput(
+        clientId: 'saved-client-id',
+        clientSecret: 'saved-client-secret',
+        redirectUri: '${BangumiOAuthConfig.defaultRedirectScheme}:/saved',
+        scopes: 'write:collection read',
+      ),
+    );
+
+    await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
+
+    expect(find.text('未登录 Bangumi'), findsOneWidget);
+    await tester.tap(find.byTooltip('设置'));
+    await tester.pumpAndSettle();
+
+    final fields = find.byType(TextFormField);
+    expect(
+      tester.widget<TextFormField>(fields.at(0)).controller?.text,
+      'saved-client-id',
+    );
+    expect(
+      tester.widget<TextFormField>(fields.at(1)).controller?.text,
+      'saved-client-secret',
+    );
+    expect(
+      tester.widget<TextFormField>(fields.at(2)).controller?.text,
+      '${BangumiOAuthConfig.defaultRedirectScheme}:/saved',
+    );
+    expect(
+      tester.widget<TextFormField>(fields.at(3)).controller?.text,
+      'write:collection read',
+    );
   });
 
   testWidgets('通知初始路由可以直接打开后台标签页', (tester) async {
