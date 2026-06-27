@@ -523,6 +523,16 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
   bool _showAllLoadedEpisodes = false;
 
   @override
+  void didUpdateWidget(covariant _EpisodeProgressList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.state.episodeType != widget.state.episodeType) {
+      _selectedBatchEpisodeId = null;
+      _showAllLoadedEpisodes = false;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
@@ -534,11 +544,11 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
       ).notifier,
     );
     final total = page.total > 0 ? page.total : page.episodes.length;
-    final nextEpisode = page.firstUnwatchedMainStory;
-    final mainStoryEpisodes = page.mainStoryEpisodes;
+    final currentTypeEpisodes = page.episodesOfType(state.episodeType);
+    final nextEpisode = page.firstUnwatchedForType(state.episodeType);
     final isPageLoading = state.isLoading;
     final selectedBatchTarget = _resolveBatchTarget(
-      mainStoryEpisodes: mainStoryEpisodes,
+      currentTypeEpisodes: currentTypeEpisodes,
       nextEpisode: nextEpisode,
     );
     final visibleEpisodes = _showAllLoadedEpisodes
@@ -553,9 +563,21 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
           color: scheme.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: const Padding(
-          padding: EdgeInsets.all(12),
-          child: Text('Bangumi 暂无可同步的本篇章节。'),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _EpisodeTypeSelector(
+                selectedType: state.episodeType,
+                isDisabled:
+                    isPageLoading || _savingEpisodeId != null || _isSavingBatch,
+                onChanged: controller.selectEpisodeType,
+              ),
+              const SizedBox(height: 10),
+              Text('Bangumi 暂无可同步的${state.episodeType.label}章节。'),
+            ],
+          ),
         ),
       );
     }
@@ -570,6 +592,13 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _EpisodeTypeSelector(
+              selectedType: state.episodeType,
+              isDisabled:
+                  isPageLoading || _savingEpisodeId != null || _isSavingBatch,
+              onChanged: controller.selectEpisodeType,
+            ),
+            const SizedBox(height: 10),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -580,7 +609,7 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    '已看 ${page.watchedMainStoryCount} / $total 本篇',
+                    '已看 ${page.watchedCountForType(state.episodeType)} / $total ${state.episodeType.label}',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: scheme.onSurfaceVariant,
                       fontWeight: FontWeight.w700,
@@ -643,10 +672,10 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
                   ),
               ],
             ),
-            if (mainStoryEpisodes.isNotEmpty) ...[
+            if (currentTypeEpisodes.isNotEmpty) ...[
               const SizedBox(height: 10),
               _EpisodeBatchProgressControl(
-                episodes: mainStoryEpisodes,
+                episodes: currentTypeEpisodes,
                 selectedEpisodeId: selectedBatchTarget?.episode.id,
                 isSaving: _isSavingBatch,
                 onChanged: (episodeId) {
@@ -704,6 +733,7 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
                   visibleCount: visibleEpisodes.length,
                   loadedCount: page.episodes.length,
                   totalCount: total,
+                  episodeTypeLabel: state.episodeType.label,
                   hasHiddenLoadedEpisodes: hasHiddenLoadedEpisodes,
                   hasMore: state.hasMore,
                 ),
@@ -736,6 +766,7 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
         subjectId: widget.subject.id,
         episodeIds: [item.episode.id],
         type: type,
+        episodeType: widget.state.episodeType,
       );
 
       await ref
@@ -773,23 +804,23 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
   }
 
   BangumiEpisodeCollection? _resolveBatchTarget({
-    required List<BangumiEpisodeCollection> mainStoryEpisodes,
+    required List<BangumiEpisodeCollection> currentTypeEpisodes,
     required BangumiEpisodeCollection? nextEpisode,
   }) {
-    if (mainStoryEpisodes.isEmpty) {
+    if (currentTypeEpisodes.isEmpty) {
       return null;
     }
 
     final selectedEpisodeId = _selectedBatchEpisodeId;
     if (selectedEpisodeId != null) {
-      for (final item in mainStoryEpisodes) {
+      for (final item in currentTypeEpisodes) {
         if (item.episode.id == selectedEpisodeId) {
           return item;
         }
       }
     }
 
-    return nextEpisode ?? mainStoryEpisodes.last;
+    return nextEpisode ?? currentTypeEpisodes.last;
   }
 
   Future<void> _saveEpisodesThrough(BangumiEpisodeCollection target) async {
@@ -797,8 +828,9 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
       return;
     }
 
-    final targetEpisodes = widget.state.loadedPage.unwatchedMainStoriesThrough(
+    final targetEpisodes = widget.state.loadedPage.unwatchedEpisodesThrough(
       target,
+      episodeType: widget.state.episodeType,
     );
     if (targetEpisodes.isEmpty) {
       ScaffoldMessenger.of(
@@ -820,6 +852,7 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
             .map((item) => item.episode.id)
             .toList(growable: false),
         type: BangumiEpisodeCollectionType.done,
+        episodeType: widget.state.episodeType,
       );
 
       await ref
@@ -858,6 +891,44 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
         });
       }
     }
+  }
+}
+
+class _EpisodeTypeSelector extends StatelessWidget {
+  const _EpisodeTypeSelector({
+    required this.selectedType,
+    required this.isDisabled,
+    required this.onChanged,
+  });
+
+  final BangumiEpisodeType selectedType;
+  final bool isDisabled;
+  final ValueChanged<BangumiEpisodeType> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButtonFormField<BangumiEpisodeType>(
+      initialValue: selectedType,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        labelText: '章节类型',
+        border: OutlineInputBorder(),
+        prefixIcon: Icon(Icons.category_outlined),
+      ),
+      items: [
+        for (final type in BangumiEpisodeType.values)
+          DropdownMenuItem(value: type, child: Text(type.label)),
+      ],
+      onChanged: isDisabled
+          ? null
+          : (value) {
+              if (value == null) {
+                return;
+              }
+
+              onChanged(value);
+            },
+    );
   }
 }
 
@@ -1121,6 +1192,7 @@ String _episodeProgressFootnote({
   required int visibleCount,
   required int loadedCount,
   required int totalCount,
+  required String episodeTypeLabel,
   required bool hasHiddenLoadedEpisodes,
   required bool hasMore,
 }) {
@@ -1136,7 +1208,7 @@ String _episodeProgressFootnote({
     parts.add(hasMore ? '服务端共 $totalCount 条，可继续加载更多章节' : '服务端共 $totalCount 条');
   }
 
-  parts.add('批量标记只作用于当前已加载章节');
+  parts.add('批量标记只作用于当前已加载的$episodeTypeLabel章节');
   return '${parts.join('；')}。';
 }
 

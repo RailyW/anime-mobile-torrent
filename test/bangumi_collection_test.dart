@@ -193,11 +193,16 @@ void main() {
       var state = container.read(provider);
 
       expect(state.episodes, hasLength(100));
+      expect(state.episodeType, BangumiEpisodeType.mainStory);
       expect(state.total, 125);
       expect(state.nextOffset, 100);
       expect(state.hasMore, isTrue);
       expect(repository.episodeRequests.single.offset, 0);
       expect(repository.episodeRequests.single.limit, 100);
+      expect(
+        repository.episodeRequests.single.episodeType,
+        BangumiEpisodeType.mainStory,
+      );
 
       await controller.loadNextPage();
       state = container.read(provider);
@@ -216,6 +221,36 @@ void main() {
       expect(repository.episodeRequests.last.limit, 125);
     },
   );
+
+  test('BangumiSubjectEpisodeCollectionListController 可以切换章节类型', () async {
+    final repository = _FakeBangumiEpisodeCollectionRepository(total: 8);
+    final container = ProviderContainer(
+      overrides: [
+        bangumiMyCollectionRepositoryProvider.overrideWithValue(repository),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final provider = bangumiSubjectEpisodeCollectionListControllerProvider(100);
+    final controller = container.read(provider.notifier);
+
+    await controller.loadFirstPage();
+    await controller.selectEpisodeType(BangumiEpisodeType.special);
+    final state = container.read(provider);
+
+    expect(state.episodeType, BangumiEpisodeType.special);
+    expect(state.episodes, hasLength(8));
+    expect(state.episodes.map((item) => item.episode.type).toSet(), {
+      BangumiEpisodeType.special,
+    });
+    expect(state.nextOffset, 8);
+    expect(state.hasMore, isFalse);
+    expect(repository.episodeRequests.last.offset, 0);
+    expect(
+      repository.episodeRequests.last.episodeType,
+      BangumiEpisodeType.special,
+    );
+  });
 
   group('BangumiEpisodeCollection', () {
     test('可以解析单集收藏状态分页', () {
@@ -414,6 +449,7 @@ class _FakeBangumiMyCollectionRepository
     required int subjectId,
     required List<int> episodeIds,
     required BangumiEpisodeCollectionType type,
+    BangumiEpisodeType episodeType = BangumiEpisodeType.mainStory,
   }) {
     throw UnimplementedError('分页控制器测试不需要保存章节状态');
   }
@@ -525,6 +561,7 @@ class _FakeBangumiEpisodeCollectionRepository
     required int subjectId,
     required List<int> episodeIds,
     required BangumiEpisodeCollectionType type,
+    BangumiEpisodeType episodeType = BangumiEpisodeType.mainStory,
   }) {
     throw UnimplementedError('章节分页控制器测试不需要保存章节状态');
   }

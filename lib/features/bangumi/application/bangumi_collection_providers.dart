@@ -42,6 +42,7 @@ abstract class BangumiMyCollectionRepositoryContract {
     required int subjectId,
     required List<int> episodeIds,
     required BangumiEpisodeCollectionType type,
+    BangumiEpisodeType episodeType = BangumiEpisodeType.mainStory,
   });
 }
 
@@ -117,8 +118,8 @@ class BangumiMyCollectionRepository
 
   /// 读取当前用户某个动画条目的章节收藏状态。
   ///
-  /// 未登录时返回 null，让 UI 保持“请先登录”的语义。默认只读取本篇章节，
-  /// 因为动画追番进度通常只关心正片，SP/OP/ED 可以后续单独扩展筛选。
+  /// 未登录时返回 null，让 UI 保持“请先登录”的语义。默认读取本篇章节；
+  /// 详情页可以传入 SP、OP/ED、PV 等类型，让同一套分页控制器复用。
   @override
   Future<BangumiEpisodeCollectionPage?> getMySubjectEpisodeCollections({
     required int subjectId,
@@ -171,6 +172,7 @@ class BangumiMyCollectionRepository
     required int subjectId,
     required List<int> episodeIds,
     required BangumiEpisodeCollectionType type,
+    BangumiEpisodeType episodeType = BangumiEpisodeType.mainStory,
   }) async {
     final token = await authRepository.getValidToken();
     if (token == null) {
@@ -186,7 +188,10 @@ class BangumiMyCollectionRepository
       accessToken: token.accessToken,
     );
 
-    return getMySubjectEpisodeCollections(subjectId: subjectId);
+    return getMySubjectEpisodeCollections(
+      subjectId: subjectId,
+      episodeType: episodeType,
+    );
   }
 }
 
@@ -432,7 +437,7 @@ class BangumiSubjectEpisodeCollectionListState {
   /// 当前详情页对应的 Bangumi 条目 ID。
   final int subjectId;
 
-  /// 当前读取的章节类型。首期固定本篇，后续可扩展为 SP/OP/ED 筛选。
+  /// 当前读取的章节类型。
   final BangumiEpisodeType episodeType;
 
   /// 已从 Bangumi 服务端加载到本机内存中的章节状态。
@@ -550,6 +555,29 @@ class BangumiSubjectEpisodeCollectionListController
     return _loadPage(offset: 0, replace: true, limit: state.limit);
   }
 
+  /// 切换章节类型并重新读取第一页。
+  ///
+  /// Bangumi 的不同章节类型由同一个 API 参数控制。切换时必须清空旧列表，
+  /// 避免把本篇、SP、OP/ED 或 PV 混在同一个进度区域里展示。
+  Future<void> selectEpisodeType(BangumiEpisodeType episodeType) {
+    if (state.isLoading) {
+      return Future.value();
+    }
+
+    if (state.episodeType == episodeType &&
+        state.hasLoadedOnce &&
+        !state.isLoading) {
+      return refreshLoadedEpisodes();
+    }
+
+    state = BangumiSubjectEpisodeCollectionListState(
+      subjectId: subjectId,
+      episodeType: episodeType,
+      limit: state.limit,
+    );
+    return _loadPage(offset: 0, replace: true, limit: state.limit);
+  }
+
   /// 刷新当前已加载范围。
   ///
   /// 与 `loadFirstPage` 不同，该方法尽量保留用户已经加载到的范围。例如用户已
@@ -586,6 +614,7 @@ class BangumiSubjectEpisodeCollectionListController
 
     final previousState = state;
     final requestLimit = limit ?? state.limit;
+    final requestEpisodeType = previousState.episodeType;
     state = state.copyWith(
       isLoading: true,
       isLoggedOut: false,
@@ -598,7 +627,7 @@ class BangumiSubjectEpisodeCollectionListController
         subjectId: subjectId,
         limit: requestLimit,
         offset: offset,
-        episodeType: state.episodeType,
+        episodeType: requestEpisodeType,
       );
 
       if (page == null) {

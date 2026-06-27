@@ -1,8 +1,8 @@
 /// Bangumi 章节类型。
 ///
 /// 官方 `EpType` 使用整数枚举：0 本篇、1 特别篇、2 OP、3 ED、
-/// 4 预告/宣传/广告、5 MAD、6 其他。本模块首期只主动读取本篇，
-/// 但保留完整枚举，方便后续展示 SP、OP/ED 或 PV。
+/// 4 预告/宣传/广告、5 MAD、6 其他。详情页会把它作为章节进度筛选
+/// 参数，让用户可以在本篇、特别篇、OP/ED、PV 等不同列表之间切换。
 enum BangumiEpisodeType {
   mainStory(0, '本篇'),
   special(1, '特别篇'),
@@ -206,29 +206,54 @@ class BangumiEpisodeCollectionPage {
   final List<BangumiEpisodeCollection> episodes;
 
   /// 已标记为看过的本篇章节数量。
+  ///
+  /// 该 getter 保留给旧调用方使用；新的详情页筛选逻辑优先使用
+  /// [watchedCountForType]，以便按当前章节类型统计。
   int get watchedMainStoryCount {
-    return episodes.where((item) {
-      return item.episode.type == BangumiEpisodeType.mainStory &&
-          item.type == BangumiEpisodeCollectionType.done;
-    }).length;
+    return watchedCountForType(BangumiEpisodeType.mainStory);
   }
 
   /// 当前分页内的本篇章节。
   ///
   /// Bangumi API 可能返回 SP、OP、ED 等非本篇章节；追番进度和批量标记只
-  /// 操作本篇，避免误把特典或 OP/ED 写成看过。
+  /// 操作本篇时使用该 getter。详情页切换到非本篇类型时使用
+  /// [episodesOfType] 获取对应章节。
   List<BangumiEpisodeCollection> get mainStoryEpisodes {
-    return List.unmodifiable(
-      episodes.where((item) {
-        return item.episode.type == BangumiEpisodeType.mainStory &&
-            item.episode.id > 0;
-      }),
-    );
+    return episodesOfType(BangumiEpisodeType.mainStory);
   }
 
   /// 本页内第一集尚未标记为看过的本篇章节。
   BangumiEpisodeCollection? get firstUnwatchedMainStory {
-    for (final item in mainStoryEpisodes) {
+    return firstUnwatchedForType(BangumiEpisodeType.mainStory);
+  }
+
+  /// 当前分页内指定类型的有效章节。
+  ///
+  /// 章节接口理论上会按 `episode_type` 返回同一类型，但这里仍按类型过滤，
+  /// 让 UI 面对服务端字段异常或测试 fake 混合数据时保持稳定。
+  List<BangumiEpisodeCollection> episodesOfType(
+    BangumiEpisodeType episodeType,
+  ) {
+    return List.unmodifiable(
+      episodes.where((item) {
+        return item.episode.type == episodeType && item.episode.id > 0;
+      }),
+    );
+  }
+
+  /// 指定章节类型中已经标记为看过的数量。
+  int watchedCountForType(BangumiEpisodeType episodeType) {
+    return episodes.where((item) {
+      return item.episode.type == episodeType &&
+          item.type == BangumiEpisodeCollectionType.done;
+    }).length;
+  }
+
+  /// 指定章节类型内第一集尚未标记为看过的章节。
+  BangumiEpisodeCollection? firstUnwatchedForType(
+    BangumiEpisodeType episodeType,
+  ) {
+    for (final item in episodesOfType(episodeType)) {
       if (item.type != BangumiEpisodeCollectionType.done) {
         return item;
       }
@@ -244,7 +269,21 @@ class BangumiEpisodeCollectionPage {
   List<BangumiEpisodeCollection> unwatchedMainStoriesThrough(
     BangumiEpisodeCollection target,
   ) {
-    if (target.episode.type != BangumiEpisodeType.mainStory) {
+    return unwatchedEpisodesThrough(
+      target,
+      episodeType: BangumiEpisodeType.mainStory,
+    );
+  }
+
+  /// 计算从开头到目标章节之间尚未看过的指定类型章节。
+  ///
+  /// 非本篇章节同样具有独立的收藏状态。用户切换到 SP、OP/ED 或 PV 后，
+  /// 批量操作只应影响当前类型，避免跨类型误写。
+  List<BangumiEpisodeCollection> unwatchedEpisodesThrough(
+    BangumiEpisodeCollection target, {
+    required BangumiEpisodeType episodeType,
+  }) {
+    if (target.episode.type != episodeType) {
       return const [];
     }
 
@@ -254,7 +293,7 @@ class BangumiEpisodeCollectionPage {
     }
 
     return List.unmodifiable(
-      mainStoryEpisodes.where((item) {
+      episodesOfType(episodeType).where((item) {
         return item.episode.progressOrder > 0 &&
             item.episode.progressOrder <= targetOrder &&
             item.type != BangumiEpisodeCollectionType.done;

@@ -256,8 +256,8 @@ class BangumiApiClient {
 
   /// 获取当前用户某个条目的章节收藏状态。
   ///
-  /// 官方端点是当前用户专用路径，因此必须携带 access token。首期调用方默认
-  /// 使用 `episodeType: BangumiEpisodeType.mainStory`，只读取动画本篇章节。
+  /// 官方端点是当前用户专用路径，因此必须携带 access token。调用方默认读取
+  /// 本篇章节，也可以传入 SP、OP/ED、PV 等 `episode_type` 筛选。
   Future<BangumiEpisodeCollectionPage> getMySubjectEpisodeCollections({
     required int subjectId,
     int limit = 100,

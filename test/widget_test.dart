@@ -259,6 +259,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('已看 1 / 10 本篇'), findsOneWidget);
+    expect(find.text('章节类型'), findsOneWidget);
+    expect(find.text('本篇'), findsWidgets);
     expect(find.text('展开已加载章节'), findsOneWidget);
     expect(find.text('测试第 10 话'), findsNothing);
 
@@ -631,8 +633,12 @@ class _FakeBangumiDetailCollectionRepository
     required int subjectId,
     required List<int> episodeIds,
     required BangumiEpisodeCollectionType type,
+    BangumiEpisodeType episodeType = BangumiEpisodeType.mainStory,
   }) {
-    return getMySubjectEpisodeCollections(subjectId: subjectId);
+    return getMySubjectEpisodeCollections(
+      subjectId: subjectId,
+      episodeType: episodeType,
+    );
   }
 }
 
