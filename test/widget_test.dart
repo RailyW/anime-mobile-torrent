@@ -143,13 +143,15 @@ void main() {
   });
 
   testWidgets('Bangumi 搜索可以渲染动画条目结果', (tester) async {
+    final repository = _FakeBangumiRepository();
+
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
           torrentClientCapabilityRepositoryProvider.overrideWithValue(
             const _FakeTorrentClientCapabilityRepository(),
           ),
-          bangumiRepositoryProvider.overrideWithValue(_FakeBangumiRepository()),
+          bangumiRepositoryProvider.overrideWithValue(repository),
         ],
         child: const AnimeMobileTorrentApp(),
       ),
@@ -164,6 +166,37 @@ void main() {
     expect(find.text('测试动画 中文名'), findsOneWidget);
     expect(find.text('Test Anime'), findsOneWidget);
     expect(find.textContaining('8.1 · Rank 12 · 345 人评分'), findsOneWidget);
+    expect(repository.searchRequests, hasLength(1));
+  });
+
+  testWidgets('Bangumi 搜索输入停顿后会自动触发防抖搜索', (tester) async {
+    final repository = _FakeBangumiRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
+          bangumiRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '测试动画');
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(repository.searchRequests, isEmpty);
+    expect(find.text('“测试动画” 找到 1 个动画条目'), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+
+    expect(repository.searchRequests, hasLength(1));
+    expect(repository.searchRequests.single.normalizedKeyword, '测试动画');
+    expect(find.text('“测试动画” 找到 1 个动画条目'), findsOneWidget);
   });
 
   testWidgets('Bangumi 搜索结果可以进入条目详情页', (tester) async {
@@ -493,10 +526,14 @@ class _FakeTorrentClientCapabilityRepository
 }
 
 class _FakeBangumiRepository implements BangumiRepository {
+  final List<BangumiSubjectSearchRequest> searchRequests = [];
+
   @override
   Future<BangumiSubjectPage> searchAnimeSubjects(
     BangumiSubjectSearchRequest request,
   ) async {
+    searchRequests.add(request);
+
     return BangumiSubjectPage(
       total: 1,
       limit: request.limit,

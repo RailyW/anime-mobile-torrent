@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -25,25 +27,66 @@ class BangumiTab extends ConsumerStatefulWidget {
 }
 
 class _BangumiTabState extends ConsumerState<BangumiTab> {
+  static const Duration _searchDebounceDuration = Duration(milliseconds: 650);
+
   final TextEditingController _keywordController = TextEditingController();
 
+  Timer? _searchDebounceTimer;
   BangumiSubjectSearchRequest? _searchRequest;
 
   @override
   void dispose() {
+    _searchDebounceTimer?.cancel();
     _keywordController.dispose();
     super.dispose();
+  }
+
+  /// 根据输入变化安排一次防抖搜索。
+  ///
+  /// Bangumi 公开搜索会真实访问网络；用户输入时先等待一个短暂停顿，可以
+  /// 避免每个字符都触发请求。用户点击搜索按钮或键盘 search 时仍会立即提交。
+  void _scheduleDebouncedSearch(String value) {
+    _searchDebounceTimer?.cancel();
+    final keyword = value.trim();
+
+    if (keyword.isEmpty) {
+      setState(() {
+        _searchRequest = null;
+      });
+      return;
+    }
+
+    _searchDebounceTimer = Timer(_searchDebounceDuration, () {
+      if (!mounted) {
+        return;
+      }
+
+      _applySearchKeyword(keyword);
+    });
   }
 
   /// 提交搜索关键词。
   ///
   /// 空关键词不触发网络请求，防止用户误点按钮造成无意义的 API 调用。
   void _submitSearch() {
+    _searchDebounceTimer?.cancel();
     final keyword = _keywordController.text.trim();
+    _applySearchKeyword(keyword);
+  }
+
+  /// 把已经归一化的关键词转换为搜索请求状态。
+  ///
+  /// 同一个关键词重复提交时不重建请求，避免搜索按钮和防抖回调在极短时间内
+  /// 造成相同 Provider 请求重复刷新。
+  void _applySearchKeyword(String keyword) {
     if (keyword.isEmpty) {
       setState(() {
         _searchRequest = null;
       });
+      return;
+    }
+
+    if (_searchRequest?.normalizedKeyword == keyword) {
       return;
     }
 
@@ -65,6 +108,7 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
         const SizedBox(height: 16),
         _BangumiSearchBar(
           controller: _keywordController,
+          onChanged: _scheduleDebouncedSearch,
           onSubmitted: _submitSearch,
         ),
         const SizedBox(height: 16),
@@ -910,10 +954,12 @@ class _BangumiCollectionError extends StatelessWidget {
 class _BangumiSearchBar extends StatelessWidget {
   const _BangumiSearchBar({
     required this.controller,
+    required this.onChanged,
     required this.onSubmitted,
   });
 
   final TextEditingController controller;
+  final ValueChanged<String> onChanged;
   final VoidCallback onSubmitted;
 
   @override
@@ -931,6 +977,7 @@ class _BangumiSearchBar extends StatelessWidget {
               prefixIcon: Icon(Icons.search_outlined),
             ),
             textInputAction: TextInputAction.search,
+            onChanged: onChanged,
             onSubmitted: (_) => onSubmitted(),
           ),
         ),
