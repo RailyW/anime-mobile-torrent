@@ -771,6 +771,20 @@ void main() {
     expect(find.text('筛选后显示 1/2 条'), findsOneWidget);
     expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
     expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsNothing);
+
+    await tester.tap(find.widgetWithText(TextButton, '清除筛选'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('dmhy-filter-min-seed-count')),
+      '10',
+    );
+    await tester.pumpAndSettle();
+
+    expect(dmhyRepository.requests, hasLength(1));
+    expect(find.text('筛选后显示 1/2 条'), findsOneWidget);
+    expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
+    expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsNothing);
   });
 
   testWidgets('DMHY 种子按钮可以下载并交给外部 BT 客户端', (tester) async {
@@ -1250,12 +1264,14 @@ class _FilterableFakeDmhyRepository implements DmhyRepository {
         detailPath: '20_neko',
         sizeLabel: '1.25 GB',
         subtitleLabel: '简繁内封',
+        seedCount: 12,
       ),
       _buildFilterableDmhyResource(
         title: '[桜都字幕组] 测试动画 01 720p BDRip AVC MP4',
         detailPath: '21_sakurato',
         sizeLabel: '700 MB',
         subtitleLabel: '英文字幕',
+        seedCount: 3,
       ),
     ];
   }
@@ -1308,6 +1324,7 @@ DmhyResource _buildFilterableDmhyResource({
   required String detailPath,
   required String sizeLabel,
   required String subtitleLabel,
+  required int seedCount,
 }) {
   return DmhyResource(
     title: title,
@@ -1323,9 +1340,9 @@ DmhyResource _buildFilterableDmhyResource({
     ),
     stats: DmhyResourceStats(
       sizeLabel: sizeLabel,
-      seedCount: 12,
-      downloadCount: 24,
-      completedCount: 36,
+      seedCount: seedCount,
+      downloadCount: seedCount + 12,
+      completedCount: seedCount + 24,
     ),
   );
 }

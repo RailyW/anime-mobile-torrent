@@ -4,8 +4,8 @@ import 'dmhy_resource_size.dart';
 /// DMHY 前台资源筛选条件。
 ///
 /// 该对象只作用于已经拿到的 RSS/HTML 增强结果，不会触发新的 DMHY 请求。
-/// 字段保持 nullable：null 表示该维度不过滤，非 null 表示资源必须完全匹配
-/// 对应的已解析元数据。
+/// 字段保持 nullable：null 表示该维度不过滤；文本字段非 null 时资源必须
+/// 完全匹配对应的已解析元数据，数值字段非 null 时资源必须满足阈值。
 class DmhyResourceFilter {
   const DmhyResourceFilter({
     this.releaseGroup,
@@ -15,6 +15,7 @@ class DmhyResourceFilter {
     this.videoCodec,
     this.subtitleLabel,
     this.sizeRange,
+    this.minSeedCount,
   });
 
   /// 空筛选常量，表示显示全部结果。
@@ -25,7 +26,8 @@ class DmhyResourceFilter {
       mediaFormat = null,
       videoCodec = null,
       subtitleLabel = null,
-      sizeRange = null;
+      sizeRange = null,
+      minSeedCount = null;
 
   /// 字幕组或发布组名称。
   final String? releaseGroup;
@@ -48,6 +50,9 @@ class DmhyResourceFilter {
   /// 文件大小区间。
   final DmhyResourceSizeRange? sizeRange;
 
+  /// 最小种子数，用于过滤 HTML 列表页增强出的热度统计。
+  final int? minSeedCount;
+
   /// 当前是否没有启用任何筛选条件。
   bool get isEmpty =>
       releaseGroup == null &&
@@ -56,7 +61,8 @@ class DmhyResourceFilter {
       mediaFormat == null &&
       videoCodec == null &&
       subtitleLabel == null &&
-      sizeRange == null;
+      sizeRange == null &&
+      minSeedCount == null;
 
   /// 当前是否至少启用了一个筛选条件。
   bool get isNotEmpty => !isEmpty;
@@ -82,7 +88,8 @@ class DmhyResourceFilter {
         _matchesText(mediaFormat, metadata.mediaFormat) &&
         _matchesText(videoCodec, metadata.videoCodec) &&
         _matchesText(subtitleLabel, metadata.subtitleLabel) &&
-        _matchesSizeRange(sizeRange, resource);
+        _matchesSizeRange(sizeRange, resource) &&
+        _matchesMinSeedCount(minSeedCount, resource);
   }
 
   /// 返回一份替换部分字段后的筛选条件。
@@ -97,6 +104,7 @@ class DmhyResourceFilter {
     DmhyFilterValue<String>? videoCodec,
     DmhyFilterValue<String>? subtitleLabel,
     DmhyFilterValue<DmhyResourceSizeRange>? sizeRange,
+    DmhyFilterValue<int>? minSeedCount,
   }) {
     return DmhyResourceFilter(
       releaseGroup: releaseGroup == null
@@ -110,6 +118,9 @@ class DmhyResourceFilter {
           ? this.subtitleLabel
           : subtitleLabel.value,
       sizeRange: sizeRange == null ? this.sizeRange : sizeRange.value,
+      minSeedCount: minSeedCount == null
+          ? this.minSeedCount
+          : minSeedCount.value,
     );
   }
 
@@ -131,6 +142,15 @@ class DmhyResourceFilter {
 
     final sizeBytes = dmhyResourceSizeBytes(resource);
     return sizeBytes != null && expected.contains(sizeBytes);
+  }
+
+  static bool _matchesMinSeedCount(int? expected, DmhyResource resource) {
+    if (expected == null) {
+      return true;
+    }
+
+    final seedCount = resource.stats.seedCount;
+    return seedCount != null && seedCount >= expected;
   }
 }
 
@@ -191,6 +211,7 @@ class DmhyResourceFilterOptions {
     required this.videoCodecs,
     required this.subtitleLabels,
     required this.hasSize,
+    required this.hasSeedCount,
   });
 
   /// 从资源列表中提取筛选项。
@@ -206,6 +227,7 @@ class DmhyResourceFilterOptions {
     final videoCodecs = <String>{};
     final subtitleLabels = <String>{};
     var hasSize = false;
+    var hasSeedCount = false;
 
     for (final resource in resources) {
       _addOption(releaseGroups, resource.metadata.releaseGroup);
@@ -215,6 +237,7 @@ class DmhyResourceFilterOptions {
       _addOption(videoCodecs, resource.metadata.videoCodec);
       _addOption(subtitleLabels, resource.metadata.subtitleLabel);
       hasSize = hasSize || dmhyResourceSizeBytes(resource) != null;
+      hasSeedCount = hasSeedCount || resource.stats.seedCount != null;
     }
 
     return DmhyResourceFilterOptions(
@@ -225,6 +248,7 @@ class DmhyResourceFilterOptions {
       videoCodecs: _sortedOptions(videoCodecs),
       subtitleLabels: _sortedOptions(subtitleLabels),
       hasSize: hasSize,
+      hasSeedCount: hasSeedCount,
     );
   }
 
@@ -235,6 +259,7 @@ class DmhyResourceFilterOptions {
   final List<String> videoCodecs;
   final List<String> subtitleLabels;
   final bool hasSize;
+  final bool hasSeedCount;
 
   /// 当前结果是否没有任何可用筛选项。
   bool get isEmpty =>
@@ -244,7 +269,8 @@ class DmhyResourceFilterOptions {
       mediaFormats.isEmpty &&
       videoCodecs.isEmpty &&
       subtitleLabels.isEmpty &&
-      !hasSize;
+      !hasSize &&
+      !hasSeedCount;
 
   /// 当前结果是否至少有一个可用筛选项。
   bool get isNotEmpty => !isEmpty;

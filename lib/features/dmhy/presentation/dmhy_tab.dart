@@ -613,6 +613,15 @@ class _DmhyFilterBar extends StatelessWidget {
                       );
                     },
                   ),
+                if (options.hasSeedCount)
+                  _DmhyMinSeedCountFilterInput(
+                    value: filter.minSeedCount,
+                    onChanged: (value) {
+                      onChanged(
+                        filter.copyWith(minSeedCount: DmhyFilterValue(value)),
+                      );
+                    },
+                  ),
               ],
             ),
           ],
@@ -659,6 +668,103 @@ class _DmhyStringFilterDropdown extends StatelessWidget {
         onChanged: onChanged,
       ),
     );
+  }
+}
+
+/// DMHY 前台筛选栏中的最小种子数输入框。
+///
+/// 种子数来自前台 HTML 列表页增强统计。输入框只改变当前内存筛选条件，
+/// 不会触发新的 DMHY 网络请求；当父级清除筛选时，控件会同步清空文本。
+class _DmhyMinSeedCountFilterInput extends StatefulWidget {
+  const _DmhyMinSeedCountFilterInput({
+    required this.value,
+    required this.onChanged,
+  });
+
+  /// 当前启用的最小种子数；null 表示不按种子数过滤。
+  final int? value;
+
+  /// 输入变化时把解析后的阈值回传给父级筛选值对象。
+  final ValueChanged<int?> onChanged;
+
+  @override
+  State<_DmhyMinSeedCountFilterInput> createState() =>
+      _DmhyMinSeedCountFilterInputState();
+}
+
+class _DmhyMinSeedCountFilterInputState
+    extends State<_DmhyMinSeedCountFilterInput> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: _formatValue(widget.value));
+  }
+
+  /// 父级通过“清除筛选”或恢复筛选状态改变数值时，同步本地输入框文本。
+  @override
+  void didUpdateWidget(_DmhyMinSeedCountFilterInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.value == widget.value) {
+      return;
+    }
+
+    final nextText = _formatValue(widget.value);
+    if (_controller.text == nextText) {
+      return;
+    }
+
+    _controller.value = TextEditingValue(
+      text: nextText,
+      selection: TextSelection.collapsed(offset: nextText.length),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 176,
+      child: TextField(
+        key: const Key('dmhy-filter-min-seed-count'),
+        controller: _controller,
+        keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        decoration: const InputDecoration(
+          border: OutlineInputBorder(),
+          labelText: '最小种子数',
+          hintText: '全部',
+          prefixIcon: Icon(Icons.trending_up_outlined),
+        ),
+        onChanged: (value) {
+          widget.onChanged(_parseMinSeedCount(value));
+        },
+      ),
+    );
+  }
+
+  /// 把可空阈值格式化为输入框展示文本。
+  String _formatValue(int? value) {
+    return value == null ? '' : value.toString();
+  }
+
+  /// 将用户输入解析为正整数阈值。
+  ///
+  /// 空文本或 0 都表示不启用该筛选；负数和小数在输入阶段已被 digits-only
+  /// formatter 拦截，因此这里只需要处理无法解析或无意义的 0。
+  int? _parseMinSeedCount(String value) {
+    final parsed = int.tryParse(value.trim());
+    if (parsed == null || parsed <= 0) {
+      return null;
+    }
+
+    return parsed;
   }
 }
 

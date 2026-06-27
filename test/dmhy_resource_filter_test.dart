@@ -12,11 +12,13 @@ void main() {
           title: '[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV',
           sizeLabel: '1.25 GB',
           subtitleLabel: '简繁内封',
+          seedCount: 12,
         ),
         _buildResource(
           title: '[桜都字幕组] 测试动画 01 720p BDRip AVC MP4',
           sizeLabel: '700 MB',
           subtitleLabel: '英文字幕',
+          seedCount: 3,
         ),
       ]);
 
@@ -27,24 +29,28 @@ void main() {
       expect(options.videoCodecs, ['AVC/H.264', 'HEVC/H.265']);
       expect(options.subtitleLabels, ['简繁内封', '英文字幕']);
       expect(options.hasSize, isTrue);
+      expect(options.hasSeedCount, isTrue);
     });
 
-    test('可以组合字幕组、分辨率、片源、封装、编码、字幕说明和大小区间过滤资源', () {
+    test('可以组合字幕组、分辨率、片源、封装、编码、字幕说明、大小区间和最小种子数过滤资源', () {
       final resources = [
         _buildResource(
           title: '[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV',
           sizeLabel: '1.25 GB',
           subtitleLabel: '简繁内封',
+          seedCount: 12,
         ),
         _buildResource(
           title: '[猫耳字幕] 测试动画 01 720p BDRip AVC MP4',
           sizeLabel: '700 MB',
           subtitleLabel: '英文字幕',
+          seedCount: 5,
         ),
         _buildResource(
           title: '[桜都字幕组] 测试动画 01 1080p BDRip HEVC MKV',
           sizeLabel: '3.50 GB',
           subtitleLabel: '繁体',
+          seedCount: 32,
         ),
       ];
 
@@ -56,6 +62,7 @@ void main() {
         videoCodec: 'HEVC/H.265',
         subtitleLabel: '简繁内封',
         sizeRange: DmhyResourceSizeRange.oneToTwoGiB,
+        minSeedCount: 10,
       );
 
       final filteredResources = filter.apply(resources);
@@ -82,6 +89,7 @@ DmhyResource _buildResource({
   required String title,
   required String sizeLabel,
   String subtitleLabel = '',
+  int? seedCount,
 }) {
   return DmhyResource(
     title: title,
@@ -91,6 +99,6 @@ DmhyResource _buildResource({
       title: title,
       descriptionText: '$sizeLabel $subtitleLabel',
     ),
-    stats: DmhyResourceStats(sizeLabel: sizeLabel),
+    stats: DmhyResourceStats(sizeLabel: sizeLabel, seedCount: seedCount),
   );
 }
