@@ -551,6 +551,50 @@ void main() {
     );
   });
 
+  testWidgets('DMHY 资源筛选可以缩小当前结果且不重新请求', (tester) async {
+    final dmhyRepository = _FilterableFakeDmhyRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
+          dmhyRepositoryProvider.overrideWithValue(dmhyRepository),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('DMHY').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '测试动画 1080');
+    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.pumpAndSettle();
+
+    expect(dmhyRepository.requests, hasLength(1));
+    expect(find.text('[猫耳字幕] 测试动画 01 1080p HEVC MKV'), findsOneWidget);
+    expect(find.text('[桜都字幕组] 测试动画 01 720p AVC MP4'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('dmhy-filter-release-group')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('猫耳字幕').last);
+    await tester.pumpAndSettle();
+
+    expect(dmhyRepository.requests, hasLength(1));
+    expect(find.text('筛选后显示 1/2 条'), findsOneWidget);
+    expect(find.text('[猫耳字幕] 测试动画 01 1080p HEVC MKV'), findsOneWidget);
+    expect(find.text('[桜都字幕组] 测试动画 01 720p AVC MP4'), findsNothing);
+
+    await tester.tap(find.widgetWithText(TextButton, '清除筛选'));
+    await tester.pumpAndSettle();
+
+    expect(dmhyRepository.requests, hasLength(1));
+    expect(find.text('[猫耳字幕] 测试动画 01 1080p HEVC MKV'), findsOneWidget);
+    expect(find.text('[桜都字幕组] 测试动画 01 720p AVC MP4'), findsOneWidget);
+  });
+
   testWidgets('DMHY 种子按钮可以下载并交给外部 BT 客户端', (tester) async {
     final fakeHandoffRepository = _FakeTorrentHandoffRepository();
 
@@ -952,6 +996,42 @@ class _SortableFakeDmhyRepository implements DmhyRepository {
   }
 }
 
+class _FilterableFakeDmhyRepository implements DmhyRepository {
+  final List<DmhySearchRequest> requests = [];
+
+  @override
+  Future<List<DmhyResource>> searchResources(DmhySearchRequest request) async {
+    requests.add(request);
+    return [
+      _buildFilterableDmhyResource(
+        title: '[猫耳字幕] 测试动画 01 1080p HEVC MKV',
+        detailPath: '20_neko',
+        sizeLabel: '1.25 GB',
+      ),
+      _buildFilterableDmhyResource(
+        title: '[桜都字幕组] 测试动画 01 720p AVC MP4',
+        detailPath: '21_sakurato',
+        sizeLabel: '700 MB',
+      ),
+    ];
+  }
+
+  @override
+  Future<Uri> findTorrentUri(DmhyResource resource) async {
+    return Uri.parse('https://dl.dmhy.org/2026/04/23/filterable.torrent');
+  }
+
+  @override
+  Future<DmhyTorrentFile> downloadTorrentFile(DmhyResource resource) async {
+    return DmhyTorrentFile(
+      sourceUri: Uri.parse('https://dl.dmhy.org/2026/04/23/filterable.torrent'),
+      localPath: 'filterable.torrent',
+      fileName: 'filterable.torrent',
+      length: 256,
+    );
+  }
+}
+
 DmhyResource _buildSortableDmhyResource({
   required String title,
   required String detailPath,
@@ -975,6 +1055,32 @@ DmhyResource _buildSortableDmhyResource({
       seedCount: seedCount,
       downloadCount: seedCount + 10,
       completedCount: seedCount + 20,
+    ),
+  );
+}
+
+DmhyResource _buildFilterableDmhyResource({
+  required String title,
+  required String detailPath,
+  required String sizeLabel,
+}) {
+  return DmhyResource(
+    title: title,
+    detailUri: Uri.parse('http://share.dmhy.org/topics/view/$detailPath.html'),
+    magnetUri: Uri.parse('magnet:?xt=urn:btih:$detailPath'),
+    publishedAt: DateTime.utc(2026, 4, 23, 2, 30),
+    author: 'test_team',
+    categoryName: '動畫',
+    descriptionText: '筛选测试资源 $sizeLabel 简繁内封',
+    metadata: DmhyResourceMetadata.fromText(
+      title: title,
+      descriptionText: '筛选测试资源 $sizeLabel 简繁内封',
+    ),
+    stats: DmhyResourceStats(
+      sizeLabel: sizeLabel,
+      seedCount: 12,
+      downloadCount: 24,
+      completedCount: 36,
     ),
   );
 }

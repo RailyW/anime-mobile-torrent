@@ -5,6 +5,7 @@ import '../data/dmhy_torrent_client.dart';
 import '../data/dmhy_topic_list_parser.dart';
 import '../domain/dmhy_resource.dart';
 import '../domain/dmhy_torrent_file.dart';
+import 'dmhy_resource_size.dart';
 
 /// DMHY 前台资源排序方式。
 ///
@@ -238,8 +239,8 @@ List<DmhyResource> _sortDmhyResources(
         right.resource.stats.completedCount,
       ),
       DmhyResourceSort.sizeDesc => _compareNullableDoubleDesc(
-        _resourceSizeBytes(left.resource),
-        _resourceSizeBytes(right.resource),
+        dmhyResourceSizeBytes(left.resource),
+        dmhyResourceSizeBytes(right.resource),
       ),
     };
     if (primaryResult != 0) {
@@ -308,48 +309,4 @@ int _compareNullableDateDesc(DateTime? left, DateTime? right) {
   }
 
   return right.compareTo(left);
-}
-
-/// 取得资源可用于排序的大小字节数。
-///
-/// HTML 列表页统计比标题文本更可靠，因此优先使用 `stats.sizeLabel`；当 HTML
-/// 请求失败或对应行缺失时，再回退到标题/简介中宽容提取出的大小标签。
-double? _resourceSizeBytes(DmhyResource resource) {
-  return _parseSizeLabelBytes(
-    resource.stats.sizeLabel ?? resource.metadata.sizeLabel,
-  );
-}
-
-/// 将 `1.25 GB`、`700MB` 等大小标签转换为字节数。
-///
-/// DMHY 页面和字幕组标题中常见单位存在空格和大小写差异；该函数只负责
-/// 排序比较，不改变 UI 展示文本，因此解析失败时返回 null 让资源排到后面。
-double? _parseSizeLabelBytes(String? label) {
-  if (label == null) {
-    return null;
-  }
-
-  final match = RegExp(
-    r'(\d+(?:\.\d+)?)\s*(tib|tb|gib|gb|mib|mb|kib|kb|b)\b',
-    caseSensitive: false,
-  ).firstMatch(label.replaceAll(',', '').trim());
-  if (match == null) {
-    return null;
-  }
-
-  final value = double.tryParse(match.group(1)!);
-  if (value == null) {
-    return null;
-  }
-
-  final unit = match.group(2)!.toLowerCase();
-  final multiplier = switch (unit) {
-    'tib' || 'tb' => 1024 * 1024 * 1024 * 1024,
-    'gib' || 'gb' => 1024 * 1024 * 1024,
-    'mib' || 'mb' => 1024 * 1024,
-    'kib' || 'kb' => 1024,
-    _ => 1,
-  };
-
-  return value * multiplier;
 }

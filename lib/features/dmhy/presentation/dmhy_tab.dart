@@ -7,6 +7,7 @@ import '../../torrent_handoff/application/torrent_handoff_providers.dart';
 import '../../torrent_handoff/domain/torrent_client_capabilities.dart';
 import '../../torrent_handoff/domain/torrent_seed_history_item.dart';
 import '../../torrent_handoff/domain/torrent_seed_file.dart';
+import '../application/dmhy_resource_filter.dart';
 import '../application/dmhy_providers.dart';
 import '../domain/dmhy_resource.dart';
 import '../domain/dmhy_resource_metadata.dart';
@@ -35,6 +36,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
   DmhySearchRequest? _searchRequest;
   bool _animeOnly = true;
   DmhyResourceSort _sort = DmhyResourceSort.publishedDesc;
+  DmhyResourceFilter _filter = const DmhyResourceFilter.empty();
 
   @override
   void initState() {
@@ -88,6 +90,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
         sort: _sort,
       );
       _animeOnly = animeOnly;
+      _filter = const DmhyResourceFilter.empty();
     }
 
     if (notify && mounted) {
@@ -116,6 +119,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
         animeOnly: _animeOnly,
         sort: _sort,
       );
+      _filter = const DmhyResourceFilter.empty();
     });
   }
 
@@ -129,6 +133,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
       _searchRequest = keyword.isEmpty
           ? null
           : DmhySearchRequest(keyword: keyword, animeOnly: value, sort: _sort);
+      _filter = const DmhyResourceFilter.empty();
     });
   }
 
@@ -154,6 +159,23 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
     });
   }
 
+  /// 更新当前前台资源筛选条件。
+  ///
+  /// 筛选只作用于已经加载到页面的结果，不会改变搜索请求缓存键，也不会重新
+  /// 访问 DMHY。
+  void _setFilter(DmhyResourceFilter value) {
+    setState(() {
+      _filter = value;
+    });
+  }
+
+  /// 清空所有前台筛选条件。
+  void _clearFilter() {
+    setState(() {
+      _filter = const DmhyResourceFilter.empty();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final request = _searchRequest;
@@ -175,7 +197,12 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
         if (request == null)
           const _DmhyEmptyState()
         else
-          _DmhySearchResult(request: request),
+          _DmhySearchResult(
+            request: request,
+            filter: _filter,
+            onFilterChanged: _setFilter,
+            onFilterCleared: _clearFilter,
+          ),
       ],
     );
   }
@@ -380,9 +407,17 @@ class _DmhyEmptyState extends StatelessWidget {
 }
 
 class _DmhySearchResult extends ConsumerWidget {
-  const _DmhySearchResult({required this.request});
+  const _DmhySearchResult({
+    required this.request,
+    required this.filter,
+    required this.onFilterChanged,
+    required this.onFilterCleared,
+  });
 
   final DmhySearchRequest request;
+  final DmhyResourceFilter filter;
+  final ValueChanged<DmhyResourceFilter> onFilterChanged;
+  final VoidCallback onFilterCleared;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -399,21 +434,40 @@ class _DmhySearchResult extends ConsumerWidget {
           return const _DmhyNoResultState();
         }
 
+        final filterOptions = DmhyResourceFilterOptions.fromResources(
+          resources,
+        );
+        final filteredResources = filter.apply(resources);
+
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _ResultSummary(
               keyword: request.normalizedKeyword,
               count: resources.length,
+              visibleCount: filteredResources.length,
               animeOnly: request.animeOnly,
               sort: request.sort,
+              hasActiveFilter: filter.isNotEmpty,
             ),
-            const SizedBox(height: 8),
-            for (final resource in resources)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _DmhyResourceCard(resource: resource),
+            if (filterOptions.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _DmhyFilterBar(
+                filter: filter,
+                options: filterOptions,
+                onChanged: onFilterChanged,
+                onClear: onFilterCleared,
               ),
+            ],
+            const SizedBox(height: 8),
+            if (filteredResources.isEmpty)
+              _DmhyNoFilteredResultState(onClear: onFilterCleared)
+            else
+              for (final resource in filteredResources)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _DmhyResourceCard(resource: resource),
+                ),
           ],
         );
       },
@@ -428,6 +482,199 @@ class _DmhyResourceCard extends ConsumerStatefulWidget {
 
   @override
   ConsumerState<_DmhyResourceCard> createState() => _DmhyResourceCardState();
+}
+
+class _DmhyFilterBar extends StatelessWidget {
+  const _DmhyFilterBar({
+    required this.filter,
+    required this.options,
+    required this.onChanged,
+    required this.onClear,
+  });
+
+  final DmhyResourceFilter filter;
+  final DmhyResourceFilterOptions options;
+  final ValueChanged<DmhyResourceFilter> onChanged;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.filter_alt_outlined, color: scheme.secondary),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('筛选资源', style: theme.textTheme.titleSmall),
+                ),
+                if (filter.isNotEmpty)
+                  TextButton.icon(
+                    onPressed: onClear,
+                    icon: const Icon(Icons.filter_alt_off_outlined),
+                    label: const Text('清除筛选'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                if (options.releaseGroups.isNotEmpty)
+                  _DmhyStringFilterDropdown(
+                    key: const Key('dmhy-filter-release-group'),
+                    label: '字幕组筛选',
+                    value: filter.releaseGroup,
+                    options: options.releaseGroups,
+                    onChanged: (value) {
+                      onChanged(
+                        filter.copyWith(releaseGroup: DmhyFilterValue(value)),
+                      );
+                    },
+                  ),
+                if (options.resolutions.isNotEmpty)
+                  _DmhyStringFilterDropdown(
+                    key: const Key('dmhy-filter-resolution'),
+                    label: '分辨率筛选',
+                    value: filter.resolution,
+                    options: options.resolutions,
+                    onChanged: (value) {
+                      onChanged(
+                        filter.copyWith(resolution: DmhyFilterValue(value)),
+                      );
+                    },
+                  ),
+                if (options.mediaFormats.isNotEmpty)
+                  _DmhyStringFilterDropdown(
+                    key: const Key('dmhy-filter-media-format'),
+                    label: '封装筛选',
+                    value: filter.mediaFormat,
+                    options: options.mediaFormats,
+                    onChanged: (value) {
+                      onChanged(
+                        filter.copyWith(mediaFormat: DmhyFilterValue(value)),
+                      );
+                    },
+                  ),
+                if (options.videoCodecs.isNotEmpty)
+                  _DmhyStringFilterDropdown(
+                    key: const Key('dmhy-filter-video-codec'),
+                    label: '编码筛选',
+                    value: filter.videoCodec,
+                    options: options.videoCodecs,
+                    onChanged: (value) {
+                      onChanged(
+                        filter.copyWith(videoCodec: DmhyFilterValue(value)),
+                      );
+                    },
+                  ),
+                if (options.hasSize)
+                  _DmhySizeRangeFilterDropdown(
+                    value: filter.sizeRange,
+                    onChanged: (value) {
+                      onChanged(
+                        filter.copyWith(sizeRange: DmhyFilterValue(value)),
+                      );
+                    },
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DmhyStringFilterDropdown extends StatelessWidget {
+  const _DmhyStringFilterDropdown({
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+    super.key,
+  });
+
+  final String label;
+  final String? value;
+  final List<String> options;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 176,
+      child: DropdownButtonFormField<String>(
+        initialValue: value,
+        isExpanded: true,
+        decoration: InputDecoration(
+          border: const OutlineInputBorder(),
+          labelText: label,
+          prefixIcon: const Icon(Icons.tune_outlined),
+        ),
+        items: [
+          const DropdownMenuItem<String>(value: null, child: Text('全部')),
+          for (final option in options)
+            DropdownMenuItem<String>(
+              value: option,
+              child: Text(option, overflow: TextOverflow.ellipsis),
+            ),
+        ],
+        onChanged: onChanged,
+      ),
+    );
+  }
+}
+
+class _DmhySizeRangeFilterDropdown extends StatelessWidget {
+  const _DmhySizeRangeFilterDropdown({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final DmhyResourceSizeRange? value;
+  final ValueChanged<DmhyResourceSizeRange?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 176,
+      child: DropdownButtonFormField<DmhyResourceSizeRange>(
+        key: const Key('dmhy-filter-size-range'),
+        initialValue: value,
+        isExpanded: true,
+        decoration: const InputDecoration(
+          border: OutlineInputBorder(),
+          labelText: '大小筛选',
+          prefixIcon: Icon(Icons.storage_outlined),
+        ),
+        items: [
+          const DropdownMenuItem<DmhyResourceSizeRange>(
+            value: null,
+            child: Text('全部'),
+          ),
+          for (final range in DmhyResourceSizeRange.values)
+            DropdownMenuItem<DmhyResourceSizeRange>(
+              value: range,
+              child: Text(range.label, overflow: TextOverflow.ellipsis),
+            ),
+        ],
+        onChanged: onChanged,
+      ),
+    );
+  }
 }
 
 class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
@@ -857,14 +1104,18 @@ class _ResultSummary extends StatelessWidget {
   const _ResultSummary({
     required this.keyword,
     required this.count,
+    required this.visibleCount,
     required this.animeOnly,
     required this.sort,
+    required this.hasActiveFilter,
   });
 
   final String keyword;
   final int count;
+  final int visibleCount;
   final bool animeOnly;
   final DmhyResourceSort sort;
+  final bool hasActiveFilter;
 
   @override
   Widget build(BuildContext context) {
@@ -887,6 +1138,13 @@ class _ResultSummary extends StatelessWidget {
             color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
+        if (hasActiveFilter)
+          Text(
+            '筛选后显示 $visibleCount/$count 条',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
       ],
     );
   }
@@ -964,6 +1222,33 @@ class _DmhyNoResultState extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.all(16),
         child: Text('没有找到匹配的 DMHY RSS 资源，可以换一个关键词。'),
+      ),
+    );
+  }
+}
+
+class _DmhyNoFilteredResultState extends StatelessWidget {
+  const _DmhyNoFilteredResultState({required this.onClear});
+
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('当前筛选没有匹配资源，可以清除筛选或换一个条件。'),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: onClear,
+              icon: const Icon(Icons.filter_alt_off_outlined),
+              label: const Text('清除筛选'),
+            ),
+          ],
+        ),
       ),
     );
   }
