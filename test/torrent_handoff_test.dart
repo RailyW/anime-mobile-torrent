@@ -4,6 +4,7 @@ import 'package:anime_mobile_torrent/features/torrent_handoff/application/torren
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_client_capabilities.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_client_compatibility_record.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_compatibility_report.dart';
+import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_compatibility_summary.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_handoff_result.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_export_result.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_history_item.dart';
@@ -186,6 +187,82 @@ void main() {
     });
   });
 
+  group('TorrentCompatibilitySummary', () {
+    test('可以把本机实测记录聚合为兼容清单摘要', () {
+      const capabilities = TorrentClientCapabilities(
+        isPlatformBridgeAvailable: true,
+        canOpenMagnet: true,
+        canOpenTorrentFile: true,
+        canShareTorrentFile: true,
+        magnetHandlerCount: 1,
+        torrentViewHandlerCount: 1,
+        torrentShareHandlerCount: 1,
+      );
+      final records = [
+        TorrentClientCompatibilityRecord.capture(
+          outcome: TorrentCompatibilityOutcome.shareImportSucceeded,
+          capabilities: capabilities,
+          recordedAt: DateTime(2026, 6, 27, 12),
+        ),
+        TorrentClientCompatibilityRecord.capture(
+          outcome: TorrentCompatibilityOutcome.directOpenSucceeded,
+          capabilities: capabilities,
+          recordedAt: DateTime(2026, 6, 27, 12, 5),
+        ),
+        TorrentClientCompatibilityRecord.capture(
+          outcome: TorrentCompatibilityOutcome.shareImportSucceeded,
+          capabilities: capabilities,
+          recordedAt: DateTime(2026, 6, 27, 12, 10),
+        ),
+        TorrentClientCompatibilityRecord.capture(
+          outcome: TorrentCompatibilityOutcome.handoffFailed,
+          capabilities: capabilities,
+          recordedAt: DateTime(2026, 6, 27, 12, 15),
+        ),
+      ];
+
+      final summary = TorrentCompatibilitySummary.fromRecords(records);
+
+      expect(summary.totalRecords, 4);
+      expect(summary.successfulRecords, 3);
+      expect(summary.successfulRatioLabel, '3/4 条可用');
+      expect(summary.directOpenSuccesses, 1);
+      expect(summary.shareImportSuccesses, 2);
+      expect(summary.magnetFallbackSuccesses, 0);
+      expect(summary.handoffFailures, 1);
+      expect(
+        summary.leadingOutcome,
+        TorrentCompatibilityOutcome.shareImportSucceeded,
+      );
+      expect(summary.leadingOutcomeLabel, '.torrent 分享导入');
+    });
+
+    test('没有成功样本时会把交接失败作为需要复查的路径', () {
+      const capabilities = TorrentClientCapabilities(
+        isPlatformBridgeAvailable: true,
+        canOpenMagnet: false,
+        canOpenTorrentFile: false,
+        canShareTorrentFile: false,
+        magnetHandlerCount: 0,
+        torrentViewHandlerCount: 0,
+        torrentShareHandlerCount: 0,
+      );
+      final records = [
+        TorrentClientCompatibilityRecord.capture(
+          outcome: TorrentCompatibilityOutcome.handoffFailed,
+          capabilities: capabilities,
+          recordedAt: DateTime(2026, 6, 27, 12),
+        ),
+      ];
+
+      final summary = TorrentCompatibilitySummary.fromRecords(records);
+
+      expect(summary.successfulRatioLabel, '0/1 条可用');
+      expect(summary.leadingOutcome, TorrentCompatibilityOutcome.handoffFailed);
+      expect(summary.leadingOutcomeLabel, '需要复查交接失败');
+    });
+  });
+
   group('TorrentCompatibilityReport', () {
     test('可以生成包含检测结果、候选客户端和本机实测记录的纯文本报告', () {
       final capabilities = TorrentClientCapabilities(
@@ -234,6 +311,11 @@ void main() {
       expect(report, contains('测试 BT'));
       expect(report, contains('包名: com.example.bt'));
       expect(report, contains('分享导入器'));
+      expect(report, contains('## 本机兼容清单摘要'));
+      expect(report, contains('记录总数: 1'));
+      expect(report, contains('可用样本: 1/1 条可用'));
+      expect(report, contains('.torrent 分享导入成功: 1'));
+      expect(report, contains('优先观察路径: .torrent 分享导入'));
       expect(report, contains('1. 2026-06-27 12:45 分享成功'));
       expect(
         report,

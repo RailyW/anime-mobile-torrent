@@ -7,6 +7,7 @@ import '../application/torrent_handoff_providers.dart';
 import '../domain/torrent_client_capabilities.dart';
 import '../domain/torrent_client_compatibility_record.dart';
 import '../domain/torrent_compatibility_report.dart';
+import '../domain/torrent_compatibility_summary.dart';
 import '../domain/torrent_handoff_result.dart';
 import '../domain/torrent_seed_history_item.dart';
 
@@ -576,6 +577,7 @@ class _CompatibilityRecordPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final currentCapabilities = capabilities.asData?.value;
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -594,6 +596,24 @@ class _CompatibilityRecordPanel extends StatelessWidget {
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: scheme.onSurfaceVariant,
               ),
+            ),
+            const SizedBox(height: 12),
+            records.when(
+              data: (savedRecords) {
+                return _CompatibilitySummaryCard(
+                  summary: TorrentCompatibilitySummary.fromRecords(
+                    savedRecords,
+                  ),
+                  capabilities: currentCapabilities,
+                );
+              },
+              error: (error, _) {
+                return Text(
+                  '生成本机兼容清单失败：$error',
+                  style: TextStyle(color: scheme.error),
+                );
+              },
+              loading: () => const Text('正在生成本机兼容清单'),
             ),
             const SizedBox(height: 12),
             capabilities.when(
@@ -711,6 +731,238 @@ class _CompatibilityRecordActions extends StatelessWidget {
           label: const Text('复制报告'),
         ),
       ],
+    );
+  }
+}
+
+/// 从本机实测记录生成的兼容清单摘要卡片。
+///
+/// 卡片只展示当前设备的本机样本统计，不上传、不做官方推荐，也不保证某个外部
+/// 客户端一定能下载成功。当前 resolver 状态只用于提示“这条路径现在是否还能
+/// 被系统检测到”，和历史实测记录共同帮助用户选择下一次尝试的交接路径。
+class _CompatibilitySummaryCard extends StatelessWidget {
+  const _CompatibilitySummaryCard({
+    required this.summary,
+    required this.capabilities,
+  });
+
+  final TorrentCompatibilitySummary summary;
+  final TorrentClientCapabilities? capabilities;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.fact_check_outlined, color: scheme.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('本机兼容清单', style: theme.textTheme.titleSmall),
+                      const SizedBox(height: 2),
+                      Text(
+                        summary.hasRecords
+                            ? '已记录 ${summary.totalRecords} 次实测，${summary.successfulRatioLabel}。'
+                            : '暂无实测样本，记录一次真实交接结果后会生成路径统计。',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _CompatibilityLeadingPath(summary: summary),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _CompatibilityPathChip(
+                  icon: Icons.description_outlined,
+                  label: '.torrent 直开',
+                  count: summary.directOpenSuccesses,
+                  currentStatus: _currentPathStatus(
+                    capabilities,
+                    TorrentClientHandoffPath.torrentView,
+                  ),
+                ),
+                _CompatibilityPathChip(
+                  icon: Icons.ios_share_outlined,
+                  label: '分享导入',
+                  count: summary.shareImportSuccesses,
+                  currentStatus: _currentPathStatus(
+                    capabilities,
+                    TorrentClientHandoffPath.torrentShare,
+                  ),
+                ),
+                _CompatibilityPathChip(
+                  icon: Icons.link_outlined,
+                  label: 'magnet 兜底',
+                  count: summary.magnetFallbackSuccesses,
+                  currentStatus: _currentPathStatus(
+                    capabilities,
+                    TorrentClientHandoffPath.magnet,
+                  ),
+                ),
+                _CompatibilityPathChip(
+                  icon: Icons.error_outline,
+                  label: '交接失败',
+                  count: summary.handoffFailures,
+                  currentStatus: '历史记录',
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 根据当前设备检测结果生成某条交接路径的状态文案。
+  ///
+  /// 检测不可用时不能把它误判为无客户端；因此这里返回“检测未知”，让用户
+  /// 明白历史记录仍然可看，但当前 resolver 结果暂时无法确认。
+  static String _currentPathStatus(
+    TorrentClientCapabilities? capabilities,
+    TorrentClientHandoffPath path,
+  ) {
+    if (capabilities == null || !capabilities.isPlatformBridgeAvailable) {
+      return '检测未知';
+    }
+
+    final (isAvailable, handlerCount) = switch (path) {
+      TorrentClientHandoffPath.magnet => (
+        capabilities.canOpenMagnet,
+        capabilities.magnetHandlerCount,
+      ),
+      TorrentClientHandoffPath.torrentView => (
+        capabilities.canOpenTorrentFile,
+        capabilities.torrentViewHandlerCount,
+      ),
+      TorrentClientHandoffPath.torrentShare => (
+        capabilities.canShareTorrentFile,
+        capabilities.torrentShareHandlerCount,
+      ),
+    };
+
+    if (isAvailable) {
+      return '当前可用 $handlerCount 个';
+    }
+    return '当前未发现';
+  }
+}
+
+/// 兼容清单中最值得优先观察的交接路径。
+class _CompatibilityLeadingPath extends StatelessWidget {
+  const _CompatibilityLeadingPath({required this.summary});
+
+  final TorrentCompatibilitySummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.route_outlined, color: scheme.secondary, size: 20),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '优先观察：${summary.leadingOutcomeLabel}',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    summary.leadingOutcomeDescription,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 本机兼容清单中的单条路径统计。
+class _CompatibilityPathChip extends StatelessWidget {
+  const _CompatibilityPathChip({
+    required this.icon,
+    required this.label,
+    required this.count,
+    required this.currentStatus,
+  });
+
+  final IconData icon;
+  final String label;
+  final int count;
+  final String currentStatus;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: scheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text('$label $count'),
+            const SizedBox(width: 6),
+            Text(
+              currentStatus,
+              style: TextStyle(
+                color: scheme.onSurfaceVariant,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

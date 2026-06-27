@@ -1,5 +1,6 @@
 import 'torrent_client_capabilities.dart';
 import 'torrent_client_compatibility_record.dart';
+import 'torrent_compatibility_summary.dart';
 
 /// 外部 BT 客户端兼容报告的纯文本生成器。
 ///
@@ -34,6 +35,7 @@ class TorrentCompatibilityReport {
   /// 手工整理的兼容清单里。报告中的候选客户端来自系统 resolver，只能说明
   /// 某个 Activity 声明可响应对应 Intent，不代表该客户端一定能成功解析种子。
   String toPlainText() {
+    final summary = TorrentCompatibilitySummary.fromRecords(records);
     final buffer = StringBuffer()
       ..writeln('Anime Mobile Torrent 外部 BT 客户端兼容报告')
       ..writeln('生成时间: ${_formatDateTime(generatedAt)}')
@@ -79,6 +81,18 @@ class TorrentCompatibilityReport {
       title: '.torrent 分享导入',
       handlers: capabilities.torrentShareHandlers,
     );
+
+    buffer
+      ..writeln()
+      ..writeln('## 本机兼容清单摘要')
+      ..writeln('记录总数: ${summary.totalRecords}')
+      ..writeln('可用样本: ${summary.successfulRatioLabel}')
+      ..writeln('.torrent 直开成功: ${summary.directOpenSuccesses}')
+      ..writeln('.torrent 分享导入成功: ${summary.shareImportSuccesses}')
+      ..writeln('magnet 兜底成功: ${summary.magnetFallbackSuccesses}')
+      ..writeln('交接失败: ${summary.handoffFailures}')
+      ..writeln('优先观察路径: ${summary.leadingOutcomeLabel}')
+      ..writeln('说明: ${summary.leadingOutcomeDescription}');
 
     buffer
       ..writeln()

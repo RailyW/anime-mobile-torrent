@@ -88,12 +88,17 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('真实设备兼容记录'), findsOneWidget);
+    expect(find.text('本机兼容清单'), findsOneWidget);
+    expect(find.textContaining('暂无实测样本'), findsOneWidget);
     expect(find.text('暂无本机实测记录'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, '记直开成功'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(OutlinedButton, '记直开成功'));
     await tester.pumpAndSettle();
 
+    expect(find.textContaining('已记录 1 次实测'), findsOneWidget);
+    expect(find.text('优先观察：.torrent 直开'), findsOneWidget);
+    expect(find.text('.torrent 直开 1'), findsOneWidget);
     expect(find.text('最近记录'), findsOneWidget);
     expect(find.textContaining('直开成功'), findsWidgets);
 
@@ -414,6 +419,9 @@ void main() {
     await tester.pump(const Duration(milliseconds: 350));
 
     expect(copiedText, contains('Anime Mobile Torrent 外部 BT 客户端兼容报告'));
+    expect(copiedText, contains('## 本机兼容清单摘要'));
+    expect(copiedText, contains('可用样本: 1/1 条可用'));
+    expect(copiedText, contains('优先观察路径: .torrent 分享导入'));
     expect(copiedText, contains('测试 BT'));
     expect(copiedText, contains('分享导入器'));
     expect(copiedText, contains('分享成功'));
