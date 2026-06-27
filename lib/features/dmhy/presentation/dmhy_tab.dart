@@ -1389,7 +1389,7 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
                   label: '去播放',
                   onPressed: () => _openPlaybackTab(context),
                 )
-              : null,
+              : _copyMagnetSnackBarAction(context),
         ),
       );
     } catch (error) {
@@ -1397,9 +1397,12 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
         return;
       }
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString()),
+          action: _copyMagnetSnackBarAction(context),
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -1407,6 +1410,15 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
         });
       }
     }
+  }
+
+  /// 构建种子交接失败时的一键复制 magnet 兜底动作。
+  ///
+  /// `.torrent` 详情页解析、文件下载或外部客户端交接任一步失败时，RSS 中的
+  /// magnet 通常仍可用。把复制动作放在错误提示里，可以让用户继续在外部
+  /// BT 客户端中手动粘贴，不必回到卡片顶部寻找“复制”按钮。
+  SnackBarAction _copyMagnetSnackBarAction(BuildContext context) {
+    return SnackBarAction(label: '复制磁力', onPressed: () => _copyMagnet(context));
   }
 
   /// 跳转到播放页，让用户在外部 BT 客户端完成视频下载后手动选择本地文件。

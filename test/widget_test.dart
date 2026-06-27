@@ -1244,6 +1244,79 @@ void main() {
     expect(find.text('test.torrent'), findsOneWidget);
   });
 
+  testWidgets('DMHY 种子交接失败时可以从提示复制磁力', (tester) async {
+    String? copiedText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          final arguments = call.arguments as Map<dynamic, dynamic>;
+          copiedText = arguments['text']?.toString();
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    final fakeHandoffRepository = _FakeTorrentHandoffRepository(
+      openResult: const TorrentHandoffResult(
+        status: TorrentHandoffStatus.error,
+        platformMessage: '模拟外部客户端拒绝',
+      ),
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(
+              capabilities: TorrentClientCapabilities(
+                isPlatformBridgeAvailable: true,
+                canOpenMagnet: true,
+                canOpenTorrentFile: false,
+                canShareTorrentFile: true,
+                magnetHandlerCount: 1,
+                torrentViewHandlerCount: 0,
+                torrentShareHandlerCount: 1,
+              ),
+            ),
+          ),
+          dmhyRepositoryProvider.overrideWithValue(_FakeDmhyRepository()),
+          torrentHandoffRepositoryProvider.overrideWithValue(
+            fakeHandoffRepository,
+          ),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('DMHY').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '测试动画 1080');
+    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.pumpAndSettle();
+
+    await _bringFilledButtonAboveNavigation(tester, '分享种子');
+    await tester.tap(find.widgetWithText(FilledButton, '分享种子'));
+    await tester.pumpAndSettle();
+
+    expect(fakeHandoffRepository.lastFile?.fileName, 'test.torrent');
+    expect(find.textContaining('种子文件交接失败：模拟外部客户端拒绝'), findsOneWidget);
+    expect(find.text('复制磁力'), findsOneWidget);
+
+    await tester.tap(find.text('复制磁力'));
+    await tester.pumpAndSettle();
+
+    expect(copiedText, 'magnet:?xt=urn:btih:ABCDEF');
+    expect(find.text('已复制 magnet'), findsOneWidget);
+  });
+
   testWidgets('DMHY 未发现 BT 客户端时主按钮切换为复制磁力', (tester) async {
     String? copiedText;
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -1835,15 +1908,20 @@ DmhyResource _buildFilterableDmhyResource({
 }
 
 class _FakeTorrentHandoffRepository implements TorrentHandoffRepository {
+  _FakeTorrentHandoffRepository({
+    this.openResult = const TorrentHandoffResult(
+      status: TorrentHandoffStatus.opened,
+      platformMessage: 'done',
+    ),
+  });
+
+  final TorrentHandoffResult openResult;
   TorrentSeedFile? lastFile;
 
   @override
   Future<TorrentHandoffResult> openSeedFile(TorrentSeedFile file) async {
     lastFile = file;
-    return const TorrentHandoffResult(
-      status: TorrentHandoffStatus.opened,
-      platformMessage: 'done',
-    );
+    return openResult;
   }
 
   @override
