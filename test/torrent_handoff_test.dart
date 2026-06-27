@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:anime_mobile_torrent/features/torrent_handoff/application/torrent_handoff_providers.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_client_capabilities.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_client_compatibility_record.dart';
@@ -317,6 +319,39 @@ void main() {
 
       await repository.clearItems();
       expect(await repository.loadItems(), isEmpty);
+    });
+
+    test('删除单条最近种子时会移除记录并尝试删除本地文件', () async {
+      const repository = SharedPreferencesTorrentSeedHistoryRepository();
+      final tempDir = await Directory.systemTemp.createTemp(
+        'torrent_seed_history_test_',
+      );
+      addTearDown(() async {
+        if (await tempDir.exists()) {
+          await tempDir.delete(recursive: true);
+        }
+      });
+      final seedFile = File('${tempDir.path}/episode-01.torrent');
+      await seedFile.writeAsBytes([1, 2, 3, 4]);
+
+      final item = TorrentSeedHistoryItem.capture(
+        seedFile: TorrentSeedFile(
+          localPath: seedFile.path,
+          fileName: 'episode-01.torrent',
+          length: 4,
+        ),
+        title: '第 1 话',
+        savedAt: DateTime.fromMillisecondsSinceEpoch(1000),
+      );
+
+      await repository.addItem(item);
+      expect(await seedFile.exists(), isTrue);
+      expect(await repository.loadItems(), hasLength(1));
+
+      await repository.removeItem(item);
+
+      expect(await repository.loadItems(), isEmpty);
+      expect(await seedFile.exists(), isFalse);
     });
 
     test('最多保留最近 20 条种子记录', () async {

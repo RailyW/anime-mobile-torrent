@@ -13,6 +13,7 @@ import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_torrent_file.dart
 import 'package:anime_mobile_torrent/features/torrent_handoff/application/torrent_handoff_providers.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_client_capabilities.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_handoff_result.dart';
+import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_history_item.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_file.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -192,6 +193,54 @@ void main() {
     expect(find.text('测试磁力客户端'), findsOneWidget);
     expect(find.text('测试直开客户端'), findsOneWidget);
     expect(find.text('测试分享客户端'), findsOneWidget);
+  });
+
+  testWidgets('种子交接页可以删除单条最近种子记录', (tester) async {
+    final seedHistoryRepository = _FakeTorrentSeedHistoryRepository([
+      TorrentSeedHistoryItem.capture(
+        seedFile: const TorrentSeedFile(
+          localPath: 'delete-me.torrent',
+          fileName: 'delete-me.torrent',
+          length: 256,
+        ),
+        title: '可删除测试种子',
+        savedAt: DateTime(2026, 6, 27, 12),
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
+          torrentSeedHistoryRepositoryProvider.overrideWithValue(
+            seedHistoryRepository,
+          ),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('种子').last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('可删除测试种子'),
+      220,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('可删除测试种子'), findsOneWidget);
+
+    await tester.ensureVisible(find.widgetWithText(TextButton, '删除'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, '删除'));
+    await tester.pumpAndSettle();
+
+    expect(seedHistoryRepository.removedItems.single.title, '可删除测试种子');
+    expect(find.text('可删除测试种子'), findsNothing);
   });
 
   testWidgets('DMHY 订阅关键词可以跳转到搜索页并保留全站范围', (tester) async {
@@ -792,6 +841,41 @@ class _FakeTorrentClientCapabilityRepository
   Future<TorrentClientCapabilities> detectCapabilities() async {
     return capabilities ??
         TorrentClientCapabilities.unavailable('测试环境不注册 Android 检测通道');
+  }
+}
+
+class _FakeTorrentSeedHistoryRepository
+    implements TorrentSeedHistoryRepository {
+  _FakeTorrentSeedHistoryRepository(List<TorrentSeedHistoryItem> initialItems)
+    : items = [...initialItems];
+
+  final List<TorrentSeedHistoryItem> items;
+  final List<TorrentSeedHistoryItem> removedItems = [];
+
+  @override
+  Future<List<TorrentSeedHistoryItem>> loadItems() async {
+    return [...items];
+  }
+
+  @override
+  Future<void> addItem(TorrentSeedHistoryItem item) async {
+    items.insert(0, item);
+  }
+
+  @override
+  Future<void> removeItem(
+    TorrentSeedHistoryItem item, {
+    bool deleteLocalFile = true,
+  }) async {
+    removedItems.add(item);
+    items.removeWhere(
+      (existingItem) => existingItem.dedupeKey == item.dedupeKey,
+    );
+  }
+
+  @override
+  Future<void> clearItems() async {
+    items.clear();
   }
 }
 

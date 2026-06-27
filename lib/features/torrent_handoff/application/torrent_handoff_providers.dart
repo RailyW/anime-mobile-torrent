@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
@@ -81,6 +82,16 @@ abstract class TorrentSeedHistoryRepository {
 
   /// 新增或更新一条最近种子记录。
   Future<void> addItem(TorrentSeedHistoryItem item);
+
+  /// 删除一条最近种子记录，并可同步尝试删除本地缓存文件。
+  ///
+  /// `deleteLocalFile` 默认为 true，因为这些记录当前只来自 APP 显式下载到
+  /// 本地缓存目录的 `.torrent` 文件。文件已经被系统清理或不存在时不会抛错，
+  /// 以免陈旧记录阻塞用户整理列表。
+  Future<void> removeItem(
+    TorrentSeedHistoryItem item, {
+    bool deleteLocalFile = true,
+  });
 
   /// 清空本机最近种子记录。
   Future<void> clearItems();
@@ -308,9 +319,44 @@ class SharedPreferencesTorrentSeedHistoryRepository
   }
 
   @override
+  Future<void> removeItem(
+    TorrentSeedHistoryItem item, {
+    bool deleteLocalFile = true,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    final remainingItems = (await loadItems())
+        .where((existingItem) => existingItem.dedupeKey != item.dedupeKey)
+        .toList();
+    final encodedItems = remainingItems
+        .map((item) => jsonEncode(item.toJson()))
+        .toList();
+
+    await prefs.setStringList(_seedHistoryKey, encodedItems);
+
+    if (deleteLocalFile) {
+      await _deleteSeedFileIfExists(item.seedFile.localPath);
+    }
+  }
+
+  @override
   Future<void> clearItems() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_seedHistoryKey);
+  }
+
+  /// 尝试删除 APP 缓存中的 `.torrent` 文件。
+  ///
+  /// 最近种子记录可能因为系统缓存清理、用户手动删除或旧版本路径变化而指向
+  /// 已不存在的文件；这种情况下只需要保留“删除记录成功”的用户体验。
+  Future<void> _deleteSeedFileIfExists(String localPath) async {
+    try {
+      final file = File(localPath);
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } on FileSystemException {
+      // 文件删除失败不回滚记录删除；用户仍可通过系统文件管理器处理残留文件。
+    }
   }
 }
 

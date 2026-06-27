@@ -156,6 +156,17 @@ class TorrentHandoffTab extends ConsumerWidget {
       }
     }
 
+    Future<void> deleteSeedHistoryItem(TorrentSeedHistoryItem item) async {
+      final repository = ref.read(torrentSeedHistoryRepositoryProvider);
+      await repository.removeItem(item);
+      ref.invalidate(torrentSeedHistoryProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已删除最近种子记录')));
+      }
+    }
+
     Future<void> clearSeedHistory() async {
       final repository = ref.read(torrentSeedHistoryRepositoryProvider);
       await repository.clearItems();
@@ -189,6 +200,7 @@ class TorrentHandoffTab extends ConsumerWidget {
           items: seedHistory,
           onOpen: openSeedHistoryItem,
           onShare: shareSeedHistoryItem,
+          onDelete: deleteSeedHistoryItem,
           onClear: clearSeedHistory,
         ),
         const SizedBox(height: 12),
@@ -226,12 +238,14 @@ class _SeedHistoryPanel extends StatelessWidget {
     required this.items,
     required this.onOpen,
     required this.onShare,
+    required this.onDelete,
     required this.onClear,
   });
 
   final AsyncValue<List<TorrentSeedHistoryItem>> items;
   final Future<void> Function(TorrentSeedHistoryItem item) onOpen;
   final Future<void> Function(TorrentSeedHistoryItem item) onShare;
+  final Future<void> Function(TorrentSeedHistoryItem item) onDelete;
   final Future<void> Function() onClear;
 
   @override
@@ -264,6 +278,7 @@ class _SeedHistoryPanel extends StatelessWidget {
                   items: items,
                   onOpen: onOpen,
                   onShare: onShare,
+                  onDelete: onDelete,
                   onClear: onClear,
                 );
               },
@@ -288,12 +303,14 @@ class _SeedHistoryContent extends StatelessWidget {
     required this.items,
     required this.onOpen,
     required this.onShare,
+    required this.onDelete,
     required this.onClear,
   });
 
   final List<TorrentSeedHistoryItem> items;
   final Future<void> Function(TorrentSeedHistoryItem item) onOpen;
   final Future<void> Function(TorrentSeedHistoryItem item) onShare;
+  final Future<void> Function(TorrentSeedHistoryItem item) onDelete;
   final Future<void> Function() onClear;
 
   @override
@@ -313,6 +330,7 @@ class _SeedHistoryContent extends StatelessWidget {
               item: item,
               onOpen: onOpen,
               onShare: onShare,
+              onDelete: onDelete,
             ),
           ),
         TextButton.icon(
@@ -331,11 +349,13 @@ class _SeedHistoryTile extends StatelessWidget {
     required this.item,
     required this.onOpen,
     required this.onShare,
+    required this.onDelete,
   });
 
   final TorrentSeedHistoryItem item;
   final Future<void> Function(TorrentSeedHistoryItem item) onOpen;
   final Future<void> Function(TorrentSeedHistoryItem item) onShare;
+  final Future<void> Function(TorrentSeedHistoryItem item) onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -406,6 +426,11 @@ class _SeedHistoryTile extends StatelessWidget {
                   onPressed: () => onShare(item),
                   icon: const Icon(Icons.ios_share_outlined),
                   label: const Text('分享'),
+                ),
+                TextButton.icon(
+                  onPressed: () => onDelete(item),
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('删除'),
                 ),
               ],
             ),
