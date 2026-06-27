@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:anime_mobile_torrent/features/torrent_handoff/application/torrent_handoff_providers.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_client_capabilities.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_client_compatibility_record.dart';
+import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_compatibility_report.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_handoff_result.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_history_item.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_file.dart';
@@ -153,6 +154,63 @@ void main() {
         restored.detectionSummary,
         'magnet 2 · .torrent 直开 1 · 分享 0 · SDK 35',
       );
+    });
+  });
+
+  group('TorrentCompatibilityReport', () {
+    test('可以生成包含检测结果、候选客户端和本机实测记录的纯文本报告', () {
+      final capabilities = TorrentClientCapabilities(
+        isPlatformBridgeAvailable: true,
+        canOpenMagnet: true,
+        canOpenTorrentFile: false,
+        canShareTorrentFile: true,
+        magnetHandlerCount: 1,
+        torrentViewHandlerCount: 0,
+        torrentShareHandlerCount: 1,
+        magnetHandlers: const [
+          TorrentClientAppCandidate(
+            label: '测试 BT',
+            packageName: 'com.example.bt',
+            activityName: 'com.example.bt.MagnetActivity',
+          ),
+        ],
+        torrentShareHandlers: const [
+          TorrentClientAppCandidate(
+            label: '分享导入器',
+            packageName: 'com.example.share',
+            activityName: 'com.example.share.ImportActivity',
+          ),
+        ],
+        androidSdkInt: 35,
+        checkedAt: DateTime(2026, 6, 27, 12, 30),
+      );
+      final records = [
+        TorrentClientCompatibilityRecord.capture(
+          outcome: TorrentCompatibilityOutcome.shareImportSucceeded,
+          capabilities: capabilities,
+          recordedAt: DateTime(2026, 6, 27, 12, 45),
+        ),
+      ];
+
+      final report = TorrentCompatibilityReport(
+        capabilities: capabilities,
+        records: records,
+        generatedAt: DateTime(2026, 6, 27, 13),
+      ).toPlainText();
+
+      expect(report, contains('Anime Mobile Torrent 外部 BT 客户端兼容报告'));
+      expect(report, contains('生成时间: 2026-06-27 13:00'));
+      expect(report, contains('magnet 打开: 可用（候选 1 个）'));
+      expect(report, contains('.torrent 直开: 未发现（候选 0 个）'));
+      expect(report, contains('测试 BT'));
+      expect(report, contains('包名: com.example.bt'));
+      expect(report, contains('分享导入器'));
+      expect(report, contains('1. 2026-06-27 12:45 分享成功'));
+      expect(
+        report,
+        contains('检测摘要: magnet 1 · .torrent 直开 0 · 分享 1 · SDK 35'),
+      );
+      expect(report, contains('APP 只下载和交接 .torrent 文件'));
     });
   });
 

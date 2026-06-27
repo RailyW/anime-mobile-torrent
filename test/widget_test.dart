@@ -198,6 +198,89 @@ void main() {
     expect(find.text('测试分享客户端'), findsOneWidget);
   });
 
+  testWidgets('种子交接页可以复制外部客户端兼容报告', (tester) async {
+    String? copiedText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          final arguments = call.arguments as Map<dynamic, dynamic>;
+          copiedText = arguments['text']?.toString();
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            _FakeTorrentClientCapabilityRepository(
+              capabilities: TorrentClientCapabilities(
+                isPlatformBridgeAvailable: true,
+                canOpenMagnet: true,
+                canOpenTorrentFile: false,
+                canShareTorrentFile: true,
+                magnetHandlerCount: 1,
+                torrentViewHandlerCount: 0,
+                torrentShareHandlerCount: 1,
+                magnetHandlers: const [
+                  TorrentClientAppCandidate(
+                    label: '测试 BT',
+                    packageName: 'com.example.bt',
+                    activityName: 'com.example.bt.MagnetActivity',
+                  ),
+                ],
+                torrentShareHandlers: const [
+                  TorrentClientAppCandidate(
+                    label: '分享导入器',
+                    packageName: 'com.example.share',
+                    activityName: 'com.example.share.ImportActivity',
+                  ),
+                ],
+                androidSdkInt: 35,
+                checkedAt: DateTime(2026, 6, 27, 12, 30),
+              ),
+            ),
+          ),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('种子').last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('真实设备兼容记录'),
+      220,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(OutlinedButton, '复制报告'), findsOneWidget);
+    await tester.tap(find.widgetWithText(OutlinedButton, '记分享成功'));
+    await tester.pumpAndSettle();
+
+    await tester.ensureVisible(find.widgetWithText(OutlinedButton, '复制报告'));
+    await tester.tap(find.widgetWithText(OutlinedButton, '复制报告'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(copiedText, contains('Anime Mobile Torrent 外部 BT 客户端兼容报告'));
+    expect(copiedText, contains('测试 BT'));
+    expect(copiedText, contains('分享导入器'));
+    expect(copiedText, contains('分享成功'));
+    expect(copiedText, contains('APP 只下载和交接 .torrent 文件'));
+    expect(find.text('已复制兼容报告'), findsOneWidget);
+  });
+
   testWidgets('种子交接页可以删除单条最近种子记录', (tester) async {
     final seedHistoryRepository = _FakeTorrentSeedHistoryRepository([
       TorrentSeedHistoryItem.capture(

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 
 import '../application/torrent_handoff_providers.dart';
 import '../domain/torrent_client_capabilities.dart';
 import '../domain/torrent_client_compatibility_record.dart';
+import '../domain/torrent_compatibility_report.dart';
 import '../domain/torrent_handoff_result.dart';
 import '../domain/torrent_seed_history_item.dart';
 
@@ -129,6 +131,19 @@ class TorrentHandoffTab extends ConsumerWidget {
       }
     }
 
+    Future<void> copyCompatibilityReport(
+      TorrentClientCapabilities capabilities,
+      List<TorrentClientCompatibilityRecord> records,
+    ) async {
+      final report = TorrentCompatibilityReport(
+        capabilities: capabilities,
+        records: records,
+        generatedAt: DateTime.now(),
+      ).toPlainText();
+
+      await Clipboard.setData(ClipboardData(text: report));
+    }
+
     Future<void> openSeedHistoryItem(TorrentSeedHistoryItem item) async {
       final repository = ref.read(torrentHandoffRepositoryProvider);
       final result = await repository.openSeedFileWithShareFallback(
@@ -209,6 +224,7 @@ class TorrentHandoffTab extends ConsumerWidget {
           records: compatibilityRecords,
           onRecord: recordCompatibility,
           onClear: clearCompatibilityRecords,
+          onCopyReport: copyCompatibilityReport,
         ),
         const SizedBox(height: 12),
         const _GuidePanel(
@@ -451,6 +467,7 @@ class _CompatibilityRecordPanel extends StatelessWidget {
     required this.records,
     required this.onRecord,
     required this.onClear,
+    required this.onCopyReport,
   });
 
   final AsyncValue<TorrentClientCapabilities> capabilities;
@@ -461,6 +478,11 @@ class _CompatibilityRecordPanel extends StatelessWidget {
   )
   onRecord;
   final Future<void> Function() onClear;
+  final Future<void> Function(
+    TorrentClientCapabilities capabilities,
+    List<TorrentClientCompatibilityRecord> records,
+  )
+  onCopyReport;
 
   @override
   Widget build(BuildContext context) {
@@ -490,7 +512,13 @@ class _CompatibilityRecordPanel extends StatelessWidget {
               data: (capabilities) {
                 return _CompatibilityRecordActions(
                   capabilities: capabilities,
+                  records: records.when(
+                    data: (savedRecords) => savedRecords,
+                    error: (_, _) => const <TorrentClientCompatibilityRecord>[],
+                    loading: () => const <TorrentClientCompatibilityRecord>[],
+                  ),
                   onRecord: onRecord,
+                  onCopyReport: onCopyReport,
                 );
               },
               error: (error, _) {
@@ -528,15 +556,23 @@ class _CompatibilityRecordPanel extends StatelessWidget {
 class _CompatibilityRecordActions extends StatelessWidget {
   const _CompatibilityRecordActions({
     required this.capabilities,
+    required this.records,
     required this.onRecord,
+    required this.onCopyReport,
   });
 
   final TorrentClientCapabilities capabilities;
+  final List<TorrentClientCompatibilityRecord> records;
   final Future<void> Function(
     TorrentCompatibilityOutcome outcome,
     TorrentClientCapabilities capabilities,
   )
   onRecord;
+  final Future<void> Function(
+    TorrentClientCapabilities capabilities,
+    List<TorrentClientCompatibilityRecord> records,
+  )
+  onCopyReport;
 
   @override
   Widget build(BuildContext context) {
@@ -571,6 +607,20 @@ class _CompatibilityRecordActions extends StatelessWidget {
           outcome: TorrentCompatibilityOutcome.handoffFailed,
           capabilities: capabilities,
           onRecord: onRecord,
+        ),
+        OutlinedButton.icon(
+          key: const Key('torrent-copy-compatibility-report'),
+          onPressed: () async {
+            await onCopyReport(capabilities, records);
+            if (!context.mounted) {
+              return;
+            }
+            final messenger = ScaffoldMessenger.of(context);
+            messenger.clearSnackBars();
+            messenger.showSnackBar(const SnackBar(content: Text('已复制兼容报告')));
+          },
+          icon: const Icon(Icons.content_copy_outlined),
+          label: const Text('复制报告'),
         ),
       ],
     );

@@ -1,0 +1,160 @@
+import 'torrent_client_capabilities.dart';
+import 'torrent_client_compatibility_record.dart';
+
+/// 外部 BT 客户端兼容报告的纯文本生成器。
+///
+/// 这个类只负责把当前设备 resolver 检测结果、候选客户端和本机实测记录
+/// 汇总成可复制、可粘贴的诊断文本。它不读取系统信息、不访问剪贴板，也不
+/// 上传任何数据；调用方需要显式传入页面当前已经拿到的模型数据。
+class TorrentCompatibilityReport {
+  const TorrentCompatibilityReport({
+    required this.capabilities,
+    required this.records,
+    required this.generatedAt,
+  });
+
+  /// 当前设备外部 BT 客户端能力检测结果。
+  final TorrentClientCapabilities capabilities;
+
+  /// 本机保存的用户手动实测记录。
+  ///
+  /// 记录列表通常来自 `torrentCompatibilityRecordsProvider`，仓库层已经按
+  /// 时间倒序并限制为最近 20 条；报告生成器保持输入顺序，避免隐式改变页面
+  /// 和持久化层已经决定好的展示语义。
+  final List<TorrentClientCompatibilityRecord> records;
+
+  /// 报告生成时间。
+  ///
+  /// 测试可以传入固定时间；真实页面使用 `DateTime.now()`。
+  final DateTime generatedAt;
+
+  /// 生成可复制到剪贴板的纯文本报告。
+  ///
+  /// 文本使用普通中文标题和列表，方便用户直接贴到 issue、聊天工具或后续
+  /// 手工整理的兼容清单里。报告中的候选客户端来自系统 resolver，只能说明
+  /// 某个 Activity 声明可响应对应 Intent，不代表该客户端一定能成功解析种子。
+  String toPlainText() {
+    final buffer = StringBuffer()
+      ..writeln('Anime Mobile Torrent 外部 BT 客户端兼容报告')
+      ..writeln('生成时间: ${_formatDateTime(generatedAt)}')
+      ..writeln()
+      ..writeln('## 当前设备检测')
+      ..writeln('检测通道: ${_formatPlatformBridge(capabilities)}')
+      ..writeln('Android SDK: ${capabilities.androidSdkInt ?? '未知'}')
+      ..writeln(
+        'magnet 打开: ${_formatPathStatus(capabilities.canOpenMagnet, capabilities.magnetHandlerCount)}',
+      )
+      ..writeln(
+        '.torrent 直开: ${_formatPathStatus(capabilities.canOpenTorrentFile, capabilities.torrentViewHandlerCount)}',
+      )
+      ..writeln(
+        '.torrent 分享导入: ${_formatPathStatus(capabilities.canShareTorrentFile, capabilities.torrentShareHandlerCount)}',
+      );
+
+    final platformMessage = capabilities.platformMessage;
+    if (platformMessage != null && platformMessage.isNotEmpty) {
+      buffer.writeln('平台信息: $platformMessage');
+    }
+
+    final checkedAt = capabilities.checkedAt;
+    if (checkedAt != null) {
+      buffer.writeln('检测时间: ${_formatDateTime(checkedAt)}');
+    }
+
+    buffer
+      ..writeln()
+      ..writeln('## 候选客户端');
+    _writeCandidateSection(
+      buffer,
+      title: 'magnet 打开',
+      handlers: capabilities.magnetHandlers,
+    );
+    _writeCandidateSection(
+      buffer,
+      title: '.torrent 直开',
+      handlers: capabilities.torrentViewHandlers,
+    );
+    _writeCandidateSection(
+      buffer,
+      title: '.torrent 分享导入',
+      handlers: capabilities.torrentShareHandlers,
+    );
+
+    buffer
+      ..writeln()
+      ..writeln('## 本机实测记录');
+    if (records.isEmpty) {
+      buffer.writeln('暂无本机实测记录');
+    } else {
+      for (var index = 0; index < records.length; index++) {
+        final record = records[index];
+        buffer
+          ..writeln(
+            '${index + 1}. ${_formatDateTime(record.recordedAt)} '
+            '${record.outcome.label}',
+          )
+          ..writeln('   结果说明: ${record.outcome.description}')
+          ..writeln('   检测摘要: ${record.detectionSummary}');
+      }
+    }
+
+    buffer
+      ..writeln()
+      ..writeln('## 边界说明')
+      ..writeln('本报告只记录本机 resolver 检测和用户手动标记结果。')
+      ..writeln('APP 只下载和交接 .torrent 文件，不下载种子指向的视频内容。');
+
+    return buffer.toString().trimRight();
+  }
+
+  /// 写入某一类 Intent 路径下的候选客户端列表。
+  static void _writeCandidateSection(
+    StringBuffer buffer, {
+    required String title,
+    required List<TorrentClientAppCandidate> handlers,
+  }) {
+    buffer.writeln('$title:');
+    if (handlers.isEmpty) {
+      buffer.writeln('- 未发现候选客户端');
+      return;
+    }
+
+    for (final handler in handlers) {
+      buffer.writeln('- ${handler.displayName}');
+      if (handler.packageName.isNotEmpty) {
+        buffer.writeln('  包名: ${handler.packageName}');
+      }
+      if (handler.activityName.isNotEmpty) {
+        buffer.writeln('  Activity: ${handler.activityName}');
+      }
+    }
+  }
+
+  /// 格式化平台检测通道状态。
+  static String _formatPlatformBridge(TorrentClientCapabilities capabilities) {
+    if (capabilities.isPlatformBridgeAvailable) {
+      return '可用';
+    }
+    return '不可用';
+  }
+
+  /// 格式化单条交接路径的可用性。
+  static String _formatPathStatus(bool isAvailable, int handlerCount) {
+    final status = isAvailable ? '可用' : '未发现';
+    return '$status（候选 $handlerCount 个）';
+  }
+
+  /// 格式化本地日期时间。
+  ///
+  /// 为了保持模块轻量，这里不引入 `intl`；报告只需要稳定、可读的
+  /// 年月日时分格式即可。
+  static String _formatDateTime(DateTime value) {
+    final local = value.toLocal();
+    final year = local.year.toString().padLeft(4, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    final day = local.day.toString().padLeft(2, '0');
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '$year-$month-$day $hour:$minute';
+  }
+}
