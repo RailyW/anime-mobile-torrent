@@ -2,6 +2,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:xml/xml.dart';
 
 import '../domain/dmhy_resource.dart';
+import '../domain/dmhy_resource_metadata.dart';
 
 /// DMHY RSS XML 解析器。
 ///
@@ -45,6 +46,7 @@ class DmhyRssParser {
     }
 
     final category = _firstElement(item, 'category');
+    final descriptionText = _htmlToText(_readElementText(item, 'description'));
 
     return DmhyResource(
       title: title,
@@ -54,7 +56,11 @@ class DmhyRssParser {
       author: _readElementText(item, 'author'),
       categoryName: category?.innerText.trim() ?? '',
       categoryUri: _readUri(category?.getAttribute('domain')),
-      descriptionText: _htmlToText(_readElementText(item, 'description')),
+      descriptionText: descriptionText,
+      metadata: DmhyResourceMetadata.fromText(
+        title: title,
+        descriptionText: descriptionText,
+      ),
     );
   }
 }

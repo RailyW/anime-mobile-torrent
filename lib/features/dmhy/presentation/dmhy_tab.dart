@@ -9,6 +9,7 @@ import '../../torrent_handoff/domain/torrent_seed_history_item.dart';
 import '../../torrent_handoff/domain/torrent_seed_file.dart';
 import '../application/dmhy_providers.dart';
 import '../domain/dmhy_resource.dart';
+import '../domain/dmhy_resource_metadata.dart';
 
 /// DMHY 资源搜索首页入口。
 ///
@@ -385,6 +386,11 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
                   icon: Icons.public_outlined,
                   label: resource.sourceHost,
                 ),
+                for (final chip in resource.metadata.displayChips)
+                  _DmhyInfoChip(
+                    icon: _metadataChipIcon(chip.kind),
+                    label: chip.label,
+                  ),
               ],
             ),
             if (resource.descriptionText.isNotEmpty) ...[
@@ -956,4 +962,17 @@ String _formatBytes(int bytes) {
 
   final mib = kib / 1024;
   return '${mib.toStringAsFixed(1)} MB';
+}
+
+IconData _metadataChipIcon(DmhyResourceMetadataKind kind) {
+  return switch (kind) {
+    DmhyResourceMetadataKind.releaseGroup => Icons.groups_outlined,
+    DmhyResourceMetadataKind.episode => Icons.confirmation_number_outlined,
+    DmhyResourceMetadataKind.resolution => Icons.high_quality_outlined,
+    DmhyResourceMetadataKind.source => Icons.album_outlined,
+    DmhyResourceMetadataKind.videoCodec => Icons.memory_outlined,
+    DmhyResourceMetadataKind.mediaFormat => Icons.movie_creation_outlined,
+    DmhyResourceMetadataKind.subtitle => Icons.subtitles_outlined,
+    DmhyResourceMetadataKind.size => Icons.storage_outlined,
+  };
 }

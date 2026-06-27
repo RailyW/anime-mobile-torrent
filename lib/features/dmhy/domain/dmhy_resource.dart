@@ -1,9 +1,11 @@
+import 'dmhy_resource_metadata.dart';
+
 /// DMHY RSS 搜索得到的资源条目。
 ///
 /// DMHY 当前没有稳定 JSON API，首期以 RSS item 为数据源。该模型只保存
 /// RSS 中可以稳定获得的字段：标题、详情页、发布时间、发布者、分类、
-/// magnet 和简介纯文本。`.torrent` 文件链接需要进入详情页后再解析，
-/// 不在本模型中提前假设。
+/// magnet、简介纯文本，以及从标题/简介中宽容提取出的轻量元数据。
+/// `.torrent` 文件链接需要进入详情页后再解析，不在本模型中提前假设。
 class DmhyResource {
   const DmhyResource({
     required this.title,
@@ -14,6 +16,7 @@ class DmhyResource {
     this.categoryName = '',
     this.categoryUri,
     this.descriptionText = '',
+    this.metadata = const DmhyResourceMetadata.empty(),
   });
 
   final String title;
@@ -24,6 +27,7 @@ class DmhyResource {
   final String categoryName;
   final Uri? categoryUri;
   final String descriptionText;
+  final DmhyResourceMetadata metadata;
 
   /// 详情页来源主机。
   ///

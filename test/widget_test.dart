@@ -8,6 +8,7 @@ import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_subject.dar
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_user.dart';
 import 'package:anime_mobile_torrent/features/dmhy/application/dmhy_providers.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_resource.dart';
+import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_resource_metadata.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_torrent_file.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/application/torrent_handoff_providers.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_client_capabilities.dart';
@@ -327,6 +328,12 @@ void main() {
 
     expect(find.text('“测试动画 1080” 在动画分类找到 1 条 RSS 资源'), findsOneWidget);
     expect(find.text('[字幕组] 测试动画 01 1080p'), findsOneWidget);
+    expect(find.text('字幕组'), findsOneWidget);
+    expect(find.text('1080p'), findsOneWidget);
+    expect(find.text('HEVC/H.265'), findsOneWidget);
+    expect(find.text('MP4'), findsOneWidget);
+    expect(find.text('简繁内封'), findsOneWidget);
+    expect(find.text('1.25 GB'), findsOneWidget);
     expect(find.text('動畫'), findsOneWidget);
     expect(find.text('test_team'), findsOneWidget);
     expect(find.text('复制'), findsOneWidget);
@@ -373,6 +380,7 @@ void main() {
     expect(find.textContaining('将依赖分享面板导入'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '分享种子'), findsOneWidget);
 
+    await _bringFilledButtonAboveNavigation(tester, '分享种子');
     await tester.tap(find.widgetWithText(FilledButton, '分享种子'));
     await tester.pumpAndSettle();
 
@@ -446,12 +454,27 @@ void main() {
     expect(find.text('未发现外部 BT 客户端，主按钮已切换为复制 magnet'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '复制磁力'), findsOneWidget);
 
-    await tester.ensureVisible(find.widgetWithText(FilledButton, '复制磁力'));
+    await _bringFilledButtonAboveNavigation(tester, '复制磁力');
     await tester.tap(find.widgetWithText(FilledButton, '复制磁力'));
     await tester.pump(const Duration(milliseconds: 100));
 
     expect(copiedText, 'magnet:?xt=urn:btih:ABCDEF');
   });
+}
+
+/// 把卡片底部主按钮滚到导航栏遮挡区域上方。
+///
+/// DMHY 资源卡片会随着元数据标签增高；测试环境的命中测试不会自动避开底部
+/// 导航栏，因此点击前需要额外上推列表，模拟用户把按钮滚到可点击区域。
+Future<void> _bringFilledButtonAboveNavigation(
+  WidgetTester tester,
+  String label,
+) async {
+  final finder = find.widgetWithText(FilledButton, label);
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.drag(find.byType(Scrollable).last, const Offset(0, -140));
+  await tester.pumpAndSettle();
 }
 
 class _FakeTorrentClientCapabilityRepository
@@ -625,7 +648,11 @@ class _FakeDmhyRepository implements DmhyRepository {
         author: 'test_team',
         categoryName: '動畫',
         categoryUri: Uri.parse('http://share.dmhy.org/topics/list/sort_id/2'),
-        descriptionText: '测试简介 第一集',
+        descriptionText: '测试简介 第一集 1.25 GB 简繁内封',
+        metadata: DmhyResourceMetadata.fromText(
+          title: '[字幕组] 测试动画 01 1080p HEVC MP4',
+          descriptionText: '测试简介 第一集 1.25 GB 简繁内封',
+        ),
       ),
     ];
   }
