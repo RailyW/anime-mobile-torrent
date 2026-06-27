@@ -69,6 +69,31 @@ void main() {
     expect(restored.hasNewMatches, isTrue);
   });
 
+  test('DmhySubscriptionAutoCheckRecord 可以生成可复制的聚合摘要', () {
+    final record = DmhySubscriptionAutoCheckRecord(
+      checkedAt: DateTime(2026, 6, 27, 18, 30),
+      keywordCount: 2,
+      resourceCount: 3,
+      hasNewMatches: false,
+      latestKeyword: '测试动画 1080',
+      latestAnimeOnly: false,
+      latestTitle: '[字幕组] 测试动画 01',
+      message: 'DMHY 订阅检查完成，最新命中未变化',
+    );
+
+    final copiedText = record.toClipboardText();
+
+    expect(copiedText, contains('Anime Mobile Torrent DMHY 订阅自动检查摘要'));
+    expect(copiedText, contains('状态: 已检查'));
+    expect(copiedText, contains('检查时间: 2026-06-27 18:30'));
+    expect(copiedText, contains('订阅关键词: 2 个'));
+    expect(copiedText, contains('命中资源: 3 条'));
+    expect(copiedText, contains('命中状态: 已有资源，最新命中未变化'));
+    expect(copiedText, contains('最新关键词: 测试动画 1080（全站）'));
+    expect(copiedText, contains('最新标题: [字幕组] 测试动画 01'));
+    expect(copiedText, contains('不自动下载 .torrent 或 BT 视频内容'));
+  });
+
   test('DmhySubscriptionRepository 可以去重保存关键词并检查 DMHY RSS', () async {
     final storage = _MemoryDmhySubscriptionStorage();
     final dmhyRepository = _FakeDmhyRepository();

@@ -18,6 +18,8 @@ import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_torrent_file.dart
 import 'package:anime_mobile_torrent/features/playback/application/playback_providers.dart';
 import 'package:anime_mobile_torrent/features/playback/domain/local_video_file.dart';
 import 'package:anime_mobile_torrent/features/playback/domain/recent_local_video.dart';
+import 'package:anime_mobile_torrent/features/subscriptions/application/dmhy_subscription_providers.dart';
+import 'package:anime_mobile_torrent/features/subscriptions/data/dmhy_subscription_auto_check_storage.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/application/torrent_handoff_providers.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_client_capabilities.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_handoff_result.dart';
@@ -299,6 +301,75 @@ void main() {
     expect(find.text('服务控制'), findsOneWidget);
     expect(find.text('后台常驻服务未启动'), findsWidgets);
     expect(find.text('后台自动检查'), findsOneWidget);
+  });
+
+  testWidgets('后台页可以复制 DMHY 自动检查摘要', (tester) async {
+    String? copiedText;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          final arguments = call.arguments as Map<dynamic, dynamic>;
+          copiedText = arguments['text']?.toString();
+        }
+        return null;
+      },
+    );
+    addTearDown(() {
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      );
+    });
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
+          backgroundResidencyRepositoryProvider.overrideWithValue(
+            _FakeWidgetBackgroundResidencyRepository(),
+          ),
+          dmhySubscriptionAutoCheckStorageProvider.overrideWithValue(
+            _FakeWidgetDmhySubscriptionAutoCheckStorage(
+              DmhySubscriptionAutoCheckRecord(
+                checkedAt: DateTime(2026, 6, 27, 18, 30),
+                keywordCount: 1,
+                resourceCount: 2,
+                hasNewMatches: true,
+                latestKeyword: '测试动画 1080',
+                latestAnimeOnly: true,
+                latestTitle: '[字幕组] 测试动画 02',
+                message: 'DMHY 订阅检查发现新的资源命中',
+              ),
+            ),
+          ),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('后台').last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.widgetWithText(TextButton, '复制摘要'),
+      220,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(TextButton, '复制摘要'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+
+    expect(copiedText, contains('DMHY 订阅自动检查摘要'));
+    expect(copiedText, contains('状态: 已检查'));
+    expect(copiedText, contains('最新关键词: 测试动画 1080（动画分类）'));
+    expect(copiedText, contains('最新标题: [字幕组] 测试动画 02'));
+    expect(copiedText, contains('不自动下载 .torrent 或 BT 视频内容'));
+    expect(find.text('已复制自动检查摘要'), findsOneWidget);
   });
 
   testWidgets('种子交接页可以展示外部客户端候选应用', (tester) async {
@@ -1532,6 +1603,23 @@ class _FakePlaybackHistoryRepository implements PlaybackHistoryRepository {
   @override
   Future<void> clearRecentVideos() async {
     videos.clear();
+  }
+}
+
+class _FakeWidgetDmhySubscriptionAutoCheckStorage
+    implements DmhySubscriptionAutoCheckStorage {
+  _FakeWidgetDmhySubscriptionAutoCheckStorage(this.record);
+
+  DmhySubscriptionAutoCheckRecord? record;
+
+  @override
+  Future<DmhySubscriptionAutoCheckRecord?> loadLastRecord() async {
+    return record;
+  }
+
+  @override
+  Future<void> saveLastRecord(DmhySubscriptionAutoCheckRecord record) async {
+    this.record = record;
   }
 }
 

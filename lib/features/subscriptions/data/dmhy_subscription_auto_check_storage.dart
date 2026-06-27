@@ -71,6 +71,48 @@ class DmhySubscriptionAutoCheckRecord {
   /// 最近一次自动检查的可读说明，失败时用于展示具体原因。
   final String? message;
 
+  /// 生成适合复制到剪贴板的纯文本摘要。
+  ///
+  /// 该摘要面向真实设备排查和跨设备反馈：它只包含检查状态、时间、关键词
+  /// 数量、命中数量、最新命中上下文和边界说明，不包含完整 RSS 条目列表，
+  /// 避免把第三方资源正文长期扩散到本地记录或外部反馈中。
+  String toClipboardText() {
+    final buffer = StringBuffer()
+      ..writeln('Anime Mobile Torrent DMHY 订阅自动检查摘要')
+      ..writeln('状态: ${status.label}')
+      ..writeln('检查时间: ${_formatLocalDateTime(checkedAt)}')
+      ..writeln('订阅关键词: $keywordCount 个')
+      ..writeln('命中资源: $resourceCount 条');
+
+    if (isFailed) {
+      buffer.writeln('失败原因: ${message ?? '后台自动检查失败，原因未知'}');
+    } else if (!hasMatches) {
+      buffer.writeln('命中状态: 暂未发现资源');
+    } else if (hasNewMatches) {
+      buffer.writeln('命中状态: 发现新的资源命中');
+    } else {
+      buffer.writeln('命中状态: 已有资源，最新命中未变化');
+    }
+
+    if (latestKeyword != null) {
+      buffer.writeln(
+        '最新关键词: $latestKeyword（${latestAnimeOnly ? '动画分类' : '全站'}）',
+      );
+    }
+
+    if (latestTitle != null) {
+      buffer.writeln('最新标题: $latestTitle');
+    }
+
+    if (!isFailed && message != null) {
+      buffer.writeln('后台消息: $message');
+    }
+
+    buffer.writeln('说明: APP 只检查 DMHY RSS 并回流搜索，不自动下载 .torrent 或 BT 视频内容。');
+
+    return buffer.toString().trimRight();
+  }
+
   /// 是否至少命中一条 RSS 资源。
   bool get hasMatches =>
       status == DmhySubscriptionAutoCheckRecordStatus.checked &&
@@ -200,6 +242,15 @@ DateTime? _readDateTime(Object? value) {
 
   return DateTime.tryParse(text);
 }
+
+String _formatLocalDateTime(DateTime value) {
+  final localValue = value.toLocal();
+  return '${localValue.year}-${_twoDigits(localValue.month)}-'
+      '${_twoDigits(localValue.day)} ${_twoDigits(localValue.hour)}:'
+      '${_twoDigits(localValue.minute)}';
+}
+
+String _twoDigits(int value) => value.toString().padLeft(2, '0');
 
 DmhySubscriptionAutoCheckRecordStatus _readStatus(Object? value) {
   final text = _readString(value);

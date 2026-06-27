@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../dmhy/domain/dmhy_resource.dart';
@@ -84,6 +85,23 @@ class _DmhySubscriptionPanelState extends ConsumerState<DmhySubscriptionPanel> {
     context.go(location);
   }
 
+  /// 复制最近一次后台自动检查记录。
+  ///
+  /// 复制内容由记录模型生成，页面层只负责调用系统剪贴板并反馈用户动作结果。
+  /// 这样后续如果通知页、调试页也需要同一份摘要，可以复用同一文本格式。
+  Future<void> _copyAutoCheckRecord(
+    DmhySubscriptionAutoCheckRecord record,
+  ) async {
+    await Clipboard.setData(ClipboardData(text: record.toClipboardText()));
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(const SnackBar(content: Text('已复制自动检查摘要')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final asyncState = ref.watch(dmhySubscriptionControllerProvider);
@@ -123,6 +141,7 @@ class _DmhySubscriptionPanelState extends ConsumerState<DmhySubscriptionPanel> {
                 onRefreshAutoCheckRecord: controller.refreshAutoCheckRecord,
                 onRemoveKeyword: controller.removeKeyword,
                 onOpenDmhySearch: _openDmhySearch,
+                onCopyAutoCheckRecord: _copyAutoCheckRecord,
               ),
               loading: () => const _SubscriptionLoadingView(),
               error: (error, stackTrace) => _SubscriptionErrorView(
@@ -149,6 +168,7 @@ class _SubscriptionLoadedView extends StatelessWidget {
     required this.onRefreshAutoCheckRecord,
     required this.onRemoveKeyword,
     required this.onOpenDmhySearch,
+    required this.onCopyAutoCheckRecord,
   });
 
   final DmhySubscriptionUiState state;
@@ -162,6 +182,8 @@ class _SubscriptionLoadedView extends StatelessWidget {
   final Future<void> Function(String id) onRemoveKeyword;
   final void Function(String keyword, {required bool animeOnly})
   onOpenDmhySearch;
+  final Future<void> Function(DmhySubscriptionAutoCheckRecord record)
+  onCopyAutoCheckRecord;
 
   @override
   Widget build(BuildContext context) {
@@ -242,6 +264,7 @@ class _SubscriptionLoadedView extends StatelessWidget {
           isBusy: isBusy,
           onRefresh: onRefreshAutoCheckRecord,
           onOpenDmhySearch: onOpenDmhySearch,
+          onCopyRecord: onCopyAutoCheckRecord,
         ),
         const SizedBox(height: 12),
         _SubscriptionKeywordWrap(
@@ -268,6 +291,7 @@ class _SubscriptionAutoCheckRecordView extends StatelessWidget {
     required this.isBusy,
     required this.onRefresh,
     required this.onOpenDmhySearch,
+    required this.onCopyRecord,
   });
 
   final DmhySubscriptionAutoCheckRecord? record;
@@ -275,6 +299,8 @@ class _SubscriptionAutoCheckRecordView extends StatelessWidget {
   final Future<void> Function() onRefresh;
   final void Function(String keyword, {required bool animeOnly})
   onOpenDmhySearch;
+  final Future<void> Function(DmhySubscriptionAutoCheckRecord record)
+  onCopyRecord;
 
   @override
   Widget build(BuildContext context) {
@@ -350,19 +376,33 @@ class _SubscriptionAutoCheckRecordView extends StatelessWidget {
                   ),
                 ),
               ],
-              if (currentRecord.latestKeyword != null) ...[
-                const SizedBox(height: 8),
-                TextButton.icon(
-                  onPressed: () {
-                    onOpenDmhySearch(
-                      currentRecord.latestKeyword!,
-                      animeOnly: currentRecord.latestAnimeOnly,
-                    );
-                  },
-                  icon: const Icon(Icons.travel_explore_outlined),
-                  label: const Text('搜索最新命中'),
-                ),
-              ],
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  TextButton.icon(
+                    onPressed: isBusy
+                        ? null
+                        : () {
+                            onCopyRecord(currentRecord);
+                          },
+                    icon: const Icon(Icons.copy_outlined),
+                    label: const Text('复制摘要'),
+                  ),
+                  if (currentRecord.latestKeyword != null)
+                    TextButton.icon(
+                      onPressed: () {
+                        onOpenDmhySearch(
+                          currentRecord.latestKeyword!,
+                          animeOnly: currentRecord.latestAnimeOnly,
+                        );
+                      },
+                      icon: const Icon(Icons.travel_explore_outlined),
+                      label: const Text('搜索最新命中'),
+                    ),
+                ],
+              ),
             ],
           ],
         ),
