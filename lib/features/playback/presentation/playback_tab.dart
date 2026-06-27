@@ -158,6 +158,24 @@ class _PlaybackTabState extends ConsumerState<PlaybackTab> {
     ).showSnackBar(const SnackBar(content: Text('已清空最近视频')));
   }
 
+  /// 删除一条最近视频记录。
+  ///
+  /// 这里仅移除 APP 保存的最近记录，不删除视频文件本体。视频文件通常来自
+  /// 用户外部存储或外部 BT 客户端下载目录，播放模块没有也不应获得删除权限。
+  Future<void> _deleteRecentVideo(RecentLocalVideo recentVideo) async {
+    final historyRepository = ref.read(playbackHistoryRepositoryProvider);
+    await historyRepository.removeRecentVideo(recentVideo);
+    ref.invalidate(recentLocalVideosProvider);
+
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('已删除最近视频记录')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final recentVideos = ref.watch(recentLocalVideosProvider);
@@ -178,6 +196,7 @@ class _PlaybackTabState extends ConsumerState<PlaybackTab> {
         _RecentVideosPanel(
           recentVideos: recentVideos,
           onSelectVideo: _selectRecentVideo,
+          onDeleteVideo: _deleteRecentVideo,
           onClear: _clearRecentVideos,
         ),
         const SizedBox(height: 16),
@@ -199,11 +218,13 @@ class _RecentVideosPanel extends StatelessWidget {
   const _RecentVideosPanel({
     required this.recentVideos,
     required this.onSelectVideo,
+    required this.onDeleteVideo,
     required this.onClear,
   });
 
   final AsyncValue<List<RecentLocalVideo>> recentVideos;
   final ValueChanged<RecentLocalVideo> onSelectVideo;
+  final Future<void> Function(RecentLocalVideo recentVideo) onDeleteVideo;
   final Future<void> Function() onClear;
 
   @override
@@ -235,6 +256,7 @@ class _RecentVideosPanel extends StatelessWidget {
                 return _RecentVideosContent(
                   recentVideos: videos,
                   onSelectVideo: onSelectVideo,
+                  onDeleteVideo: onDeleteVideo,
                   onClear: onClear,
                 );
               },
@@ -258,11 +280,13 @@ class _RecentVideosContent extends StatelessWidget {
   const _RecentVideosContent({
     required this.recentVideos,
     required this.onSelectVideo,
+    required this.onDeleteVideo,
     required this.onClear,
   });
 
   final List<RecentLocalVideo> recentVideos;
   final ValueChanged<RecentLocalVideo> onSelectVideo;
+  final Future<void> Function(RecentLocalVideo recentVideo) onDeleteVideo;
   final Future<void> Function() onClear;
 
   @override
@@ -280,6 +304,7 @@ class _RecentVideosContent extends StatelessWidget {
             child: _RecentVideoTile(
               recentVideo: recentVideo,
               onSelectVideo: onSelectVideo,
+              onDeleteVideo: onDeleteVideo,
             ),
           ),
         Align(
@@ -300,10 +325,12 @@ class _RecentVideoTile extends StatelessWidget {
   const _RecentVideoTile({
     required this.recentVideo,
     required this.onSelectVideo,
+    required this.onDeleteVideo,
   });
 
   final RecentLocalVideo recentVideo;
   final ValueChanged<RecentLocalVideo> onSelectVideo;
+  final Future<void> Function(RecentLocalVideo recentVideo) onDeleteVideo;
 
   @override
   Widget build(BuildContext context) {
@@ -318,49 +345,65 @@ class _RecentVideoTile extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Row(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.history_outlined, color: scheme.secondary, size: 22),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    video.name,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.history_outlined, color: scheme.secondary, size: 22),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        video.name,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${recentVideo.selectedAtLabel} · ${video.displayLength} · ${video.mimeType}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        video.path,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${recentVideo.selectedAtLabel} · ${video.displayLength} · ${video.mimeType}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    video.path,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: () => onSelectVideo(recentVideo),
-              icon: const Icon(Icons.check_outlined),
-              label: const Text('选用'),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: () => onSelectVideo(recentVideo),
+                  icon: const Icon(Icons.check_outlined),
+                  label: const Text('选用'),
+                ),
+                TextButton.icon(
+                  onPressed: () => onDeleteVideo(recentVideo),
+                  icon: const Icon(Icons.delete_outline),
+                  label: const Text('删除'),
+                ),
+              ],
             ),
           ],
         ),

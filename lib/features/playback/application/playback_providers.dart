@@ -38,6 +38,12 @@ abstract class PlaybackHistoryRepository {
   /// 新增或更新一条最近视频记录。
   Future<void> addRecentVideo(RecentLocalVideo recentVideo);
 
+  /// 删除一条最近视频记录。
+  ///
+  /// 播放模块只保存用户授权选择过的视频元信息；删除最近记录不能删除真实视频
+  /// 文件，避免误删外部 BT 客户端下载目录或用户相册/文件管理器中的内容。
+  Future<void> removeRecentVideo(RecentLocalVideo recentVideo);
+
   /// 清空最近视频记录。
   Future<void> clearRecentVideos();
 }
@@ -188,6 +194,18 @@ class SharedPreferencesPlaybackHistoryRepository
     }
 
     final encodedRecords = mergedRecords
+        .map((item) => jsonEncode(item.toJson()))
+        .toList();
+    await prefs.setStringList(_recentVideosKey, encodedRecords);
+  }
+
+  @override
+  Future<void> removeRecentVideo(RecentLocalVideo recentVideo) async {
+    final prefs = await SharedPreferences.getInstance();
+    final remainingRecords = (await loadRecentVideos())
+        .where((record) => record.dedupeKey != recentVideo.dedupeKey)
+        .toList();
+    final encodedRecords = remainingRecords
         .map((item) => jsonEncode(item.toJson()))
         .toList();
     await prefs.setStringList(_recentVideosKey, encodedRecords);

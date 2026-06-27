@@ -10,6 +10,9 @@ import 'package:anime_mobile_torrent/features/dmhy/application/dmhy_providers.da
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_resource.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_resource_metadata.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_torrent_file.dart';
+import 'package:anime_mobile_torrent/features/playback/application/playback_providers.dart';
+import 'package:anime_mobile_torrent/features/playback/domain/local_video_file.dart';
+import 'package:anime_mobile_torrent/features/playback/domain/recent_local_video.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/application/torrent_handoff_providers.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_client_capabilities.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_handoff_result.dart';
@@ -241,6 +244,57 @@ void main() {
 
     expect(seedHistoryRepository.removedItems.single.title, '可删除测试种子');
     expect(find.text('可删除测试种子'), findsNothing);
+  });
+
+  testWidgets('播放页可以删除单条最近视频记录', (tester) async {
+    final playbackHistoryRepository = _FakePlaybackHistoryRepository([
+      RecentLocalVideo.capture(
+        const LocalVideoFile(
+          path: '/videos/delete-me.mkv',
+          name: 'delete-me.mkv',
+          mimeType: 'video/x-matroska',
+          length: 1024,
+        ),
+        selectedAt: DateTime(2026, 6, 27, 12),
+      ),
+    ]);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
+          playbackHistoryRepositoryProvider.overrideWithValue(
+            playbackHistoryRepository,
+          ),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('播放').last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('delete-me.mkv'),
+      220,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('delete-me.mkv'), findsOneWidget);
+
+    await tester.ensureVisible(find.widgetWithText(TextButton, '删除'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, '删除'));
+    await tester.pumpAndSettle();
+
+    expect(
+      playbackHistoryRepository.removedVideos.single.video.name,
+      'delete-me.mkv',
+    );
+    expect(find.text('delete-me.mkv'), findsNothing);
   });
 
   testWidgets('DMHY 订阅关键词可以跳转到搜索页并保留全站范围', (tester) async {
@@ -876,6 +930,35 @@ class _FakeTorrentSeedHistoryRepository
   @override
   Future<void> clearItems() async {
     items.clear();
+  }
+}
+
+class _FakePlaybackHistoryRepository implements PlaybackHistoryRepository {
+  _FakePlaybackHistoryRepository(List<RecentLocalVideo> initialVideos)
+    : videos = [...initialVideos];
+
+  final List<RecentLocalVideo> videos;
+  final List<RecentLocalVideo> removedVideos = [];
+
+  @override
+  Future<List<RecentLocalVideo>> loadRecentVideos() async {
+    return [...videos];
+  }
+
+  @override
+  Future<void> addRecentVideo(RecentLocalVideo recentVideo) async {
+    videos.insert(0, recentVideo);
+  }
+
+  @override
+  Future<void> removeRecentVideo(RecentLocalVideo recentVideo) async {
+    removedVideos.add(recentVideo);
+    videos.removeWhere((video) => video.dedupeKey == recentVideo.dedupeKey);
+  }
+
+  @override
+  Future<void> clearRecentVideos() async {
+    videos.clear();
   }
 }
 

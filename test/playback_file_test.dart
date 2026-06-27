@@ -129,6 +129,35 @@ void main() {
       expect(await repository.loadRecentVideos(), isEmpty);
     });
 
+    test('可以删除单条最近视频记录且不影响其他记录', () async {
+      const repository = SharedPreferencesPlaybackHistoryRepository();
+      final firstRecord = RecentLocalVideo.capture(
+        const LocalVideoFile(
+          path: '/videos/episode-01.mkv',
+          name: 'episode-01.mkv',
+          mimeType: 'video/x-matroska',
+        ),
+        selectedAt: DateTime.fromMillisecondsSinceEpoch(1000),
+      );
+      final secondRecord = RecentLocalVideo.capture(
+        const LocalVideoFile(
+          path: '/videos/episode-02.mp4',
+          name: 'episode-02.mp4',
+          mimeType: 'video/mp4',
+        ),
+        selectedAt: DateTime.fromMillisecondsSinceEpoch(2000),
+      );
+
+      await repository.addRecentVideo(firstRecord);
+      await repository.addRecentVideo(secondRecord);
+
+      await repository.removeRecentVideo(firstRecord);
+
+      final records = await repository.loadRecentVideos();
+      expect(records, hasLength(1));
+      expect(records.single.video.name, 'episode-02.mp4');
+    });
+
     test('最多保留最近 10 条视频记录', () async {
       const repository = SharedPreferencesPlaybackHistoryRepository();
 
