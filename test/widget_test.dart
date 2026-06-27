@@ -968,10 +968,21 @@ void main() {
     expect(find.text('完成 56'), findsOneWidget);
     expect(find.text('動畫'), findsOneWidget);
     expect(find.text('test_team'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, '订阅'), findsOneWidget);
     expect(find.text('复制'), findsOneWidget);
     expect(find.text('打开'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '种子'), findsOneWidget);
     expect(find.text('外部客户端检测不可用，点击后会继续尝试系统交接'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, '订阅'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('已添加订阅关键词“测试动画 1080”'), findsOneWidget);
+
+    await tester.tap(find.text('后台').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('测试动画 1080 · 动画分类'), findsOneWidget);
   });
 
   testWidgets('DMHY 搜索排序切换会重新加载当前关键词', (tester) async {

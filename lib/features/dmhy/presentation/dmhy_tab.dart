@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../subscriptions/application/dmhy_subscription_providers.dart';
 import '../../torrent_handoff/application/torrent_handoff_providers.dart';
 import '../../torrent_handoff/domain/torrent_client_capabilities.dart';
 import '../../torrent_handoff/domain/torrent_seed_history_item.dart';
@@ -471,6 +472,10 @@ class _DmhySearchResult extends ConsumerWidget {
     final preferenceAsync = ref.watch(dmhyFilterPreferenceControllerProvider);
     final preference =
         preferenceAsync.value ?? const DmhyFilterPreference.empty();
+    final subscriptionAsync = ref.watch(dmhySubscriptionControllerProvider);
+    final subscriptionState = subscriptionAsync.value;
+    final isSubscriptionBusy =
+        subscriptionAsync.isLoading || (subscriptionState?.isBusy ?? false);
 
     return result.when(
       loading: () => const _DmhyLoadingState(),
@@ -502,6 +507,8 @@ class _DmhySearchResult extends ConsumerWidget {
               animeOnly: request.animeOnly,
               sort: request.sort,
               hasActiveFilter: filter.isNotEmpty,
+              isSubscriptionBusy: isSubscriptionBusy,
+              onSubscribe: () => _subscribeCurrentKeyword(context, ref),
             ),
             if (filterOptions.isNotEmpty) ...[
               const SizedBox(height: 8),
@@ -601,6 +608,29 @@ class _DmhySearchResult extends ConsumerWidget {
     final error = preferenceState.error;
     messenger.showSnackBar(
       SnackBar(content: Text(error == null ? '已清除字幕组偏好' : '字幕组偏好清除失败：$error')),
+    );
+  }
+
+  /// 把当前 DMHY 搜索关键词保存为后台订阅关键词。
+  ///
+  /// DMHY 页只提交“关键词 + 搜索范围”给订阅模块，不直接执行后台检查，也不
+  /// 下载 `.torrent`。保存后用户可以在后台页继续管理订阅和查看自动检查摘要。
+  Future<void> _subscribeCurrentKeyword(
+    BuildContext context,
+    WidgetRef ref,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    await ref
+        .read(dmhySubscriptionControllerProvider.notifier)
+        .addKeyword(request.normalizedKeyword, animeOnly: request.animeOnly);
+
+    if (!context.mounted) {
+      return;
+    }
+
+    final latestState = ref.read(dmhySubscriptionControllerProvider).value;
+    messenger.showSnackBar(
+      SnackBar(content: Text(latestState?.lastActionMessage ?? '订阅操作已提交')),
     );
   }
 }
@@ -1606,6 +1636,8 @@ class _ResultSummary extends StatelessWidget {
     required this.animeOnly,
     required this.sort,
     required this.hasActiveFilter,
+    required this.isSubscriptionBusy,
+    required this.onSubscribe,
   });
 
   final String keyword;
@@ -1614,6 +1646,8 @@ class _ResultSummary extends StatelessWidget {
   final bool animeOnly;
   final DmhyResourceSort sort;
   final bool hasActiveFilter;
+  final bool isSubscriptionBusy;
+  final VoidCallback onSubscribe;
 
   @override
   Widget build(BuildContext context) {
@@ -1623,11 +1657,30 @@ class _ResultSummary extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '“$keyword” 在$scope找到 $count 条 RSS 资源',
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                '“$keyword” 在$scope找到 $count 条 RSS 资源',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: isSubscriptionBusy ? null : onSubscribe,
+              icon: isSubscriptionBusy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.notification_add_outlined),
+              label: const Text('订阅'),
+            ),
+          ],
         ),
         const SizedBox(height: 2),
         Text(
