@@ -199,6 +199,46 @@ void main() {
     expect(find.text('“测试动画” 找到 1 个动画条目'), findsOneWidget);
   });
 
+  testWidgets('Bangumi 搜索结果可以加载更多分页', (tester) async {
+    final repository = _FakeBangumiRepository(searchTotal: 25);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
+          bangumiRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '测试动画');
+    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('“测试动画” 找到 25 个动画条目'), findsOneWidget);
+    expect(find.text('已加载 20/25 个条目'), findsOneWidget);
+    expect(repository.searchRequests.single.offset, 0);
+
+    await tester.scrollUntilVisible(
+      find.widgetWithText(FilledButton, '加载更多搜索结果'),
+      280,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, '加载更多搜索结果'));
+    await tester.pumpAndSettle();
+
+    expect(repository.searchRequests, hasLength(2));
+    expect(repository.searchRequests.last.offset, 20);
+    expect(find.text('已加载 25/25 个条目'), findsOneWidget);
+    expect(find.text('测试动画 中文名 25'), findsOneWidget);
+  });
+
   testWidgets('Bangumi 搜索结果可以进入条目详情页', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -526,6 +566,9 @@ class _FakeTorrentClientCapabilityRepository
 }
 
 class _FakeBangumiRepository implements BangumiRepository {
+  _FakeBangumiRepository({this.searchTotal = 1});
+
+  final int searchTotal;
   final List<BangumiSubjectSearchRequest> searchRequests = [];
 
   @override
@@ -533,25 +576,32 @@ class _FakeBangumiRepository implements BangumiRepository {
     BangumiSubjectSearchRequest request,
   ) async {
     searchRequests.add(request);
+    final start = request.offset.clamp(0, searchTotal).toInt();
+    final end = (request.offset + request.limit).clamp(0, searchTotal).toInt();
 
     return BangumiSubjectPage(
-      total: 1,
+      total: searchTotal,
       limit: request.limit,
       offset: request.offset,
-      subjects: const [
-        BangumiSubject(
-          id: 100,
-          type: BangumiSubjectType.anime,
-          name: 'Test Anime',
-          nameCn: '测试动画 中文名',
-          summary: '这是用于 widget test 的 Bangumi 搜索结果。',
-          airDate: '2026-01-01',
-          platform: 'TV',
-          eps: 12,
-          totalEpisodes: 12,
-          rating: BangumiSubjectRating(rank: 12, total: 345, score: 8.1),
-          images: BangumiSubjectImages(),
-        ),
+      subjects: [
+        for (var index = start; index < end; index++)
+          BangumiSubject(
+            id: 100 + index,
+            type: BangumiSubjectType.anime,
+            name: index == 0 ? 'Test Anime' : 'Test Anime ${index + 1}',
+            nameCn: index == 0 ? '测试动画 中文名' : '测试动画 中文名 ${index + 1}',
+            summary: '这是用于 widget test 的 Bangumi 搜索结果。',
+            airDate: '2026-01-01',
+            platform: 'TV',
+            eps: 12,
+            totalEpisodes: 12,
+            rating: BangumiSubjectRating(
+              rank: 12 + index,
+              total: 345,
+              score: 8.1,
+            ),
+            images: const BangumiSubjectImages(),
+          ),
       ],
     );
   }

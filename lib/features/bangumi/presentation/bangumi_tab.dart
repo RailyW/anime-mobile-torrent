@@ -1033,43 +1033,161 @@ class _BangumiEmptyState extends ConsumerWidget {
   }
 }
 
-class _BangumiSearchResult extends ConsumerWidget {
+class _BangumiSearchResult extends ConsumerStatefulWidget {
   const _BangumiSearchResult({required this.request});
 
   final BangumiSubjectSearchRequest request;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final result = ref.watch(bangumiSubjectSearchProvider(request));
+  ConsumerState<_BangumiSearchResult> createState() =>
+      _BangumiSearchResultState();
+}
 
-    return result.when(
-      loading: () => const _BangumiLoadingState(),
-      error: (error, stackTrace) => _BangumiErrorState(
-        message: error.toString(),
-        onRetry: () => ref.invalidate(bangumiSubjectSearchProvider(request)),
-      ),
-      data: (page) {
-        if (page.subjects.isEmpty) {
-          return const _BangumiNoResultState();
-        }
+class _BangumiSearchResultState extends ConsumerState<_BangumiSearchResult> {
+  bool _scheduledInitialLoad = false;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  @override
+  void initState() {
+    super.initState();
+    _scheduleInitialLoad();
+  }
+
+  @override
+  void didUpdateWidget(covariant _BangumiSearchResult oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.request != widget.request) {
+      _scheduledInitialLoad = false;
+      _scheduleInitialLoad();
+    }
+  }
+
+  /// 在当前构建帧结束后启动首屏搜索。
+  ///
+  /// Riverpod Notifier 的状态修改不能发生在 build 同步过程里，因此用
+  /// post-frame callback 安排第一次读取。防抖输入或手动搜索切换关键词时，
+  /// family 参数会换成新的请求对象，这里会为新关键词重新加载第一页。
+  void _scheduleInitialLoad() {
+    if (_scheduledInitialLoad) {
+      return;
+    }
+
+    _scheduledInitialLoad = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      final provider = bangumiSubjectSearchListControllerProvider(
+        widget.request,
+      );
+      final state = ref.read(provider);
+      if (!state.hasLoadedOnce && !state.isLoading) {
+        ref.read(provider.notifier).loadFirstPage();
+      }
+
+      _scheduledInitialLoad = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = bangumiSubjectSearchListControllerProvider(widget.request);
+    final state = ref.watch(provider);
+    final controller = ref.read(provider.notifier);
+
+    if (!state.hasLoadedOnce && !state.isLoading) {
+      _scheduleInitialLoad();
+    }
+
+    if (state.isInitialLoading || (!state.hasLoadedOnce && state.isLoading)) {
+      return const _BangumiLoadingState();
+    }
+
+    if (state.errorMessage != null && state.subjects.isEmpty) {
+      return _BangumiErrorState(
+        message: state.errorMessage!,
+        onRetry: controller.loadFirstPage,
+      );
+    }
+
+    if (state.isEmpty) {
+      return const _BangumiNoResultState();
+    }
+
+    return _BangumiSearchResultList(
+      state: state,
+      onRefresh: controller.refresh,
+      onLoadMore: controller.loadNextPage,
+    );
+  }
+}
+
+class _BangumiSearchResultList extends StatelessWidget {
+  const _BangumiSearchResultList({
+    required this.state,
+    required this.onRefresh,
+    required this.onLoadMore,
+  });
+
+  final BangumiSubjectSearchListState state;
+  final Future<void> Function() onRefresh;
+  final Future<void> Function() onLoadMore;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _ResultSummary(keyword: state.keyword, total: state.total),
+        const SizedBox(height: 8),
+        for (final subject in state.subjects)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _BangumiSubjectCard(subject: subject),
+          ),
+        if (state.errorMessage != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            '继续加载失败：${state.errorMessage}',
+            style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
+          ),
+        ],
+        const SizedBox(height: 8),
+        Text(
+          '已加载 ${state.loadedCount}/${state.total} 个条目',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            _ResultSummary(
-              keyword: request.normalizedKeyword,
-              total: page.total,
+            OutlinedButton.icon(
+              onPressed: state.isLoading ? null : onRefresh,
+              icon: const Icon(Icons.refresh_outlined),
+              label: const Text('刷新搜索'),
             ),
-            const SizedBox(height: 8),
-            ...page.subjects.map(
-              (subject) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _BangumiSubjectCard(subject: subject),
+            if (state.hasMore)
+              FilledButton.icon(
+                onPressed: state.isLoading ? null : onLoadMore,
+                icon: state.isLoading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.expand_more_outlined),
+                label: Text(state.isLoading ? '加载中' : '加载更多搜索结果'),
               ),
-            ),
           ],
-        );
-      },
+        ),
+      ],
     );
   }
 }
