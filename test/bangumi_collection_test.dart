@@ -1,6 +1,8 @@
+import 'package:anime_mobile_torrent/features/bangumi/application/bangumi_collection_providers.dart';
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_collection.dart';
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_episode_collection.dart';
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_subject.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -131,6 +133,46 @@ void main() {
     });
   });
 
+  test('BangumiMyAnimeCollectionListController 可以分页并切换收藏状态', () async {
+    final repository = _FakeBangumiMyCollectionRepository();
+    final container = ProviderContainer(
+      overrides: [
+        bangumiMyCollectionRepositoryProvider.overrideWithValue(repository),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    final controller = container.read(
+      bangumiMyAnimeCollectionListControllerProvider.notifier,
+    );
+
+    await controller.loadFirstPage();
+    var state = container.read(bangumiMyAnimeCollectionListControllerProvider);
+
+    expect(state.collections, hasLength(12));
+    expect(state.total, 25);
+    expect(state.nextOffset, 12);
+    expect(state.hasMore, isTrue);
+    expect(state.typeLabel, '全部');
+
+    await controller.loadNextPage();
+    state = container.read(bangumiMyAnimeCollectionListControllerProvider);
+
+    expect(state.collections, hasLength(24));
+    expect(state.nextOffset, 24);
+    expect(state.hasMore, isTrue);
+
+    await controller.selectType(BangumiCollectionType.doing);
+    state = container.read(bangumiMyAnimeCollectionListControllerProvider);
+
+    expect(state.type, BangumiCollectionType.doing);
+    expect(state.typeLabel, '在看');
+    expect(state.collections, hasLength(1));
+    expect(state.hasMore, isFalse);
+    expect(repository.requests.last.type, BangumiCollectionType.doing);
+    expect(repository.requests.last.offset, 0);
+  });
+
   group('BangumiEpisodeCollection', () {
     test('可以解析单集收藏状态分页', () {
       final page = BangumiEpisodeCollectionPage.fromJson({
@@ -202,4 +244,116 @@ void main() {
       });
     });
   });
+}
+
+class _FakeBangumiMyCollectionRepository
+    implements BangumiMyCollectionRepositoryContract {
+  final List<_CollectionPageRequestRecord> requests = [];
+
+  @override
+  Future<BangumiSubjectCollectionPage?> getMyAnimeCollections({
+    BangumiCollectionType? type,
+    int limit = 20,
+    int offset = 0,
+  }) async {
+    requests.add(
+      _CollectionPageRequestRecord(type: type, limit: limit, offset: offset),
+    );
+
+    final total = type == BangumiCollectionType.doing ? 1 : 25;
+    final start = offset.clamp(0, total).toInt();
+    final end = (offset + limit).clamp(0, total).toInt();
+    final collections = <BangumiSubjectCollection>[
+      for (var index = start; index < end; index++)
+        _buildCollection(
+          index: index,
+          type: type ?? BangumiCollectionType.wish,
+        ),
+    ];
+
+    return BangumiSubjectCollectionPage(
+      total: total,
+      limit: limit,
+      offset: offset,
+      collections: collections,
+    );
+  }
+
+  @override
+  Future<BangumiSubjectCollection?> getMySubjectCollection(int subjectId) {
+    throw UnimplementedError('分页控制器测试不需要读取单条收藏');
+  }
+
+  @override
+  Future<BangumiEpisodeCollectionPage?> getMySubjectEpisodeCollections({
+    required int subjectId,
+    int limit = 100,
+    int offset = 0,
+    BangumiEpisodeType episodeType = BangumiEpisodeType.mainStory,
+  }) {
+    throw UnimplementedError('分页控制器测试不需要读取章节收藏');
+  }
+
+  @override
+  Future<BangumiSubjectCollection?> saveMySubjectCollection({
+    required int subjectId,
+    required BangumiSubjectCollectionUpdate update,
+  }) {
+    throw UnimplementedError('分页控制器测试不需要保存单条收藏');
+  }
+
+  @override
+  Future<BangumiEpisodeCollectionPage?> saveMySubjectEpisodeStatus({
+    required int subjectId,
+    required List<int> episodeIds,
+    required BangumiEpisodeCollectionType type,
+  }) {
+    throw UnimplementedError('分页控制器测试不需要保存章节状态');
+  }
+
+  BangumiSubjectCollection _buildCollection({
+    required int index,
+    required BangumiCollectionType type,
+  }) {
+    final subjectId = 1000 + index;
+    return BangumiSubjectCollection(
+      subjectId: subjectId,
+      subjectType: BangumiSubjectType.anime,
+      type: type,
+      rate: 0,
+      comment: '',
+      tags: const [],
+      epStatus: index,
+      volStatus: 0,
+      updatedAt: DateTime.utc(2026, 6, 27, 12, index % 60),
+      isPrivate: false,
+      subject: BangumiCollectionSubject(
+        id: subjectId,
+        type: BangumiSubjectType.anime,
+        name: 'Test Anime $index',
+        nameCn: '测试动画 $index',
+        shortSummary: '分页测试收藏条目 $index',
+        airDate: '2026-01-01',
+        images: const BangumiSubjectImages(),
+        eps: 12,
+        volumes: 0,
+        collectionTotal: 100 + index,
+        score: 8,
+        rank: index + 1,
+        tags: const [],
+      ),
+    );
+  }
+}
+
+class _CollectionPageRequestRecord {
+  const _CollectionPageRequestRecord({
+    required this.type,
+    required this.limit,
+    required this.offset,
+  });
+
+  final BangumiCollectionType? type;
+  final int limit;
+  final int offset;
 }

@@ -481,14 +481,47 @@ class _BangumiAccountError extends StatelessWidget {
   }
 }
 
-class _BangumiMyCollectionsPanel extends ConsumerWidget {
+class _BangumiMyCollectionsPanel extends ConsumerStatefulWidget {
   const _BangumiMyCollectionsPanel();
 
-  static const _request = BangumiMyCollectionsRequest(limit: 12);
+  @override
+  ConsumerState<_BangumiMyCollectionsPanel> createState() =>
+      _BangumiMyCollectionsPanelState();
+}
+
+class _BangumiMyCollectionsPanelState
+    extends ConsumerState<_BangumiMyCollectionsPanel> {
+  bool _scheduledInitialLoad = false;
+
+  void _scheduleInitialLoad() {
+    if (_scheduledInitialLoad) {
+      return;
+    }
+
+    _scheduledInitialLoad = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      final state = ref.read(bangumiMyAnimeCollectionListControllerProvider);
+      if (!state.hasLoadedOnce && !state.isLoading) {
+        ref
+            .read(bangumiMyAnimeCollectionListControllerProvider.notifier)
+            .loadFirstPage(type: state.type);
+      }
+
+      _scheduledInitialLoad = false;
+    });
+  }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final userState = ref.watch(bangumiCurrentUserProvider);
+    final listState = ref.watch(bangumiMyAnimeCollectionListControllerProvider);
+    final listController = ref.read(
+      bangumiMyAnimeCollectionListControllerProvider.notifier,
+    );
 
     return Card(
       child: Padding(
@@ -502,34 +535,25 @@ class _BangumiMyCollectionsPanel extends ConsumerWidget {
           ),
           data: (user) {
             if (user == null) {
+              if (listState.hasLoadedOnce || listState.collections.isNotEmpty) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (mounted) {
+                    listController.reset();
+                  }
+                });
+              }
               return const _BangumiCollectionsLoggedOut();
             }
 
-            final collectionsState = ref.watch(
-              bangumiMyAnimeCollectionsProvider(_request),
-            );
+            if (!listState.hasLoadedOnce && !listState.isLoading) {
+              _scheduleInitialLoad();
+            }
 
-            return collectionsState.when(
-              loading: () =>
-                  const _BangumiCollectionLoading(label: '正在读取我的动画收藏...'),
-              error: (error, stackTrace) => _BangumiCollectionError(
-                title: '收藏列表读取失败',
-                message: error.toString(),
-                onRetry: () =>
-                    ref.invalidate(bangumiMyAnimeCollectionsProvider(_request)),
-              ),
-              data: (page) {
-                if (page == null) {
-                  return const _BangumiCollectionsLoggedOut();
-                }
-
-                return _BangumiCollectionsContent(
-                  page: page,
-                  onRefresh: () => ref.invalidate(
-                    bangumiMyAnimeCollectionsProvider(_request),
-                  ),
-                );
-              },
+            return _BangumiCollectionsContent(
+              state: listState,
+              onRefresh: listController.refresh,
+              onLoadMore: listController.loadNextPage,
+              onTypeChanged: listController.selectType,
             );
           },
         ),
@@ -571,18 +595,22 @@ class _BangumiCollectionsLoggedOut extends StatelessWidget {
 
 class _BangumiCollectionsContent extends StatelessWidget {
   const _BangumiCollectionsContent({
-    required this.page,
+    required this.state,
     required this.onRefresh,
+    required this.onLoadMore,
+    required this.onTypeChanged,
   });
 
-  final BangumiSubjectCollectionPage page;
-  final VoidCallback onRefresh;
+  final BangumiMyAnimeCollectionListState state;
+  final Future<void> Function() onRefresh;
+  final Future<void> Function() onLoadMore;
+  final Future<void> Function(BangumiCollectionType? type) onTypeChanged;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final collections = page.collections;
+    final collections = state.collections;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -592,13 +620,31 @@ class _BangumiCollectionsContent extends StatelessWidget {
             Icon(Icons.collections_bookmark_outlined, color: scheme.secondary),
             const SizedBox(width: 12),
             Expanded(child: Text('我的动画收藏', style: theme.textTheme.titleMedium)),
-            _BangumiStatusBadge(label: '共 ${page.total} 条'),
+            _BangumiStatusBadge(
+              label: state.hasLoadedOnce ? '共 ${state.total} 条' : '读取中',
+            ),
           ],
         ),
         const SizedBox(height: 10),
-        if (collections.isEmpty)
+        _BangumiCollectionFilterChips(
+          selectedType: state.type,
+          isBusy: state.isLoading,
+          onTypeChanged: onTypeChanged,
+        ),
+        const SizedBox(height: 10),
+        if (state.isInitialLoading)
+          const _BangumiCollectionLoading(label: '正在读取我的动画收藏...')
+        else if (state.errorMessage != null && collections.isEmpty)
+          _BangumiCollectionError(
+            title: '收藏列表读取失败',
+            message: state.errorMessage!,
+            onRetry: () {
+              onRefresh();
+            },
+          )
+        else if (state.isEmpty)
           Text(
-            '还没有动画收藏，可以先搜索条目并添加收藏。',
+            state.type == null ? '还没有动画收藏，可以先搜索条目并添加收藏。' : '当前筛选下没有动画收藏。',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: scheme.onSurfaceVariant,
             ),
@@ -606,19 +652,106 @@ class _BangumiCollectionsContent extends StatelessWidget {
         else
           Column(
             children: [
-              for (final collection in collections.take(6))
+              for (final collection in collections)
                 _BangumiCollectionListItem(collection: collection),
             ],
           ),
+        if (state.errorMessage != null && collections.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            '继续加载失败：${state.errorMessage}',
+            style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
+          ),
+        ],
         const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: onRefresh,
-          icon: const Icon(Icons.refresh_outlined),
-          label: const Text('刷新收藏'),
+        Text(
+          state.hasLoadedOnce
+              ? '已加载 ${state.loadedCount}/${state.total} 条 · ${state.typeLabel}'
+              : '正在准备收藏列表',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton.icon(
+              onPressed: state.isLoading
+                  ? null
+                  : () {
+                      onRefresh();
+                    },
+              icon: const Icon(Icons.refresh_outlined),
+              label: const Text('刷新收藏'),
+            ),
+            if (state.hasMore)
+              FilledButton.icon(
+                onPressed: state.isLoading
+                    ? null
+                    : () {
+                        onLoadMore();
+                      },
+                icon: state.isLoading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.expand_more_outlined),
+                label: Text(state.isLoading ? '加载中' : '加载更多'),
+              ),
+          ],
         ),
       ],
     );
   }
+}
+
+class _BangumiCollectionFilterChips extends StatelessWidget {
+  const _BangumiCollectionFilterChips({
+    required this.selectedType,
+    required this.isBusy,
+    required this.onTypeChanged,
+  });
+
+  final BangumiCollectionType? selectedType;
+  final bool isBusy;
+  final Future<void> Function(BangumiCollectionType? type) onTypeChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final options = <_BangumiCollectionTypeOption>[
+      const _BangumiCollectionTypeOption(type: null, label: '全部'),
+      for (final type in BangumiCollectionType.values)
+        _BangumiCollectionTypeOption(type: type, label: type.label),
+    ];
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final option in options)
+          ChoiceChip(
+            label: Text(option.label),
+            selected: selectedType == option.type,
+            onSelected: isBusy
+                ? null
+                : (_) {
+                    onTypeChanged(option.type);
+                  },
+          ),
+      ],
+    );
+  }
+}
+
+class _BangumiCollectionTypeOption {
+  const _BangumiCollectionTypeOption({required this.type, required this.label});
+
+  final BangumiCollectionType? type;
+  final String label;
 }
 
 class _BangumiCollectionListItem extends StatelessWidget {
