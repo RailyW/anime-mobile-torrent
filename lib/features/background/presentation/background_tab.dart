@@ -209,7 +209,7 @@ class _BackgroundCapabilityPanel extends StatelessWidget {
             _BackgroundCapabilityLine(
               icon: Icons.rss_feed_outlined,
               title: 'RSS 订阅检查',
-              status: '手动已接入',
+              status: '低频已接入',
             ),
           ],
         ),

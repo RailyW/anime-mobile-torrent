@@ -8,7 +8,7 @@
 - `dmhy_torrent_page_parser_test.dart`：DMHY 详情页种子链接解析器单元测试，验证协议相对链接、相对路径链接和无种子链接兜底。
 - `torrent_handoff_test.dart`：Torrent 交接模型单元测试，验证通用种子文件模型、文件大小格式化和交接结果中文提示。
 - `background_residency_test.dart`：后台常驻模型和控制器单元测试，验证初始状态、启动、刷新和停止状态流转。
-- `dmhy_subscription_test.dart`：DMHY 订阅检查单元测试，验证订阅关键词序列化、`SharedPreferences` 持久化、Repository 去重与 RSS 检查，以及 Riverpod 控制器的添加、检查和删除状态流。
+- `dmhy_subscription_test.dart`：DMHY 订阅检查单元测试，验证订阅关键词序列化、`SharedPreferences` 持久化、Repository 去重与 RSS 检查、自动检查间隔节流，以及 Riverpod 控制器的添加、检查和删除状态流。
 - `bangumi_auth_test.dart`：Bangumi OAuth token 与配置单元测试，验证 secure storage 字段恢复、刷新 token 合并、过期判断和默认未配置状态。
 - `bangumi_collection_test.dart`：Bangumi 收藏与章节进度模型和分页控制器单元测试，验证收藏状态枚举、单条收藏解析、收藏列表条目摘要解析、收藏分页解析、首页收藏列表分页加载与状态筛选、收藏修改请求序列化、章节状态分页解析、批量标记到目标话数的章节选择和章节状态修改请求序列化。
 - `bangumi_dmhy_keyword_test.dart`：Bangumi 到 DMHY 搜索联动的关键词单元测试，验证中文名优先、原名兜底和空白归一化。

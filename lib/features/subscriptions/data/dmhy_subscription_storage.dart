@@ -30,6 +30,7 @@ class SharedPreferencesDmhySubscriptionStorage
   @override
   Future<List<DmhySubscriptionKeyword>> loadKeywords() async {
     final preferences = await SharedPreferences.getInstance();
+    await preferences.reload();
     final rawItems = preferences.getStringList(_keywordsKey) ?? const [];
     final keywords = <DmhySubscriptionKeyword>[];
 

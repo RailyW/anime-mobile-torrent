@@ -1,7 +1,9 @@
 import 'package:anime_mobile_torrent/features/dmhy/application/dmhy_providers.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_resource.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_torrent_file.dart';
+import 'package:anime_mobile_torrent/features/subscriptions/application/dmhy_subscription_auto_check_service.dart';
 import 'package:anime_mobile_torrent/features/subscriptions/application/dmhy_subscription_providers.dart';
+import 'package:anime_mobile_torrent/features/subscriptions/data/dmhy_subscription_auto_check_storage.dart';
 import 'package:anime_mobile_torrent/features/subscriptions/data/dmhy_subscription_storage.dart';
 import 'package:anime_mobile_torrent/features/subscriptions/domain/dmhy_subscription.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -111,6 +113,52 @@ void main() {
     expect(state.keywords, isEmpty);
     expect(state.summary.results, isEmpty);
   });
+
+  test('DmhySubscriptionAutoCheckService 可以按间隔自动检查并节流', () async {
+    var now = DateTime.utc(2026, 6, 27, 12);
+    final keywordStorage = _MemoryDmhySubscriptionStorage();
+    final autoCheckStorage = _MemoryDmhySubscriptionAutoCheckStorage();
+    final dmhyRepository = _FakeDmhyRepository();
+    final subscriptionRepository = DmhySubscriptionRepository(
+      storage: keywordStorage,
+      dmhyRepository: dmhyRepository,
+      now: () => now,
+    );
+    final autoCheckService = DmhySubscriptionAutoCheckService(
+      subscriptionRepository: subscriptionRepository,
+      autoCheckStorage: autoCheckStorage,
+      now: () => now,
+      minInterval: const Duration(hours: 1),
+      limitPerKeyword: 2,
+    );
+
+    var outcome = await autoCheckService.runIfDue();
+
+    expect(outcome.status, DmhySubscriptionAutoCheckStatus.noKeywords);
+    expect(dmhyRepository.requests, isEmpty);
+
+    await subscriptionRepository.addKeyword('测试动画', animeOnly: true);
+    outcome = await autoCheckService.runIfDue();
+
+    expect(outcome.status, DmhySubscriptionAutoCheckStatus.checked);
+    expect(outcome.resourceCount, 1);
+    expect(outcome.latestTitle, '[字幕组] 测试动画 01');
+    expect(autoCheckStorage.record?.resourceCount, 1);
+    expect(dmhyRepository.requests, hasLength(1));
+
+    now = now.add(const Duration(minutes: 30));
+    outcome = await autoCheckService.runIfDue();
+
+    expect(outcome.status, DmhySubscriptionAutoCheckStatus.throttled);
+    expect(outcome.nextAllowedAt, DateTime.utc(2026, 6, 27, 13));
+    expect(dmhyRepository.requests, hasLength(1));
+
+    now = now.add(const Duration(minutes: 31));
+    outcome = await autoCheckService.runIfDue();
+
+    expect(outcome.status, DmhySubscriptionAutoCheckStatus.checked);
+    expect(dmhyRepository.requests, hasLength(2));
+  });
 }
 
 class _MemoryDmhySubscriptionStorage implements DmhySubscriptionStorage {
@@ -124,6 +172,21 @@ class _MemoryDmhySubscriptionStorage implements DmhySubscriptionStorage {
   @override
   Future<void> saveKeywords(List<DmhySubscriptionKeyword> keywords) async {
     _keywords = [...keywords];
+  }
+}
+
+class _MemoryDmhySubscriptionAutoCheckStorage
+    implements DmhySubscriptionAutoCheckStorage {
+  DmhySubscriptionAutoCheckRecord? record;
+
+  @override
+  Future<DmhySubscriptionAutoCheckRecord?> loadLastRecord() async {
+    return record;
+  }
+
+  @override
+  Future<void> saveLastRecord(DmhySubscriptionAutoCheckRecord record) async {
+    this.record = record;
   }
 }
 

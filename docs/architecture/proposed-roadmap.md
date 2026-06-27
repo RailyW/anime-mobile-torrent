@@ -41,7 +41,7 @@ flowchart LR
 4. Torrent 交接模块只负责 magnet 打开、magnet 复制、`.torrent` 种子文件下载、外部客户端直开和分享兜底；当前已通过成熟 Flutter 插件落地直开与分享双路径。
 5. BT 视频内容下载由用户手机自己的外部 BT 客户端负责，APP 不管理下载进度、暂停恢复、做种、限速和下载目录。
 6. 播放模块首期可以只调起系统/第三方播放器；如果视频由外部客户端下载完成，APP 需要用户手动选择本地视频后才能播放。
-7. 后台常驻使用用户显式开启的 Android Foreground Service，当前只提供持续通知、低频心跳和后续订阅检查挂点。
+7. 后台常驻使用用户显式开启的 Android Foreground Service，当前提供持续通知、低频心跳和 DMHY 订阅低频自动检查。
 8. 如果未来明确要在 APP 内管理 BT 下载，再新增 Android 原生 Foreground Service 加 `libtorrent4j` 的后续阶段。
 
 ## 阶段拆分
@@ -235,13 +235,14 @@ flowchart LR
 2. 已在 `main.dart` 初始化 foreground task 通信端口，并使用 `WithForegroundTask` 处理服务运行时的返回键最小化行为。
 3. 已在 Android Manifest 中声明 `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_DATA_SYNC` 和插件固定服务 `com.pravera.flutter_foreground_task.service.ForegroundService`。
 4. 已提供“后台”首页标签页，支持启动、停止、刷新状态，并展示持续通知和低频心跳接入情况。
-5. 已新增 `lib/features/subscriptions`，支持保存 DMHY RSS 订阅关键词、选择动画分类或全站范围、手动检查 RSS 并展示最近结果摘要。
+5. 已新增 `lib/features/subscriptions`，支持保存 DMHY RSS 订阅关键词、选择动画分类或全站范围、手动检查 RSS、后台低频自动检查并展示最近结果摘要。
+6. 已把订阅自动检查接入前台服务心跳：服务运行时按最小间隔读取关键词、检查 DMHY RSS，并通过持续通知展示检查摘要。
 
 后续建议：
 
-1. 把已保存的 DMHY RSS 订阅关键词接入用户显式开启后的低频后台调度。
-2. 增加通知动作按钮，例如“停止后台”或“打开 DMHY”。
-3. 按 Android 15 `dataSync` 限制评估订阅检查频率，避免把前台服务当作无限运行下载器。
+1. 增加通知动作按钮，例如“停止后台”或“打开 DMHY”。
+2. 在前台页面展示后台自动检查的最近一次摘要和失败原因。
+3. 按 Android 15 `dataSync` 限制继续评估订阅检查频率，避免把前台服务当作无限运行下载器。
 
 ## 首期最小闭环建议
 
@@ -255,9 +256,9 @@ flowchart LR
 6. 通过系统 Intent、分享或复制，把 magnet 或 `.torrent` 种子文件交给外部 BT 客户端。
 7. 已提供手动选择本地视频并调用播放器的入口，不自动追踪外部 BT 客户端的下载结果。
 8. 已提供用户显式开启的 Android 前台服务后台常驻入口。
-9. 已提供 DMHY RSS 订阅关键词保存和手动检查入口。
+9. 已提供 DMHY RSS 订阅关键词保存、手动检查和后台低频自动检查入口。
 
-复杂过滤、章节完整分页、更多批量管理、RSS 自动检查调度、外部客户端兼容性清单、公共目录导出和内置下载器可以在基础闭环跑通后逐步补齐。
+复杂过滤、章节完整分页、更多批量管理、订阅通知交互、外部客户端兼容性清单、公共目录导出和内置下载器可以在基础闭环跑通后逐步补齐。
 
 ## 关键风险
 

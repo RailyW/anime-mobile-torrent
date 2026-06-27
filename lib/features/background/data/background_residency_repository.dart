@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
+import '../../subscriptions/application/dmhy_subscription_auto_check_service.dart';
 import '../domain/background_residency_state.dart';
 
 /// 后台常驻服务仓库接口。
@@ -16,9 +18,9 @@ abstract class BackgroundResidencyRepository {
 
 /// 基于 `flutter_foreground_task` 的后台常驻服务实现。
 ///
-/// 服务当前只提供显式启动的 Android 前台服务和持续通知，不在后台自动下载、
-/// 不定时联网，也不在开机后自动启动。后续如接入 RSS 订阅检查，可以复用
-/// 同一个 TaskHandler 的低频事件入口。
+/// 服务当前提供显式启动的 Android 前台服务、持续通知、低频心跳和 DMHY
+/// 订阅低频检查。不下载 `.torrent`，不下载 BT 视频内容，也不在开机后自动
+/// 启动。RSS 检查只在用户已保存订阅关键词且到达低频间隔后执行。
 class FlutterForegroundTaskResidencyRepository
     implements BackgroundResidencyRepository {
   const FlutterForegroundTaskResidencyRepository();
@@ -187,17 +189,22 @@ void startBackgroundResidencyService() {
 
 /// 后台常驻服务的实际任务处理器。
 ///
-/// 当前任务只维护低频心跳和通知文本，为后续订阅检查保留入口。这里不做
-/// DMHY 抓取或种子下载，避免用户开启常驻后产生隐式网络行为。
+/// 当前任务维护低频心跳，并在用户已经配置 DMHY 订阅关键词时执行低频 RSS
+/// 检查。检查只读取 RSS 摘要并更新通知，不下载 `.torrent` 或 BT 视频内容。
 class BackgroundResidencyTaskHandler extends TaskHandler {
+  final DmhySubscriptionAutoCheckService _autoCheckService =
+      DmhySubscriptionAutoCheckService.createDefault();
+
+  bool _isCheckingSubscription = false;
+
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
-    _publishHeartbeat(timestamp);
+    await _handleTick(timestamp);
   }
 
   @override
   void onRepeatEvent(DateTime timestamp) {
-    _publishHeartbeat(timestamp);
+    unawaited(_handleTick(timestamp));
   }
 
   @override
@@ -209,9 +216,14 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
     });
   }
 
-  void _publishHeartbeat(DateTime timestamp) {
+  Future<void> _handleTick(DateTime timestamp) async {
+    await _publishHeartbeat(timestamp);
+    await _runSubscriptionAutoCheck(timestamp);
+  }
+
+  Future<void> _publishHeartbeat(DateTime timestamp) async {
     final timeLabel = _formatClock(timestamp.toLocal());
-    FlutterForegroundTask.updateService(
+    await FlutterForegroundTask.updateService(
       notificationTitle: 'Anime Mobile Torrent 正在后台运行',
       notificationText: '最近保活心跳 $timeLabel，点击返回应用。',
     );
@@ -219,6 +231,42 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
       'type': 'backgroundResidencyHeartbeat',
       'timestamp': timestamp.toIso8601String(),
     });
+  }
+
+  Future<void> _runSubscriptionAutoCheck(DateTime timestamp) async {
+    if (_isCheckingSubscription) {
+      return;
+    }
+
+    _isCheckingSubscription = true;
+    try {
+      final outcome = await _autoCheckService.runIfDue();
+      FlutterForegroundTask.sendDataToMain(outcome.toMessage());
+
+      if (outcome.didCheck) {
+        final timeLabel = _formatClock(outcome.checkedAt.toLocal());
+        final detail = outcome.hasMatches
+            ? '发现 ${outcome.resourceCount} 条资源'
+            : '暂未发现资源';
+        await FlutterForegroundTask.updateService(
+          notificationTitle: 'DMHY 订阅检查已完成',
+          notificationText: '$detail · $timeLabel，点击返回应用。',
+        );
+      }
+    } catch (error) {
+      FlutterForegroundTask.sendDataToMain({
+        'type': 'dmhySubscriptionAutoCheck',
+        'status': 'failed',
+        'message': error.toString(),
+        'checkedAt': timestamp.toIso8601String(),
+      });
+      await FlutterForegroundTask.updateService(
+        notificationTitle: 'DMHY 订阅检查失败',
+        notificationText: '保活仍在运行，稍后会再次尝试。',
+      );
+    } finally {
+      _isCheckingSubscription = false;
+    }
   }
 }
 
