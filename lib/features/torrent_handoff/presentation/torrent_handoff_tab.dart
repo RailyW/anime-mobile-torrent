@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../application/torrent_handoff_providers.dart';
+import '../domain/torrent_client_capabilities.dart';
 
 /// Torrent 种子交接首页入口。
 ///
@@ -6,7 +10,7 @@ import 'package:flutter/material.dart';
 /// 之间的交接，不实现 BT 协议，也不下载种子指向的视频文件。这个页面承担
 /// “用户预期管理”的职责：告诉用户当前能交给外部客户端的内容、怎样自检
 /// 手机上的 BT 客户端是否兼容，以及失败时应当走哪条兜底路径。
-class TorrentHandoffTab extends StatelessWidget {
+class TorrentHandoffTab extends ConsumerWidget {
   const TorrentHandoffTab({super.key});
 
   /// 当前页面展示的交接能力清单。
@@ -87,7 +91,9 @@ class TorrentHandoffTab extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final deviceCapabilities = ref.watch(torrentClientCapabilitiesProvider);
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
@@ -101,6 +107,11 @@ class TorrentHandoffTab extends StatelessWidget {
             child: _CapabilityTile(capability: capability),
           ),
         const SizedBox(height: 8),
+        _DeviceDetectionPanel(
+          capabilities: deviceCapabilities,
+          onRefresh: () => ref.invalidate(torrentClientCapabilitiesProvider),
+        ),
+        const SizedBox(height: 12),
         const _GuidePanel(
           title: '外部 BT 客户端自检',
           summary: '用下面四个检查点确认手机里的 BT 客户端能接住 APP 交出的链接或种子文件。',
@@ -115,6 +126,390 @@ class TorrentHandoffTab extends StatelessWidget {
         const SizedBox(height: 12),
         const _BoundaryNote(),
       ],
+    );
+  }
+}
+
+/// 当前设备外部 BT 客户端能力检测面板。
+///
+/// 面板展示 Android 原生 resolver 查询结果，帮助用户区分“设备没有可用客户端”
+/// 与“当前运行环境无法检测”这两种完全不同的情况。
+class _DeviceDetectionPanel extends StatelessWidget {
+  const _DeviceDetectionPanel({
+    required this.capabilities,
+    required this.onRefresh,
+  });
+
+  final AsyncValue<TorrentClientCapabilities> capabilities;
+  final VoidCallback onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text('当前设备检测', style: theme.textTheme.titleMedium),
+                ),
+                IconButton(
+                  onPressed: onRefresh,
+                  tooltip: '重新检测外部 BT 客户端能力',
+                  icon: const Icon(Icons.refresh_outlined),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '通过 Android 系统 resolver 查询当前设备是否能接收种子交接，不会启动外部应用。',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: scheme.onSecondaryContainer,
+              ),
+            ),
+            const SizedBox(height: 12),
+            capabilities.when(
+              data: (capabilities) {
+                return _DeviceDetectionContent(capabilities: capabilities);
+              },
+              error: (error, _) {
+                return _DeviceDetectionError(message: error.toString());
+              },
+              loading: () => const _DeviceDetectionLoading(),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 当前设备检测加载态。
+class _DeviceDetectionLoading extends StatelessWidget {
+  const _DeviceDetectionLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 18,
+          height: 18,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: scheme.onSecondaryContainer,
+          ),
+        ),
+        const SizedBox(width: 12),
+        const Expanded(child: Text('正在检测当前设备的外部 BT 客户端能力')),
+      ],
+    );
+  }
+}
+
+/// 当前设备检测异常态。
+///
+/// 正常情况下 Provider 会把平台异常收敛为“检测不可用”的数据态；这里保留
+/// 异常态是为了防御未来仓库实现中出现未捕获错误。
+class _DeviceDetectionError extends StatelessWidget {
+  const _DeviceDetectionError({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return _DeviceDetectionNotice(
+      icon: Icons.error_outline,
+      title: '检测失败',
+      message: message,
+    );
+  }
+}
+
+/// 当前设备检测结果内容。
+class _DeviceDetectionContent extends StatelessWidget {
+  const _DeviceDetectionContent({required this.capabilities});
+
+  final TorrentClientCapabilities capabilities;
+
+  @override
+  Widget build(BuildContext context) {
+    final checkedAt = capabilities.checkedAt;
+    final footerParts = <String>[
+      if (capabilities.androidSdkInt != null)
+        'Android SDK ${capabilities.androidSdkInt}',
+      if (checkedAt != null)
+        '${_twoDigits(checkedAt.hour)}:${_twoDigits(checkedAt.minute)} 检测',
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _ProbeLine(
+          icon: Icons.link_outlined,
+          title: 'magnet 打开',
+          description: '系统中可响应 magnet 链接的外部应用。',
+          isAvailable: capabilities.canOpenMagnet,
+          handlerCount: capabilities.magnetHandlerCount,
+          isDetectionAvailable: capabilities.isPlatformBridgeAvailable,
+        ),
+        const SizedBox(height: 10),
+        _ProbeLine(
+          icon: Icons.description_outlined,
+          title: '.torrent 直开',
+          description: '系统中可直开 application/x-bittorrent 文件的外部应用。',
+          isAvailable: capabilities.canOpenTorrentFile,
+          handlerCount: capabilities.torrentViewHandlerCount,
+          isDetectionAvailable: capabilities.isPlatformBridgeAvailable,
+        ),
+        const SizedBox(height: 10),
+        _ProbeLine(
+          icon: Icons.ios_share_outlined,
+          title: '.torrent 分享导入',
+          description: '系统分享面板中可接收种子文件的外部应用。',
+          isAvailable: capabilities.canShareTorrentFile,
+          handlerCount: capabilities.torrentShareHandlerCount,
+          isDetectionAvailable: capabilities.isPlatformBridgeAvailable,
+        ),
+        const SizedBox(height: 12),
+        _DeviceDetectionNotice(
+          icon: _noticeIcon(capabilities),
+          title: _noticeTitle(capabilities),
+          message: _noticeMessage(capabilities),
+        ),
+        if (footerParts.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            footerParts.join(' · '),
+            style: Theme.of(context).textTheme.labelSmall,
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// 两位数时间格式化，用于避免引入额外日期格式化依赖。
+  static String _twoDigits(int value) {
+    return value.toString().padLeft(2, '0');
+  }
+
+  /// 根据检测结果选择提示图标。
+  static IconData _noticeIcon(TorrentClientCapabilities capabilities) {
+    if (!capabilities.isPlatformBridgeAvailable) {
+      return Icons.info_outline;
+    }
+    if (capabilities.hasAnyHandoffPath) {
+      return Icons.check_circle_outline;
+    }
+    return Icons.error_outline;
+  }
+
+  /// 根据检测结果选择提示标题。
+  static String _noticeTitle(TorrentClientCapabilities capabilities) {
+    if (!capabilities.isPlatformBridgeAvailable) {
+      return '检测不可用';
+    }
+    if (capabilities.hasAnyHandoffPath) {
+      return '发现可用交接路径';
+    }
+    return '未发现外部 BT 客户端';
+  }
+
+  /// 根据检测结果选择提示正文。
+  static String _noticeMessage(TorrentClientCapabilities capabilities) {
+    if (!capabilities.isPlatformBridgeAvailable) {
+      return capabilities.platformMessage ??
+          '当前环境没有注册 Android 检测通道；真机运行时会自动查询。';
+    }
+    if (capabilities.hasAnyHandoffPath) {
+      return '当前设备至少存在一条可用交接路径；如果直开失败，仍可尝试分享导入或复制 magnet。';
+    }
+    return '请先安装或启用支持 BT 的外部客户端，然后返回本页重新检测。';
+  }
+}
+
+/// 单条 Intent 探测结果。
+///
+/// `handlerCount` 是 Android resolver 返回的候选数量；为 0 时只说明当前
+/// 查询条件没有命中，不代表未来所有客户端都无法手动导入。
+class _ProbeLine extends StatelessWidget {
+  const _ProbeLine({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.isAvailable,
+    required this.handlerCount,
+    required this.isDetectionAvailable,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+  final bool isAvailable;
+  final int handlerCount;
+  final bool isDetectionAvailable;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: scheme.onSecondaryContainer, size: 22),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        color: scheme.onSecondaryContainer,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  _ProbeStatusBadge(
+                    label: _statusLabel,
+                    isAvailable: isAvailable,
+                    isDetectionAvailable: isDetectionAvailable,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                description,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSecondaryContainer,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 当前探测项的状态文案。
+  String get _statusLabel {
+    if (!isDetectionAvailable) {
+      return '检测不可用';
+    }
+    if (isAvailable) {
+      return '可用 $handlerCount 个';
+    }
+    return '未发现';
+  }
+}
+
+/// Intent 探测状态徽标。
+class _ProbeStatusBadge extends StatelessWidget {
+  const _ProbeStatusBadge({
+    required this.label,
+    required this.isAvailable,
+    required this.isDetectionAvailable,
+  });
+
+  final String label;
+  final bool isAvailable;
+  final bool isDetectionAvailable;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final backgroundColor = isAvailable
+        ? scheme.tertiaryContainer
+        : scheme.surface;
+    final foregroundColor = isAvailable
+        ? scheme.onTertiaryContainer
+        : isDetectionAvailable
+        ? scheme.error
+        : scheme.onSurfaceVariant;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: foregroundColor,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 当前设备检测提示块。
+class _DeviceDetectionNotice extends StatelessWidget {
+  const _DeviceDetectionNotice({
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
+
+  final IconData icon;
+  final String title;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: scheme.primary, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(message, style: theme.textTheme.bodyMedium),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

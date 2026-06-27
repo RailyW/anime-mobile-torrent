@@ -1,9 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter/services.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../domain/torrent_client_capabilities.dart';
 import '../domain/torrent_handoff_result.dart';
 import '../domain/torrent_seed_file.dart';
+
+/// Android 原生种子客户端检测 MethodChannel 名称。
+///
+/// 名称需要与 `MainActivity.kt` 中注册的通道保持一致；这里单独声明，方便
+/// 后续如果把平台桥拆到独立 Kotlin 类时仍能保持 Dart 层稳定。
+const _torrentClientDetectionChannel = MethodChannel(
+  'anime_mobile_torrent/torrent_client_detection',
+);
 
 /// Torrent 种子文件交接仓库接口。
 ///
@@ -20,6 +30,15 @@ abstract class TorrentHandoffRepository {
   Future<TorrentHandoffResult> openSeedFileWithShareFallback(
     TorrentSeedFile file,
   );
+}
+
+/// 外部 BT 客户端能力检测仓库接口。
+///
+/// 该接口只做“当前设备是否有可处理种子交接 Intent 的应用”检测，不负责安装、
+/// 推荐或启动第三方客户端，也不参与真实 `.torrent` 下载。
+abstract class TorrentClientCapabilityRepository {
+  /// 查询当前设备对 magnet、`.torrent` 直开和 `.torrent` 分享导入的支持情况。
+  Future<TorrentClientCapabilities> detectCapabilities();
 }
 
 /// 基于成熟 Flutter 插件的 Torrent 交接仓库实现。
@@ -108,9 +127,61 @@ class PluginTorrentHandoffRepository implements TorrentHandoffRepository {
   }
 }
 
+/// 基于 Android MethodChannel 的外部 BT 客户端检测实现。
+///
+/// Android 端通过 PackageManager 查询系统 resolver。Flutter widget test 或
+/// 非 Android 环境没有注册该通道时，会返回“检测不可用”，避免影响页面加载。
+class MethodChannelTorrentClientCapabilityRepository
+    implements TorrentClientCapabilityRepository {
+  const MethodChannelTorrentClientCapabilityRepository({
+    this.clientDetectionChannel = _torrentClientDetectionChannel,
+  });
+
+  /// 与 Android 宿主通信的检测通道。
+  final MethodChannel clientDetectionChannel;
+
+  @override
+  Future<TorrentClientCapabilities> detectCapabilities() async {
+    try {
+      final result = await clientDetectionChannel
+          .invokeMapMethod<String, dynamic>('detectTorrentClientCapabilities');
+
+      if (result == null) {
+        return TorrentClientCapabilities.unavailable('平台检测通道没有返回结果');
+      }
+
+      return TorrentClientCapabilities.fromPlatformMap(result);
+    } on MissingPluginException catch (error) {
+      return TorrentClientCapabilities.unavailable(error.message);
+    } on PlatformException catch (error) {
+      return TorrentClientCapabilities.unavailable(
+        error.message ?? error.toString(),
+      );
+    } catch (error) {
+      return TorrentClientCapabilities.unavailable(error.toString());
+    }
+  }
+}
+
 /// Torrent 种子文件交接仓库 Provider。
 final torrentHandoffRepositoryProvider = Provider<TorrentHandoffRepository>((
   ref,
 ) {
   return const PluginTorrentHandoffRepository();
 });
+
+/// 外部 BT 客户端能力检测仓库 Provider。
+final torrentClientCapabilityRepositoryProvider =
+    Provider<TorrentClientCapabilityRepository>((ref) {
+      return const MethodChannelTorrentClientCapabilityRepository();
+    });
+
+/// 当前设备外部 BT 客户端能力检测 Provider。
+///
+/// 页面可以通过 `ref.invalidate` 主动刷新检测结果；检测本身是轻量 resolver
+/// 查询，不会启动外部应用，也不会读取用户文件。
+final torrentClientCapabilitiesProvider =
+    FutureProvider.autoDispose<TorrentClientCapabilities>((ref) {
+      final repository = ref.watch(torrentClientCapabilityRepositoryProvider);
+      return repository.detectCapabilities();
+    });

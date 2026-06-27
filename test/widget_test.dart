@@ -5,6 +5,7 @@ import 'package:anime_mobile_torrent/features/dmhy/application/dmhy_providers.da
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_resource.dart';
 import 'package:anime_mobile_torrent/features/dmhy/domain/dmhy_torrent_file.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/application/torrent_handoff_providers.dart';
+import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_client_capabilities.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_handoff_result.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_file.dart';
 import 'package:flutter/material.dart';
@@ -16,7 +17,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 ///
 /// 测试环境同样挂载 ProviderScope，保证路由、状态管理和真实 APP 入口一致。
 Widget _buildTestApp() {
-  return const ProviderScope(child: AnimeMobileTorrentApp());
+  return ProviderScope(
+    overrides: [
+      torrentClientCapabilityRepositoryProvider.overrideWithValue(
+        const _FakeTorrentClientCapabilityRepository(),
+      ),
+    ],
+    child: const AnimeMobileTorrentApp(),
+  );
 }
 
 void main() {
@@ -41,6 +49,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('MVP'), findsOneWidget);
     expect(find.text('分享面板兜底'), findsOneWidget);
+    expect(find.text('当前设备检测'), findsOneWidget);
+    expect(find.text('magnet 打开'), findsOneWidget);
+    expect(find.text('检测不可用'), findsWidgets);
+
+    await tester.scrollUntilVisible(
+      find.text('外部 BT 客户端自检'),
+      260,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
     expect(find.text('外部 BT 客户端自检'), findsOneWidget);
     expect(find.text('magnet 支持'), findsOneWidget);
     expect(find.text('.torrent 直开'), findsOneWidget);
@@ -91,6 +110,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
           bangumiRepositoryProvider.overrideWithValue(_FakeBangumiRepository()),
         ],
         child: const AnimeMobileTorrentApp(),
@@ -112,6 +134,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
           bangumiRepositoryProvider.overrideWithValue(_FakeBangumiRepository()),
         ],
         child: const AnimeMobileTorrentApp(),
@@ -160,6 +185,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
           bangumiRepositoryProvider.overrideWithValue(_FakeBangumiRepository()),
           dmhyRepositoryProvider.overrideWithValue(_FakeDmhyRepository()),
         ],
@@ -187,6 +215,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
           dmhyRepositoryProvider.overrideWithValue(_FakeDmhyRepository()),
         ],
         child: const AnimeMobileTorrentApp(),
@@ -215,6 +246,9 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
           dmhyRepositoryProvider.overrideWithValue(_FakeDmhyRepository()),
           torrentHandoffRepositoryProvider.overrideWithValue(
             fakeHandoffRepository,
@@ -239,6 +273,16 @@ void main() {
     expect(find.textContaining('已交给外部 BT 客户端'), findsOneWidget);
     expect(find.textContaining('种子 128 B'), findsOneWidget);
   });
+}
+
+class _FakeTorrentClientCapabilityRepository
+    implements TorrentClientCapabilityRepository {
+  const _FakeTorrentClientCapabilityRepository();
+
+  @override
+  Future<TorrentClientCapabilities> detectCapabilities() async {
+    return TorrentClientCapabilities.unavailable('测试环境不注册 Android 检测通道');
+  }
 }
 
 class _FakeBangumiRepository implements BangumiRepository {

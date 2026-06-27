@@ -1,3 +1,4 @@
+import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_client_capabilities.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_handoff_result.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_file.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -48,6 +49,46 @@ void main() {
       expect(shared.userMessage, '已打开系统分享面板，请选择 BT 客户端');
       expect(noClient.isHandled, isFalse);
       expect(noClient.userMessage, '没有找到可打开种子文件的 BT 客户端');
+    });
+  });
+
+  group('TorrentClientCapabilities', () {
+    test('可以从 Android 平台 Map 解析外部 BT 客户端检测结果', () {
+      final capabilities = TorrentClientCapabilities.fromPlatformMap({
+        'canOpenMagnet': true,
+        'canOpenTorrentFile': false,
+        'canShareTorrentFile': true,
+        'magnetHandlerCount': 2,
+        'torrentViewHandlerCount': 0,
+        'torrentShareHandlerCount': 1,
+        'androidSdkInt': 35,
+        'checkedAtMillis': 1710000000000,
+      });
+
+      expect(capabilities.isPlatformBridgeAvailable, isTrue);
+      expect(capabilities.canOpenMagnet, isTrue);
+      expect(capabilities.canOpenTorrentFile, isFalse);
+      expect(capabilities.canShareTorrentFile, isTrue);
+      expect(capabilities.magnetHandlerCount, 2);
+      expect(capabilities.torrentViewHandlerCount, 0);
+      expect(capabilities.torrentShareHandlerCount, 1);
+      expect(capabilities.androidSdkInt, 35);
+      expect(
+        capabilities.checkedAt,
+        DateTime.fromMillisecondsSinceEpoch(1710000000000),
+      );
+      expect(capabilities.hasAnyHandoffPath, isTrue);
+    });
+
+    test('平台通道不可用时不会误判为已有外部客户端', () {
+      final capabilities = TorrentClientCapabilities.unavailable(
+        'missing plugin',
+      );
+
+      expect(capabilities.isPlatformBridgeAvailable, isFalse);
+      expect(capabilities.hasAnyHandoffPath, isFalse);
+      expect(capabilities.magnetHandlerCount, 0);
+      expect(capabilities.platformMessage, 'missing plugin');
     });
   });
 }

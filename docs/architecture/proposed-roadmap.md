@@ -166,12 +166,13 @@ flowchart LR
 4. 已通过 `open_filex` 直接打开 `.torrent` 文件给外部 BT 客户端。
 5. 已通过 `share_plus` 在直开失败时自动打开系统分享面板，作为外部客户端兼容兜底。
 6. 已在种子交接页补充外部 BT 客户端兼容自检、失败处理和“不下载 BT 视频内容”的边界说明。
+7. 已新增 Android MethodChannel，通过 PackageManager resolver 查询当前设备是否存在可处理 magnet、`.torrent` 直开和 `.torrent` 分享导入的外部客户端，并在种子交接页展示检测结果。
 
 待确认：
 
 1. 首期是否需要主动推荐或引导安装外部 BT 客户端。
 2. 不同 BT 客户端对 magnet、`.torrent`、`ACTION_VIEW` 和 `ACTION_SEND` 的兼容差异是否需要建立基于真实设备测试的兼容性清单。
-3. 是否需要在 Android 平台层增加 package visibility 查询或 Intent resolver 检测，用于提前提示用户当前设备是否具备可用外部 BT 客户端。
+3. 是否需要把当前 resolver 检测扩展为更细的真实客户端兼容记录，例如区分直开成功、导入成功和客户端内解析失败。
 
 ### 阶段 3B：可选内置 Torrent 下载器
 
