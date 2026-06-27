@@ -345,6 +345,7 @@ String buildBackgroundNotificationInitialRoute(
   if (outcome != null &&
       outcome.status != DmhySubscriptionAutoCheckStatus.failed &&
       outcome.resourceCount > 0 &&
+      outcome.hasNewMatches &&
       keyword != null &&
       keyword.isNotEmpty) {
     return Uri(
@@ -368,7 +369,11 @@ String _formatSubscriptionNotificationDetail(
   }
 
   if (outcome.hasMatches) {
-    return '发现 ${outcome.resourceCount} 条资源';
+    if (outcome.hasNewMatches) {
+      return '发现新的 DMHY 资源';
+    }
+
+    return '暂无新资源，最新命中未变化';
   }
 
   return '暂未发现资源';

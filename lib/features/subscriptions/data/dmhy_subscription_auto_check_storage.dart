@@ -27,6 +27,7 @@ class DmhySubscriptionAutoCheckRecord {
     required this.checkedAt,
     required this.keywordCount,
     required this.resourceCount,
+    this.hasNewMatches = false,
     this.latestKeyword,
     this.latestAnimeOnly = true,
     this.latestTitle,
@@ -44,6 +45,13 @@ class DmhySubscriptionAutoCheckRecord {
 
   /// 最近一次自动检查命中的 RSS 资源总数。
   final int resourceCount;
+
+  /// 最近一次自动检查的“最新命中”是否相对上一条成功记录发生变化。
+  ///
+  /// 后台订阅检查只保存聚合摘要，不长期保存第三方 RSS 条目列表；因此这里
+  /// 用“关键词 + 搜索范围 + 最新标题”作为轻量指纹。它不能表示精确新增条数，
+  /// 只用于避免持续通知每轮都把同一个旧命中当成新更新。
+  final bool hasNewMatches;
 
   /// 最近一次自动检查中第一个命中资源所属的订阅关键词。
   ///
@@ -77,6 +85,7 @@ class DmhySubscriptionAutoCheckRecord {
       'checkedAt': checkedAt.toIso8601String(),
       'keywordCount': keywordCount,
       'resourceCount': resourceCount,
+      'hasNewMatches': hasNewMatches,
       'latestKeyword': latestKeyword,
       'latestAnimeOnly': latestAnimeOnly,
       'latestTitle': latestTitle,
@@ -85,11 +94,17 @@ class DmhySubscriptionAutoCheckRecord {
   }
 
   factory DmhySubscriptionAutoCheckRecord.fromJson(Map<String, dynamic> json) {
+    final status = _readStatus(json['status']);
+    final resourceCount = _readInt(json['resourceCount']);
     return DmhySubscriptionAutoCheckRecord(
-      status: _readStatus(json['status']),
+      status: status,
       checkedAt: _readDateTime(json['checkedAt']) ?? DateTime(1970),
       keywordCount: _readInt(json['keywordCount']),
-      resourceCount: _readInt(json['resourceCount']),
+      resourceCount: resourceCount,
+      hasNewMatches:
+          _readBool(json['hasNewMatches']) ??
+          (status == DmhySubscriptionAutoCheckRecordStatus.checked &&
+              resourceCount > 0),
       latestKeyword: _readString(json['latestKeyword']),
       latestAnimeOnly: _readBool(json['latestAnimeOnly']) ?? true,
       latestTitle: _readString(json['latestTitle']),

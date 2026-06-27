@@ -32,6 +32,7 @@ class DmhySubscriptionAutoCheckOutcome {
     required this.checkedAt,
     this.keywordCount = 0,
     this.resourceCount = 0,
+    this.hasNewMatches = false,
     this.latestKeyword,
     this.latestAnimeOnly = true,
     this.latestTitle,
@@ -43,6 +44,7 @@ class DmhySubscriptionAutoCheckOutcome {
   final DateTime checkedAt;
   final int keywordCount;
   final int resourceCount;
+  final bool hasNewMatches;
   final String? latestKeyword;
   final bool latestAnimeOnly;
   final String? latestTitle;
@@ -71,6 +73,7 @@ class DmhySubscriptionAutoCheckOutcome {
       'checkedAt': checkedAt.toIso8601String(),
       'keywordCount': keywordCount,
       'resourceCount': resourceCount,
+      'hasNewMatches': hasNewMatches,
       'latestKeyword': latestKeyword,
       'latestAnimeOnly': latestAnimeOnly,
       'latestTitle': latestTitle,
@@ -151,6 +154,7 @@ class DmhySubscriptionAutoCheckService {
           checkedAt: timestamp,
           keywordCount: lastRecord.keywordCount,
           resourceCount: lastRecord.resourceCount,
+          hasNewMatches: lastRecord.hasNewMatches,
           latestKeyword: lastRecord.latestKeyword,
           latestAnimeOnly: lastRecord.latestAnimeOnly,
           latestTitle: lastRecord.latestTitle,
@@ -186,13 +190,17 @@ class DmhySubscriptionAutoCheckService {
 
     final summary = DmhySubscriptionCheckSummary(results: results);
     final latestMatch = _findLatestMatch(summary);
-    final message = summary.hasMatches
-        ? 'DMHY 订阅检查发现 ${summary.totalResourceCount} 条资源'
-        : 'DMHY 订阅检查完成，暂未发现资源';
+    final hasNewMatches =
+        latestMatch != null && _latestMatchChanged(latestMatch, lastRecord);
+    final message = _formatSuccessfulAutoCheckMessage(
+      summary: summary,
+      hasNewMatches: hasNewMatches,
+    );
     final record = DmhySubscriptionAutoCheckRecord(
       checkedAt: timestamp,
       keywordCount: keywords.length,
       resourceCount: summary.totalResourceCount,
+      hasNewMatches: hasNewMatches,
       latestKeyword: latestMatch?.keyword,
       latestAnimeOnly: latestMatch?.animeOnly ?? true,
       latestTitle: latestMatch?.title,
@@ -206,6 +214,7 @@ class DmhySubscriptionAutoCheckService {
       checkedAt: timestamp,
       keywordCount: keywords.length,
       resourceCount: summary.totalResourceCount,
+      hasNewMatches: hasNewMatches,
       latestKeyword: latestMatch?.keyword,
       latestAnimeOnly: latestMatch?.animeOnly ?? true,
       latestTitle: latestMatch?.title,
@@ -228,6 +237,30 @@ class DmhySubscriptionAutoCheckService {
 
     return null;
   }
+
+  /// 判断本轮最新命中是否相对上一条成功摘要发生了变化。
+  ///
+  /// RSS 自动检查不会持久化完整条目列表，这里只比较最新命中的关键词、搜索
+  /// 范围和标题。只要其中任意一项变化，就认为用户可能需要重新打开 DMHY
+  /// 搜索查看；如果完全相同，则把它视为重复命中，避免后台通知反复强调同一
+  /// 条资源。
+  bool _latestMatchChanged(
+    _LatestSubscriptionMatch latestMatch,
+    DmhySubscriptionAutoCheckRecord? lastRecord,
+  ) {
+    if (lastRecord == null || !lastRecord.hasMatches) {
+      return true;
+    }
+
+    final previousKeyword = _normalizeMatchText(lastRecord.latestKeyword);
+    final previousTitle = _normalizeMatchText(lastRecord.latestTitle);
+    final currentKeyword = _normalizeMatchText(latestMatch.keyword);
+    final currentTitle = _normalizeMatchText(latestMatch.title);
+
+    return previousKeyword != currentKeyword ||
+        lastRecord.latestAnimeOnly != latestMatch.animeOnly ||
+        previousTitle != currentTitle;
+  }
 }
 
 /// 自动检查中第一个可展示命中的轻量上下文。
@@ -244,6 +277,30 @@ class _LatestSubscriptionMatch {
   final String keyword;
   final bool animeOnly;
   final String title;
+}
+
+String _formatSuccessfulAutoCheckMessage({
+  required DmhySubscriptionCheckSummary summary,
+  required bool hasNewMatches,
+}) {
+  if (!summary.hasMatches) {
+    return 'DMHY 订阅检查完成，暂未发现资源';
+  }
+
+  if (hasNewMatches) {
+    return 'DMHY 订阅检查发现新的资源命中';
+  }
+
+  return 'DMHY 订阅检查完成，最新命中未变化';
+}
+
+String _normalizeMatchText(String? value) {
+  final text = value?.trim();
+  if (text == null || text.isEmpty) {
+    return '';
+  }
+
+  return text.replaceAll(RegExp(r'\s+'), ' ');
 }
 
 String _formatAutoCheckError(Object error) {

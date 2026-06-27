@@ -23,6 +23,7 @@ void main() {
         checkedAt: DateTime.utc(2026, 6, 27, 14),
         keywordCount: 1,
         resourceCount: 2,
+        hasNewMatches: true,
         latestKeyword: ' 测试动画 1080 ',
         latestAnimeOnly: false,
         latestTitle: '[字幕组] 测试动画 01',
@@ -35,6 +36,24 @@ void main() {
     expect(uri.queryParameters['tab'], 'dmhy');
     expect(uri.queryParameters['keyword'], '测试动画 1080');
     expect(uri.queryParameters['animeOnly'], 'false');
+  });
+
+  test('后台通知重复命中订阅资源时回到后台页', () {
+    final route = buildBackgroundNotificationInitialRoute(
+      DmhySubscriptionAutoCheckOutcome(
+        status: DmhySubscriptionAutoCheckStatus.checked,
+        message: 'DMHY 订阅检查完成，最新命中未变化',
+        checkedAt: DateTime.utc(2026, 6, 27, 14),
+        keywordCount: 1,
+        resourceCount: 2,
+        hasNewMatches: false,
+        latestKeyword: '测试动画 1080',
+        latestAnimeOnly: false,
+        latestTitle: '[字幕组] 测试动画 01',
+      ),
+    );
+
+    expect(route, '/?tab=background');
   });
 
   test('后台通知无命中上下文时回到后台页', () {

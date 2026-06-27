@@ -659,6 +659,10 @@ String _formatAutoCheckRecordSummary(DmhySubscriptionAutoCheckRecord record) {
 
   final keywordText = '${record.keywordCount} 个关键词';
   if (record.hasMatches) {
+    if (!record.hasNewMatches) {
+      return '已有 ${record.resourceCount} 条资源，最新命中未变化 · $keywordText';
+    }
+
     return '发现 ${record.resourceCount} 条资源 · $keywordText';
   }
 

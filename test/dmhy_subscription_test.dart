@@ -54,6 +54,7 @@ void main() {
       checkedAt: DateTime.utc(2026, 6, 27, 10, 30),
       keywordCount: 2,
       resourceCount: 3,
+      hasNewMatches: true,
       latestKeyword: '测试动画 1080',
       latestAnimeOnly: false,
       latestTitle: '[字幕组] 测试动画 01',
@@ -65,6 +66,7 @@ void main() {
     expect(restored.latestKeyword, '测试动画 1080');
     expect(restored.latestAnimeOnly, isFalse);
     expect(restored.latestTitle, '[字幕组] 测试动画 01');
+    expect(restored.hasNewMatches, isTrue);
   });
 
   test('DmhySubscriptionRepository 可以去重保存关键词并检查 DMHY RSS', () async {
@@ -188,10 +190,12 @@ void main() {
 
     expect(outcome.status, DmhySubscriptionAutoCheckStatus.checked);
     expect(outcome.resourceCount, 1);
+    expect(outcome.hasNewMatches, isTrue);
     expect(outcome.latestKeyword, '测试动画');
     expect(outcome.latestAnimeOnly, isTrue);
     expect(outcome.latestTitle, '[字幕组] 测试动画 01');
     expect(autoCheckStorage.record?.resourceCount, 1);
+    expect(autoCheckStorage.record?.hasNewMatches, isTrue);
     expect(autoCheckStorage.record?.latestKeyword, '测试动画');
     expect(dmhyRepository.requests, hasLength(1));
 
@@ -200,13 +204,53 @@ void main() {
 
     expect(outcome.status, DmhySubscriptionAutoCheckStatus.throttled);
     expect(outcome.nextAllowedAt, DateTime.utc(2026, 6, 27, 13));
+    expect(outcome.hasNewMatches, isTrue);
     expect(dmhyRepository.requests, hasLength(1));
 
     now = now.add(const Duration(minutes: 31));
     outcome = await autoCheckService.runIfDue();
 
     expect(outcome.status, DmhySubscriptionAutoCheckStatus.checked);
+    expect(outcome.hasNewMatches, isFalse);
+    expect(outcome.message, 'DMHY 订阅检查完成，最新命中未变化');
+    expect(autoCheckStorage.record?.hasNewMatches, isFalse);
     expect(dmhyRepository.requests, hasLength(2));
+  });
+
+  test('DmhySubscriptionAutoCheckService 会区分重复命中和新标题命中', () async {
+    final now = DateTime.utc(2026, 6, 27, 12);
+    final keywordStorage = _MemoryDmhySubscriptionStorage();
+    final autoCheckStorage = _MemoryDmhySubscriptionAutoCheckStorage();
+    final dmhyRepository = _FakeDmhyRepository(
+      titles: const [
+        '[字幕组] {keyword} 01',
+        '[字幕组] {keyword} 01',
+        '[字幕组] {keyword} 02',
+      ],
+    );
+    final subscriptionRepository = DmhySubscriptionRepository(
+      storage: keywordStorage,
+      dmhyRepository: dmhyRepository,
+      now: () => now,
+    );
+    final autoCheckService = DmhySubscriptionAutoCheckService(
+      subscriptionRepository: subscriptionRepository,
+      autoCheckStorage: autoCheckStorage,
+      now: () => now,
+    );
+
+    await subscriptionRepository.addKeyword('测试动画', animeOnly: true);
+
+    final firstOutcome = await autoCheckService.runIfDue(force: true);
+    final repeatedOutcome = await autoCheckService.runIfDue(force: true);
+    final changedOutcome = await autoCheckService.runIfDue(force: true);
+
+    expect(firstOutcome.hasNewMatches, isTrue);
+    expect(firstOutcome.message, 'DMHY 订阅检查发现新的资源命中');
+    expect(repeatedOutcome.hasNewMatches, isFalse);
+    expect(repeatedOutcome.message, 'DMHY 订阅检查完成，最新命中未变化');
+    expect(changedOutcome.hasNewMatches, isTrue);
+    expect(changedOutcome.latestTitle, '[字幕组] 测试动画 02');
   });
 
   test('DmhySubscriptionAutoCheckService 会保存失败原因供前台展示', () async {
@@ -270,9 +314,10 @@ class _MemoryDmhySubscriptionAutoCheckStorage
 }
 
 class _FakeDmhyRepository implements DmhyRepository {
-  _FakeDmhyRepository({this.shouldThrow = false});
+  _FakeDmhyRepository({this.shouldThrow = false, this.titles = const []});
 
   final bool shouldThrow;
+  final List<String> titles;
   final List<DmhySearchRequest> requests = [];
 
   @override
@@ -282,9 +327,20 @@ class _FakeDmhyRepository implements DmhyRepository {
       throw StateError('测试网络失败');
     }
 
+    final requestIndex = requests.length - 1;
+    final titleTemplate = titles.isEmpty
+        ? '[字幕组] {keyword} 01'
+        : titles[requestIndex < titles.length
+              ? requestIndex
+              : titles.length - 1];
+    final title = titleTemplate.replaceAll(
+      '{keyword}',
+      request.normalizedKeyword,
+    );
+
     return [
       DmhyResource(
-        title: '[字幕组] ${request.normalizedKeyword} 01',
+        title: title,
         detailUri: Uri.parse('http://share.dmhy.org/topics/view/1_test.html'),
         magnetUri: Uri.parse('magnet:?xt=urn:btih:ABCDEF'),
         publishedAt: DateTime.utc(2026, 6, 27, 2, 30),
