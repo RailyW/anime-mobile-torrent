@@ -1033,6 +1033,63 @@ void main() {
     expect(find.text('测试第 10 话'), findsOneWidget);
   });
 
+  testWidgets('Bangumi 条目详情可以批量标记已加载章节看过', (tester) async {
+    final detailRepository = _FakeBangumiDetailCollectionRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
+          bangumiRepositoryProvider.overrideWithValue(_FakeBangumiRepository()),
+          bangumiCurrentUserProvider.overrideWith(
+            (ref) async => const BangumiUser(
+              id: 1,
+              username: 'tester',
+              nickname: '测试用户',
+              userGroup: 10,
+              avatar: BangumiUserAvatar(),
+              sign: '',
+            ),
+          ),
+          bangumiMyCollectionRepositoryProvider.overrideWithValue(
+            detailRepository,
+          ),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '测试动画');
+    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('测试动画 中文名'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.widgetWithText(OutlinedButton, '已加载全看过'),
+      260,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, '已加载全看过'));
+    await tester.pumpAndSettle();
+
+    expect(detailRepository.savedEpisodeIds, [
+      for (var index = 2; index <= 10; index++) 1000 + index,
+    ]);
+    expect(
+      detailRepository.savedEpisodeStatus,
+      BangumiEpisodeCollectionType.done,
+    );
+    expect(detailRepository.savedEpisodeType, BangumiEpisodeType.mainStory);
+    expect(find.text('已将 9 条已加载本篇章节标记为看过'), findsOneWidget);
+  });
+
   testWidgets('Bangumi 条目详情可以带关键词跳转到 DMHY 搜索', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -1696,6 +1753,10 @@ class _FakeBangumiRepository implements BangumiRepository {
 
 class _FakeBangumiDetailCollectionRepository
     implements BangumiMyCollectionRepositoryContract {
+  List<int> savedEpisodeIds = const [];
+  BangumiEpisodeCollectionType? savedEpisodeStatus;
+  BangumiEpisodeType? savedEpisodeType;
+
   @override
   Future<BangumiSubjectCollection?> getMySubjectCollection(
     int subjectId,
@@ -1780,6 +1841,10 @@ class _FakeBangumiDetailCollectionRepository
     required BangumiEpisodeCollectionType type,
     BangumiEpisodeType episodeType = BangumiEpisodeType.mainStory,
   }) {
+    savedEpisodeIds = [...episodeIds];
+    savedEpisodeStatus = type;
+    savedEpisodeType = episodeType;
+
     return getMySubjectEpisodeCollections(
       subjectId: subjectId,
       episodeType: episodeType,

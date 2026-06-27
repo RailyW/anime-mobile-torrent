@@ -670,6 +670,32 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
                         : const Icon(Icons.expand_more_outlined),
                     label: Text(isPageLoading ? '加载中' : '加载更多章节'),
                   ),
+                if (currentTypeEpisodes.isNotEmpty)
+                  OutlinedButton.icon(
+                    onPressed:
+                        _savingEpisodeId == null &&
+                            !_isSavingBatch &&
+                            !isPageLoading
+                        ? () => _saveLoadedEpisodesAs(
+                            BangumiEpisodeCollectionType.done,
+                          )
+                        : null,
+                    icon: const Icon(Icons.done_all_outlined),
+                    label: const Text('已加载全看过'),
+                  ),
+                if (currentTypeEpisodes.isNotEmpty)
+                  OutlinedButton.icon(
+                    onPressed:
+                        _savingEpisodeId == null &&
+                            !_isSavingBatch &&
+                            !isPageLoading
+                        ? () => _saveLoadedEpisodesAs(
+                            BangumiEpisodeCollectionType.none,
+                          )
+                        : null,
+                    icon: const Icon(Icons.clear_all_outlined),
+                    label: const Text('清空已加载'),
+                  ),
               ],
             ),
             if (currentTypeEpisodes.isNotEmpty) ...[
@@ -873,6 +899,86 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
         SnackBar(
           content: Text(
             '已标记到${target.episode.sortLabel}看过，共 ${targetEpisodes.length} 话',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSavingBatch = false;
+        });
+      }
+    }
+  }
+
+  /// 将当前已加载的同类型章节批量设置为指定状态。
+  ///
+  /// 这里显式使用 `loadedPage.episodesNeedingStatus` 计算目标集合，只影响
+  /// 当前已经加载到页面内存中的章节。长篇条目尚未加载的后续分页不会被隐式
+  /// 修改，用户可以先继续“加载更多章节”再执行批量动作。
+  Future<void> _saveLoadedEpisodesAs(
+    BangumiEpisodeCollectionType targetType,
+  ) async {
+    if (_savingEpisodeId != null || _isSavingBatch) {
+      return;
+    }
+
+    final targetEpisodes = widget.state.loadedPage.episodesNeedingStatus(
+      episodeType: widget.state.episodeType,
+      targetType: targetType,
+    );
+    if (targetEpisodes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '当前已加载的${widget.state.episodeType.label}章节已全部是${targetType.label}',
+          ),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _isSavingBatch = true;
+    });
+
+    try {
+      final repository = ref.read(bangumiMyCollectionRepositoryProvider);
+      await repository.saveMySubjectEpisodeStatus(
+        subjectId: widget.subject.id,
+        episodeIds: targetEpisodes
+            .map((item) => item.episode.id)
+            .toList(growable: false),
+        type: targetType,
+        episodeType: widget.state.episodeType,
+      );
+
+      await ref
+          .read(
+            bangumiSubjectEpisodeCollectionListControllerProvider(
+              widget.subject.id,
+            ).notifier,
+          )
+          .refreshLoadedEpisodes();
+      ref.invalidate(bangumiMySubjectCollectionProvider(widget.subject.id));
+      ref.invalidate(bangumiSubjectDetailProvider(widget.subject.id));
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '已将 ${targetEpisodes.length} 条已加载${widget.state.episodeType.label}章节标记为${targetType.label}',
           ),
         ),
       );

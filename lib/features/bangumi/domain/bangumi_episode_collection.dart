@@ -301,6 +301,23 @@ class BangumiEpisodeCollectionPage {
     );
   }
 
+  /// 计算当前已加载章节中需要被改成目标状态的章节。
+  ///
+  /// 该方法只基于当前分页对象已经加载到本机内存的章节计算，不会假设服务端
+  /// 剩余分页已经存在于列表中。详情页的“已加载全看过”和“清空已加载”使用
+  /// 这个方法生成 PATCH 的 `episode_id`，避免重复提交已经处于目标状态的
+  /// 章节，也避免跨章节类型误写。
+  List<BangumiEpisodeCollection> episodesNeedingStatus({
+    required BangumiEpisodeType episodeType,
+    required BangumiEpisodeCollectionType targetType,
+  }) {
+    return List.unmodifiable(
+      episodesOfType(episodeType).where((item) {
+        return item.type != targetType;
+      }),
+    );
+  }
+
   /// 从官方分页 JSON 中解析章节收藏列表。
   factory BangumiEpisodeCollectionPage.fromJson(Map<String, dynamic> json) {
     final rawData = json['data'];

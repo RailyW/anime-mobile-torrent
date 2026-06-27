@@ -342,9 +342,19 @@ void main() {
       );
 
       final targetEpisodes = page.unwatchedMainStoriesThrough(page.episodes[2]);
+      final episodesNeedingDone = page.episodesNeedingStatus(
+        episodeType: BangumiEpisodeType.mainStory,
+        targetType: BangumiEpisodeCollectionType.done,
+      );
+      final episodesNeedingNone = page.episodesNeedingStatus(
+        episodeType: BangumiEpisodeType.mainStory,
+        targetType: BangumiEpisodeCollectionType.none,
+      );
 
       expect(page.mainStoryEpisodes.map((item) => item.episode.id), [1, 2, 3]);
       expect(targetEpisodes.map((item) => item.episode.id), [2, 3]);
+      expect(episodesNeedingDone.map((item) => item.episode.id), [2, 3]);
+      expect(episodesNeedingNone.map((item) => item.episode.id), [1, 3]);
       expect(page.firstUnwatchedMainStory?.episode.id, 2);
     });
 
