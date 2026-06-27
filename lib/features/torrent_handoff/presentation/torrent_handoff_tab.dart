@@ -172,6 +172,17 @@ class TorrentHandoffTab extends ConsumerWidget {
       }
     }
 
+    Future<void> exportSeedHistoryItem(TorrentSeedHistoryItem item) async {
+      final repository = ref.read(torrentSeedExportRepositoryProvider);
+      final result = await repository.exportSeedFile(item.seedFile);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(result.userMessage)));
+      }
+    }
+
     Future<void> deleteSeedHistoryItem(TorrentSeedHistoryItem item) async {
       final repository = ref.read(torrentSeedHistoryRepositoryProvider);
       await repository.removeItem(item);
@@ -226,6 +237,7 @@ class TorrentHandoffTab extends ConsumerWidget {
           items: seedHistory,
           onOpen: openSeedHistoryItem,
           onShare: shareSeedHistoryItem,
+          onExport: exportSeedHistoryItem,
           onDelete: deleteSeedHistoryItem,
           onClear: clearSeedHistory,
           onOpenPlayback: openPlaybackTab,
@@ -266,6 +278,7 @@ class _SeedHistoryPanel extends StatelessWidget {
     required this.items,
     required this.onOpen,
     required this.onShare,
+    required this.onExport,
     required this.onDelete,
     required this.onClear,
     required this.onOpenPlayback,
@@ -274,6 +287,7 @@ class _SeedHistoryPanel extends StatelessWidget {
   final AsyncValue<List<TorrentSeedHistoryItem>> items;
   final Future<void> Function(TorrentSeedHistoryItem item) onOpen;
   final Future<void> Function(TorrentSeedHistoryItem item) onShare;
+  final Future<void> Function(TorrentSeedHistoryItem item) onExport;
   final Future<void> Function(TorrentSeedHistoryItem item) onDelete;
   final Future<void> Function() onClear;
   final VoidCallback onOpenPlayback;
@@ -308,6 +322,7 @@ class _SeedHistoryPanel extends StatelessWidget {
                   items: items,
                   onOpen: onOpen,
                   onShare: onShare,
+                  onExport: onExport,
                   onDelete: onDelete,
                   onClear: onClear,
                 );
@@ -382,6 +397,7 @@ class _SeedHistoryContent extends StatelessWidget {
     required this.items,
     required this.onOpen,
     required this.onShare,
+    required this.onExport,
     required this.onDelete,
     required this.onClear,
   });
@@ -389,6 +405,7 @@ class _SeedHistoryContent extends StatelessWidget {
   final List<TorrentSeedHistoryItem> items;
   final Future<void> Function(TorrentSeedHistoryItem item) onOpen;
   final Future<void> Function(TorrentSeedHistoryItem item) onShare;
+  final Future<void> Function(TorrentSeedHistoryItem item) onExport;
   final Future<void> Function(TorrentSeedHistoryItem item) onDelete;
   final Future<void> Function() onClear;
 
@@ -409,6 +426,7 @@ class _SeedHistoryContent extends StatelessWidget {
               item: item,
               onOpen: onOpen,
               onShare: onShare,
+              onExport: onExport,
               onDelete: onDelete,
             ),
           ),
@@ -428,12 +446,14 @@ class _SeedHistoryTile extends StatelessWidget {
     required this.item,
     required this.onOpen,
     required this.onShare,
+    required this.onExport,
     required this.onDelete,
   });
 
   final TorrentSeedHistoryItem item;
   final Future<void> Function(TorrentSeedHistoryItem item) onOpen;
   final Future<void> Function(TorrentSeedHistoryItem item) onShare;
+  final Future<void> Function(TorrentSeedHistoryItem item) onExport;
   final Future<void> Function(TorrentSeedHistoryItem item) onDelete;
 
   @override
@@ -505,6 +525,11 @@ class _SeedHistoryTile extends StatelessWidget {
                   onPressed: () => onShare(item),
                   icon: const Icon(Icons.ios_share_outlined),
                   label: const Text('分享'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => onExport(item),
+                  icon: const Icon(Icons.save_alt_outlined),
+                  label: const Text('导出'),
                 ),
                 TextButton.icon(
                   onPressed: () => onDelete(item),

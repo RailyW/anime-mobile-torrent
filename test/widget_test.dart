@@ -459,6 +459,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('可删除测试种子'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, '导出'), findsOneWidget);
 
     await tester.ensureVisible(find.widgetWithText(TextButton, '删除'));
     await tester.pumpAndSettle();

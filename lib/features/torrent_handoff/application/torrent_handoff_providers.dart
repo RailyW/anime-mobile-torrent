@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../domain/torrent_client_capabilities.dart';
 import '../domain/torrent_client_compatibility_record.dart';
 import '../domain/torrent_handoff_result.dart';
+import '../domain/torrent_seed_export_result.dart';
 import '../domain/torrent_seed_history_item.dart';
 import '../domain/torrent_seed_file.dart';
 
@@ -19,6 +20,14 @@ import '../domain/torrent_seed_file.dart';
 /// 后续如果把平台桥拆到独立 Kotlin 类时仍能保持 Dart 层稳定。
 const _torrentClientDetectionChannel = MethodChannel(
   'anime_mobile_torrent/torrent_client_detection',
+);
+
+/// Android 原生种子文件导出 MethodChannel 名称。
+///
+/// 该通道只负责通过系统 Storage Access Framework 创建用户选择的目标文件，
+/// 并把 APP 专属目录内的 `.torrent` 复制过去，不申请全文件访问权限。
+const _torrentSeedExportChannel = MethodChannel(
+  'anime_mobile_torrent/torrent_seed_export',
 );
 
 /// 本地兼容实测记录的 SharedPreferences key。
@@ -48,6 +57,15 @@ abstract class TorrentHandoffRepository {
   Future<TorrentHandoffResult> openSeedFileWithShareFallback(
     TorrentSeedFile file,
   );
+}
+
+/// Torrent 种子文件导出仓库接口。
+///
+/// 导出是用户主动把 APP 专属目录中的 `.torrent` 保存到自己选择的位置，用于
+/// 外部 BT 客户端无法通过直开或分享接收时的手动导入兜底。
+abstract class TorrentSeedExportRepository {
+  /// 通过系统文件创建器导出 `.torrent` 文件。
+  Future<TorrentSeedExportResult> exportSeedFile(TorrentSeedFile file);
 }
 
 /// 外部 BT 客户端能力检测仓库接口。
@@ -183,6 +201,73 @@ class PluginTorrentHandoffRepository implements TorrentHandoffRepository {
       case ResultType.error:
         return TorrentHandoffStatus.error;
     }
+  }
+}
+
+/// 基于 Android Storage Access Framework 的种子文件导出实现。
+///
+/// Flutter 插件 `file_selector` 当前 Android 端没有实现保存位置选择，因此这里
+/// 使用一个很窄的 MethodChannel 调 Android `ACTION_CREATE_DOCUMENT`。平台
+/// 通道只复制用户显式选择的 `.torrent` 文件，不读取外部目录、不扫描下载结果。
+class MethodChannelTorrentSeedExportRepository
+    implements TorrentSeedExportRepository {
+  const MethodChannelTorrentSeedExportRepository({
+    this.seedExportChannel = _torrentSeedExportChannel,
+  });
+
+  /// 与 Android 宿主通信的导出通道。
+  final MethodChannel seedExportChannel;
+
+  @override
+  Future<TorrentSeedExportResult> exportSeedFile(TorrentSeedFile file) async {
+    try {
+      final result = await seedExportChannel
+          .invokeMapMethod<String, dynamic>('exportTorrentSeedFile', {
+            'localPath': file.localPath,
+            'fileName': file.fileName,
+            'mimeType': TorrentSeedFile.mimeType,
+          });
+
+      if (result == null) {
+        return const TorrentSeedExportResult(
+          status: TorrentSeedExportStatus.error,
+          platformMessage: '平台导出通道没有返回结果',
+        );
+      }
+
+      return TorrentSeedExportResult(
+        status: _mapSeedExportStatus(result['status']?.toString()),
+        platformMessage: result['message']?.toString() ?? '',
+        destinationUri: result['destinationUri']?.toString(),
+      );
+    } on MissingPluginException catch (error) {
+      return TorrentSeedExportResult(
+        status: TorrentSeedExportStatus.platformUnavailable,
+        platformMessage: error.message ?? error.toString(),
+      );
+    } on PlatformException catch (error) {
+      return TorrentSeedExportResult(
+        status: TorrentSeedExportStatus.error,
+        platformMessage: error.message ?? error.toString(),
+      );
+    } catch (error) {
+      return TorrentSeedExportResult(
+        status: TorrentSeedExportStatus.error,
+        platformMessage: error.toString(),
+      );
+    }
+  }
+
+  /// 将 Android 平台返回的字符串状态收敛为稳定的 Dart 枚举。
+  TorrentSeedExportStatus _mapSeedExportStatus(String? status) {
+    return switch (status) {
+      'exported' => TorrentSeedExportStatus.exported,
+      'canceled' => TorrentSeedExportStatus.canceled,
+      'fileNotFound' => TorrentSeedExportStatus.fileNotFound,
+      'permissionDenied' => TorrentSeedExportStatus.permissionDenied,
+      'platformUnavailable' => TorrentSeedExportStatus.platformUnavailable,
+      _ => TorrentSeedExportStatus.error,
+    };
   }
 }
 
@@ -390,6 +475,12 @@ final torrentHandoffRepositoryProvider = Provider<TorrentHandoffRepository>((
 ) {
   return const PluginTorrentHandoffRepository();
 });
+
+/// Torrent 种子文件导出仓库 Provider。
+final torrentSeedExportRepositoryProvider =
+    Provider<TorrentSeedExportRepository>((ref) {
+      return const MethodChannelTorrentSeedExportRepository();
+    });
 
 /// 外部 BT 客户端能力检测仓库 Provider。
 final torrentClientCapabilityRepositoryProvider =

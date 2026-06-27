@@ -5,12 +5,16 @@ import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_cli
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_client_compatibility_record.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_compatibility_report.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_handoff_result.dart';
+import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_export_result.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_history_item.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_file.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('TorrentSeedFile', () {
     test('保留交给外部 BT 客户端所需的本地种子文件信息', () {
       final sourceUri = Uri.parse('https://dl.dmhy.org/test.torrent');
@@ -56,6 +60,31 @@ void main() {
       expect(shared.userMessage, '已打开系统分享面板，请选择 BT 客户端');
       expect(noClient.isHandled, isFalse);
       expect(noClient.userMessage, '没有找到可打开种子文件的 BT 客户端');
+    });
+  });
+
+  group('TorrentSeedExportResult', () {
+    test('区分导出成功、取消和失败状态', () {
+      const exported = TorrentSeedExportResult(
+        status: TorrentSeedExportStatus.exported,
+        platformMessage: 'exported',
+        destinationUri: 'content://exports/test.torrent',
+      );
+      const canceled = TorrentSeedExportResult(
+        status: TorrentSeedExportStatus.canceled,
+        platformMessage: 'canceled',
+      );
+      const unavailable = TorrentSeedExportResult(
+        status: TorrentSeedExportStatus.platformUnavailable,
+        platformMessage: 'no document provider',
+      );
+
+      expect(exported.isExported, isTrue);
+      expect(exported.userMessage, '已导出种子文件');
+      expect(exported.destinationUri, 'content://exports/test.torrent');
+      expect(canceled.isExported, isFalse);
+      expect(canceled.userMessage, '已取消导出');
+      expect(unavailable.userMessage, '当前设备没有可用的文件保存入口');
     });
   });
 
@@ -498,6 +527,66 @@ void main() {
       for (var index = 5; index < 25; index++) {
         expect(await seedFiles[index].exists(), isTrue);
       }
+    });
+  });
+
+  group('MethodChannelTorrentSeedExportRepository', () {
+    const channel = MethodChannel('test_torrent_seed_export');
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    test('可以把 Android 平台导出结果映射为稳定状态', () async {
+      final calls = <MethodCall>[];
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            calls.add(call);
+            return {
+              'status': 'exported',
+              'message': 'ok',
+              'destinationUri': 'content://exports/test.torrent',
+            };
+          });
+      const repository = MethodChannelTorrentSeedExportRepository(
+        seedExportChannel: channel,
+      );
+
+      final result = await repository.exportSeedFile(
+        const TorrentSeedFile(
+          localPath: '/tmp/test.torrent',
+          fileName: 'test.torrent',
+          length: 128,
+        ),
+      );
+
+      expect(result.status, TorrentSeedExportStatus.exported);
+      expect(result.isExported, isTrue);
+      expect(result.destinationUri, 'content://exports/test.torrent');
+      expect(calls.single.method, 'exportTorrentSeedFile');
+      expect(calls.single.arguments, {
+        'localPath': '/tmp/test.torrent',
+        'fileName': 'test.torrent',
+        'mimeType': TorrentSeedFile.mimeType,
+      });
+    });
+
+    test('平台通道不可用时返回导出不可用', () async {
+      const repository = MethodChannelTorrentSeedExportRepository(
+        seedExportChannel: channel,
+      );
+
+      final result = await repository.exportSeedFile(
+        const TorrentSeedFile(
+          localPath: '/tmp/missing.torrent',
+          fileName: 'missing.torrent',
+          length: 0,
+        ),
+      );
+
+      expect(result.status, TorrentSeedExportStatus.platformUnavailable);
+      expect(result.userMessage, '当前设备没有可用的文件保存入口');
     });
   });
 }
