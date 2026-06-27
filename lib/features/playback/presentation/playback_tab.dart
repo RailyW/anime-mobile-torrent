@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../application/playback_providers.dart';
 import '../domain/local_video_file.dart';
 import '../domain/playback_open_result.dart';
+import '../domain/recent_local_video.dart';
 
 /// 本地播放首页入口。
 ///
@@ -53,6 +54,10 @@ class _PlaybackTabState extends ConsumerState<PlaybackTab> {
         _selectedVideo = video;
         _lastOpenResult = null;
       });
+
+      final historyRepository = ref.read(playbackHistoryRepositoryProvider);
+      await historyRepository.addRecentVideo(RecentLocalVideo.capture(video));
+      ref.invalidate(recentLocalVideosProvider);
     } catch (error) {
       if (!mounted) {
         return;
@@ -123,8 +128,40 @@ class _PlaybackTabState extends ConsumerState<PlaybackTab> {
     }
   }
 
+  /// 从最近视频记录中选用一个文件。
+  ///
+  /// 选用只回填当前页面状态，不会主动打开播放器；用户仍然需要点击“播放”，
+  /// 这样可以在路径可能失效时保留清晰的用户操作边界。
+  void _selectRecentVideo(RecentLocalVideo recentVideo) {
+    setState(() {
+      _selectedVideo = recentVideo.video;
+      _lastOpenResult = null;
+    });
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('已选用：${recentVideo.video.name}')));
+  }
+
+  /// 清空本机最近视频记录。
+  Future<void> _clearRecentVideos() async {
+    final historyRepository = ref.read(playbackHistoryRepositoryProvider);
+    await historyRepository.clearRecentVideos();
+    ref.invalidate(recentLocalVideosProvider);
+
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('已清空最近视频')));
+  }
+
   @override
   Widget build(BuildContext context) {
+    final recentVideos = ref.watch(recentLocalVideosProvider);
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
@@ -138,12 +175,196 @@ class _PlaybackTabState extends ConsumerState<PlaybackTab> {
           onOpenVideo: _openSelectedVideo,
         ),
         const SizedBox(height: 16),
+        _RecentVideosPanel(
+          recentVideos: recentVideos,
+          onSelectVideo: _selectRecentVideo,
+          onClear: _clearRecentVideos,
+        ),
+        const SizedBox(height: 16),
         const _PlaybackCapabilityCard(),
         if (_lastOpenResult != null) ...[
           const SizedBox(height: 16),
           _PlaybackResultCard(result: _lastOpenResult!),
         ],
       ],
+    );
+  }
+}
+
+/// 最近视频面板。
+///
+/// 面板只展示用户显式选择过的视频记录，帮助用户回到外部 BT 客户端下载完成
+/// 后的播放路径；它不扫描文件系统，也不保证旧路径一定仍然可访问。
+class _RecentVideosPanel extends StatelessWidget {
+  const _RecentVideosPanel({
+    required this.recentVideos,
+    required this.onSelectVideo,
+    required this.onClear,
+  });
+
+  final AsyncValue<List<RecentLocalVideo>> recentVideos;
+  final ValueChanged<RecentLocalVideo> onSelectVideo;
+  final Future<void> Function() onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('最近视频', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 6),
+            Text(
+              '保留最近手动选择过的视频，方便外部客户端下载完成后再次交给系统播放器。',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            recentVideos.when(
+              data: (videos) {
+                return _RecentVideosContent(
+                  recentVideos: videos,
+                  onSelectVideo: onSelectVideo,
+                  onClear: onClear,
+                );
+              },
+              error: (error, _) {
+                return Text(
+                  '读取最近视频失败：$error',
+                  style: TextStyle(color: scheme.error),
+                );
+              },
+              loading: () => const Text('正在读取最近视频'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 最近视频列表内容。
+class _RecentVideosContent extends StatelessWidget {
+  const _RecentVideosContent({
+    required this.recentVideos,
+    required this.onSelectVideo,
+    required this.onClear,
+  });
+
+  final List<RecentLocalVideo> recentVideos;
+  final ValueChanged<RecentLocalVideo> onSelectVideo;
+  final Future<void> Function() onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    if (recentVideos.isEmpty) {
+      return const Text('暂无最近视频');
+    }
+
+    final visibleVideos = recentVideos.take(5).toList();
+    return Column(
+      children: [
+        for (final recentVideo in visibleVideos)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _RecentVideoTile(
+              recentVideo: recentVideo,
+              onSelectVideo: onSelectVideo,
+            ),
+          ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: onClear,
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('清空最近'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 单条最近视频记录。
+class _RecentVideoTile extends StatelessWidget {
+  const _RecentVideoTile({
+    required this.recentVideo,
+    required this.onSelectVideo,
+  });
+
+  final RecentLocalVideo recentVideo;
+  final ValueChanged<RecentLocalVideo> onSelectVideo;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final video = recentVideo.video;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.history_outlined, color: scheme.secondary, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    video.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${recentVideo.selectedAtLabel} · ${video.displayLength} · ${video.mimeType}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    video.path,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton.icon(
+              onPressed: () => onSelectVideo(recentVideo),
+              icon: const Icon(Icons.check_outlined),
+              label: const Text('选用'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

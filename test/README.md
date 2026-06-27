@@ -13,8 +13,8 @@
 - `bangumi_collection_test.dart`：Bangumi 收藏与章节进度模型和分页控制器单元测试，验证收藏状态枚举、单条收藏解析、收藏列表条目摘要解析、收藏分页解析、首页收藏列表分页加载与状态筛选、收藏修改请求序列化、章节状态分页解析、批量标记到目标话数的章节选择和章节状态修改请求序列化。
 - `bangumi_dmhy_keyword_test.dart`：Bangumi 到 DMHY 搜索联动的关键词单元测试，验证中文名优先、原名兜底和空白归一化。
 - `bangumi_user_test.dart`：Bangumi 当前用户模型单元测试，验证 `/v0/me` 用户字段、头像字段和展示名称解析。
-- `playback_file_test.dart`：播放模块本地视频模型单元测试，验证文件名提取、视频 MIME 推断、文件大小格式化和最小文件信息保留。
-- `widget_test.dart`：首页烟测，验证 APP 可以加载并切换 Bangumi、DMHY、种子交接、播放和后台五个主要模块，并确认种子交接页展示当前设备检测、本机兼容实测记录、外部 BT 客户端自检与失败处理入口、后台页展示 DMHY 订阅检查面板与后台自动检查摘要区，且首页路由参数可以直接打开后台标签页；同时用 fake repository 验证 Bangumi 搜索结果渲染、Bangumi 搜索结果进入条目详情页、Bangumi 详情页跳转 DMHY 自动搜索、DMHY RSS 搜索结果渲染、资源卡片外部 BT 客户端预提示、动态种子主按钮和 DMHY 种子文件下载后外部客户端交接。
+- `playback_file_test.dart`：播放模块本地视频模型单元测试，验证文件名提取、视频 MIME 推断、文件大小格式化、最小文件信息保留、最近视频记录序列化和 `SharedPreferences` 最近视频仓库。
+- `widget_test.dart`：首页烟测，验证 APP 可以加载并切换 Bangumi、DMHY、种子交接、播放和后台五个主要模块，并确认种子交接页展示当前设备检测、本机兼容实测记录、外部 BT 客户端自检与失败处理入口，播放页展示最近视频入口，后台页展示 DMHY 订阅检查面板与后台自动检查摘要区，且首页路由参数可以直接打开后台标签页；同时用 fake repository 验证 Bangumi 搜索结果渲染、Bangumi 搜索结果进入条目详情页、Bangumi 详情页跳转 DMHY 自动搜索、DMHY RSS 搜索结果渲染、资源卡片外部 BT 客户端预提示、动态种子主按钮和 DMHY 种子文件下载后外部客户端交接。
 
 ## 设计边界
 

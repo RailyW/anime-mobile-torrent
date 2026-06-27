@@ -96,6 +96,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('手动选择'), findsOneWidget);
     expect(find.text('选择视频'), findsOneWidget);
+    expect(find.text('最近视频'), findsOneWidget);
+    expect(find.text('暂无最近视频'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '播放'), findsOneWidget);
 
     await tester.tap(find.text('后台').last);

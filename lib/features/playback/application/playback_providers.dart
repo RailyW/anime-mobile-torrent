@@ -1,9 +1,19 @@
+import 'dart:convert';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../domain/local_video_file.dart';
 import '../domain/playback_open_result.dart';
+import '../domain/recent_local_video.dart';
+
+/// 最近本地视频记录的 SharedPreferences key。
+const _recentVideosKey = 'playback.recent_local_videos';
+
+/// 本机最多保留的最近视频数量。
+const _maxRecentVideos = 10;
 
 /// 播放模块仓库接口。
 ///
@@ -15,6 +25,21 @@ abstract class PlaybackRepository {
 
   /// 把已选择的视频文件交给系统或第三方播放器。
   Future<PlaybackOpenResult> openVideo(LocalVideoFile video);
+}
+
+/// 最近播放视频仓库接口。
+///
+/// 该仓库只保存用户通过文件选择器显式选过的视频记录，不扫描目录，不申请
+/// 额外文件权限，也不追踪外部 BT 客户端的下载任务。
+abstract class PlaybackHistoryRepository {
+  /// 读取最近选择过的视频，按选择时间倒序排列。
+  Future<List<RecentLocalVideo>> loadRecentVideos();
+
+  /// 新增或更新一条最近视频记录。
+  Future<void> addRecentVideo(RecentLocalVideo recentVideo);
+
+  /// 清空最近视频记录。
+  Future<void> clearRecentVideos();
 }
 
 /// 基于成熟 Flutter 插件的播放仓库实现。
@@ -118,7 +143,78 @@ class PlaybackException implements Exception {
   String toString() => message;
 }
 
+/// 基于 SharedPreferences 的最近视频记录仓库。
+///
+/// 最近列表数据量很小，因此使用 StringList 保存 JSON 即可；读取时会跳过
+/// 单条损坏记录，避免旧版本或异常数据影响播放页加载。
+class SharedPreferencesPlaybackHistoryRepository
+    implements PlaybackHistoryRepository {
+  const SharedPreferencesPlaybackHistoryRepository();
+
+  @override
+  Future<List<RecentLocalVideo>> loadRecentVideos() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawRecords = prefs.getStringList(_recentVideosKey) ?? [];
+    final records = <RecentLocalVideo>[];
+
+    for (final rawRecord in rawRecords) {
+      try {
+        final decoded = jsonDecode(rawRecord);
+        if (decoded is Map) {
+          records.add(RecentLocalVideo.fromJson(decoded));
+        }
+      } catch (_) {
+        // 单条记录损坏时跳过，保留其他正常最近视频。
+      }
+    }
+
+    records.sort((a, b) => b.selectedAt.compareTo(a.selectedAt));
+    return records;
+  }
+
+  @override
+  Future<void> addRecentVideo(RecentLocalVideo recentVideo) async {
+    final prefs = await SharedPreferences.getInstance();
+    final existingRecords = await loadRecentVideos();
+    final mergedRecords = <RecentLocalVideo>[recentVideo];
+
+    for (final record in existingRecords) {
+      if (record.dedupeKey != recentVideo.dedupeKey) {
+        mergedRecords.add(record);
+      }
+      if (mergedRecords.length >= _maxRecentVideos) {
+        break;
+      }
+    }
+
+    final encodedRecords = mergedRecords
+        .map((item) => jsonEncode(item.toJson()))
+        .toList();
+    await prefs.setStringList(_recentVideosKey, encodedRecords);
+  }
+
+  @override
+  Future<void> clearRecentVideos() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_recentVideosKey);
+  }
+}
+
 /// 播放模块仓库 Provider。
 final playbackRepositoryProvider = Provider<PlaybackRepository>((ref) {
   return const FileSelectorPlaybackRepository();
 });
+
+/// 最近视频记录仓库 Provider。
+final playbackHistoryRepositoryProvider = Provider<PlaybackHistoryRepository>((
+  ref,
+) {
+  return const SharedPreferencesPlaybackHistoryRepository();
+});
+
+/// 当前设备保存的最近选择视频列表。
+final recentLocalVideosProvider =
+    FutureProvider.autoDispose<List<RecentLocalVideo>>((ref) {
+      final repository = ref.watch(playbackHistoryRepositoryProvider);
+      return repository.loadRecentVideos();
+    });
