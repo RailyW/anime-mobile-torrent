@@ -42,6 +42,12 @@ void main() {
     expect(find.text('手动选择'), findsOneWidget);
     expect(find.text('选择视频'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '播放'), findsOneWidget);
+
+    await tester.tap(find.text('后台').last);
+    await tester.pumpAndSettle();
+    expect(find.text('后台常驻'), findsOneWidget);
+    expect(find.text('服务控制'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '启动后台'), findsOneWidget);
   });
 
   testWidgets('Bangumi 搜索可以渲染动画条目结果', (tester) async {

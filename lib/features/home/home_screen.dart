@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../background/presentation/background_tab.dart';
 import '../bangumi/presentation/bangumi_tab.dart';
 import '../dmhy/presentation/dmhy_tab.dart';
 import '../playback/presentation/playback_tab.dart';
@@ -51,8 +52,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// 切换首页模块。
   ///
-  /// 使用 IndexedStack 保留各模块页面状态，为后续搜索框输入、分页位置和
-  /// 授权状态展示预留稳定体验。
+  /// 使用 IndexedStack 保留各模块页面状态，为搜索框输入、分页位置、
+  /// 授权状态和后台服务控制状态预留稳定体验。
   void _selectTab(int index) {
     setState(() {
       _selectedIndex = index;
@@ -85,6 +86,12 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedIcon: Icons.play_circle,
         label: '播放',
         child: PlaybackTab(),
+      ),
+      const _HomeTab(
+        icon: Icons.notifications_active_outlined,
+        selectedIcon: Icons.notifications_active,
+        label: '后台',
+        child: BackgroundTab(),
       ),
     ];
 
@@ -125,8 +132,8 @@ int _normalizeTabIndex(int value) {
     return 0;
   }
 
-  if (value > 3) {
-    return 3;
+  if (value > 4) {
+    return 4;
   }
 
   return value;

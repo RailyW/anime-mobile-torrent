@@ -31,6 +31,9 @@ dependencies:
   file_selector: ^1.1.0
   open_filex: ^4.7.0
 
+  # Android 前台服务，用于用户显式开启的后台常驻通知和后续订阅检查挂点。
+  flutter_foreground_task: ^9.2.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

@@ -15,6 +15,7 @@ flowchart LR
     SeedStore["种子文件缓存 / FileProvider"]
     TorrentHandoff["Torrent Handoff"]
     ExternalTorrentClient["外部 BT 客户端"]
+    BackgroundService["Android Foreground Service"]
     AndroidService["可选后续：Android TorrentService"]
     TorrentCore["可选后续：libtorrent4j"]
     Player["系统/第三方播放器"]
@@ -24,6 +25,7 @@ flowchart LR
     Flutter --> Dmhy
     Flutter --> SeedStore
     Flutter --> TorrentHandoff
+    Flutter --> BackgroundService
     SeedStore --> TorrentHandoff
     TorrentHandoff --> ExternalTorrentClient
     User --> Player
@@ -39,7 +41,8 @@ flowchart LR
 4. Torrent 交接模块只负责 magnet 打开、magnet 复制、`.torrent` 种子文件下载、外部客户端直开和分享兜底；当前已通过成熟 Flutter 插件落地直开与分享双路径。
 5. BT 视频内容下载由用户手机自己的外部 BT 客户端负责，APP 不管理下载进度、暂停恢复、做种、限速和下载目录。
 6. 播放模块首期可以只调起系统/第三方播放器；如果视频由外部客户端下载完成，APP 需要用户手动选择本地视频后才能播放。
-7. 如果未来明确要在 APP 内管理 BT 下载，再新增 Android 原生 Foreground Service 加 `libtorrent4j` 的后续阶段。
+7. 后台常驻使用用户显式开启的 Android Foreground Service，当前只提供持续通知、低频心跳和后续订阅检查挂点。
+8. 如果未来明确要在 APP 内管理 BT 下载，再新增 Android 原生 Foreground Service 加 `libtorrent4j` 的后续阶段。
 
 ## 阶段拆分
 
@@ -64,9 +67,9 @@ flowchart LR
 
 1. 已生成 Android-only Flutter 工程，包名前缀为 `com.railyw`。
 2. 已建立 `lib/app`、`lib/features`、`lib/shared`、`android` 和 `test` 模块 README。
-3. 已增加首页导航壳，覆盖 Bangumi、DMHY、种子交接和播放四个入口。
-4. 已在 Android Manifest 中声明网络权限、magnet 查询、`.torrent` MIME 查询和 `video/*` 播放器查询。
-5. 已加入 `go_router`、`flutter_riverpod`、`dio`、`flutter_secure_storage`、`url_launcher`、`path_provider`、`share_plus`、`file_selector`、`open_filex`、`xml` 和 `html` 作为后续阶段基础依赖。
+3. 已增加首页导航壳，覆盖 Bangumi、DMHY、种子交接、播放和后台常驻五个入口。
+4. 已在 Android Manifest 中声明网络权限、前台服务权限、前台服务类型权限、magnet 查询、`.torrent` MIME 查询和 `video/*` 播放器查询。
+5. 已加入 `go_router`、`flutter_riverpod`、`dio`、`flutter_secure_storage`、`url_launcher`、`path_provider`、`share_plus`、`file_selector`、`open_filex`、`flutter_foreground_task`、`xml` 和 `html` 作为后续阶段基础依赖。
 
 ### 阶段 1：Bangumi 登录与条目浏览
 
@@ -217,6 +220,28 @@ flowchart LR
 2. 如果后续发现部分 Android 设备或播放器兼容性不足，再补 Kotlin 播放桥接，负责更细粒度的 MIME 判断、URI 授权和 Intent 调起。
 3. 首期不申请 `MANAGE_EXTERNAL_STORAGE`，也不扫描外部 BT 客户端的下载目录。
 
+### 阶段 5：后台常驻与订阅检查
+
+目标：
+
+1. 支持用户显式开启 Android 前台服务。
+2. 服务运行时显示持续通知，用户可以回到应用或在应用内停止服务。
+3. 提供低频心跳，为后续 DMHY RSS 订阅检查、追番更新提醒或下载交接提醒预留挂点。
+4. 不在后台静默下载种子或视频内容。
+
+当前落地情况：
+
+1. 已接入 `flutter_foreground_task`，在 `lib/features/background` 中封装后台常驻状态、Repository、Riverpod 控制器和首页标签页。
+2. 已在 `main.dart` 初始化 foreground task 通信端口，并使用 `WithForegroundTask` 处理服务运行时的返回键最小化行为。
+3. 已在 Android Manifest 中声明 `FOREGROUND_SERVICE`、`FOREGROUND_SERVICE_DATA_SYNC` 和插件固定服务 `com.pravera.flutter_foreground_task.service.ForegroundService`。
+4. 已提供“后台”首页标签页，支持启动、停止、刷新状态，并展示持续通知和低频心跳接入情况。
+
+后续建议：
+
+1. 把 DMHY RSS 订阅检查做成显式配置的低频任务。
+2. 增加通知动作按钮，例如“停止后台”或“打开 DMHY”。
+3. 按 Android 15 `dataSync` 限制评估订阅检查频率，避免把前台服务当作无限运行下载器。
+
 ## 首期最小闭环建议
 
 为了尽快形成可验证闭环，建议首个开发里程碑只做：
@@ -228,6 +253,7 @@ flowchart LR
 5. 按需解析 DMHY 详情页并下载 `.torrent` 种子文件。
 6. 通过系统 Intent、分享或复制，把 magnet 或 `.torrent` 种子文件交给外部 BT 客户端。
 7. 已提供手动选择本地视频并调用播放器的入口，不自动追踪外部 BT 客户端的下载结果。
+8. 已提供用户显式开启的 Android 前台服务后台常驻入口。
 
 复杂过滤、收藏分页、章节完整分页、批量进度操作、RSS 自动订阅、外部客户端兼容性清单、公共目录导出和内置下载器可以在基础闭环跑通后逐步补齐。
 
@@ -239,4 +265,5 @@ flowchart LR
 4. Torrent 与 DMHY 资源聚合存在应用商店合规风险。
 5. GPL 项目只能参考架构，不能直接复制代码。
 6. DMHY RSS/HTML 不是强契约 API，需要做好字段缺失、域名变更和请求失败兜底。
-7. 如果后续恢复内置下载器，Android 15 对 `dataSync` Foreground Service 的时间限制仍会影响“长期常驻后台”体验。
+7. Android 15 对 `dataSync` Foreground Service 的时间限制会影响“长期常驻后台”体验，订阅检查和未来后台任务需要控制频率并避免过度承诺。
+8. 如果后续恢复内置下载器，仍需要单独评估 BT 引擎、任务通知和 Foreground Service 类型。

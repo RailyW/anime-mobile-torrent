@@ -1,6 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!-- Bangumi API、DMHY RSS 和种子文件下载都需要访问网络。 -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 用户显式开启后台常驻时使用 Android 前台服务。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Android 14+ 要求声明与 foregroundServiceType 对应的细分权限。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
         android:label="Anime Mobile Torrent"
@@ -28,6 +32,11 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- flutter_foreground_task 的前台服务实现，名称必须保持插件固定值。 -->
+        <service
+            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
     </application>
 
     <!-- Android 11+ 需要声明包可见性查询，才能判断外部 APP 是否可处理对应 Intent。 -->

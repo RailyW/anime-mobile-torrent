@@ -5,6 +5,7 @@
 ## 已有文档
 
 - [2026-06-26-technical-research.md](2026-06-26-technical-research.md)：Bangumi API、Android 外部应用交接、Torrent 种子文件交接、DMHY RSS/搜索接入调研。
+- [2026-06-26-background-foreground-service.md](2026-06-26-background-foreground-service.md)：Android 后台常驻、Foreground Service、`flutter_foreground_task` 插件和 Android 14/15 限制调研。
 
 ## 调研维护要求
 
