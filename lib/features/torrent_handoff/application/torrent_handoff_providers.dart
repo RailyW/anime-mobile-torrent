@@ -1,9 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:open_filex/open_filex.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../domain/torrent_client_capabilities.dart';
+import '../domain/torrent_client_compatibility_record.dart';
 import '../domain/torrent_handoff_result.dart';
 import '../domain/torrent_seed_file.dart';
 
@@ -14,6 +18,12 @@ import '../domain/torrent_seed_file.dart';
 const _torrentClientDetectionChannel = MethodChannel(
   'anime_mobile_torrent/torrent_client_detection',
 );
+
+/// 本地兼容实测记录的 SharedPreferences key。
+const _compatibilityRecordsKey = 'torrent_handoff.client_compatibility_records';
+
+/// 本地最多保留的实测记录数量。
+const _maxCompatibilityRecords = 20;
 
 /// Torrent 种子文件交接仓库接口。
 ///
@@ -39,6 +49,20 @@ abstract class TorrentHandoffRepository {
 abstract class TorrentClientCapabilityRepository {
   /// 查询当前设备对 magnet、`.torrent` 直开和 `.torrent` 分享导入的支持情况。
   Future<TorrentClientCapabilities> detectCapabilities();
+}
+
+/// 外部 BT 客户端兼容实测记录仓库接口。
+///
+/// 记录只保存在本机，用于帮助用户或测试者回看当前设备的交接实测结果。
+abstract class TorrentCompatibilityRecordRepository {
+  /// 读取最近的兼容实测记录，按时间倒序排列。
+  Future<List<TorrentClientCompatibilityRecord>> loadRecords();
+
+  /// 新增一条兼容实测记录。
+  Future<void> addRecord(TorrentClientCompatibilityRecord record);
+
+  /// 清空本机兼容实测记录。
+  Future<void> clearRecords();
 }
 
 /// 基于成熟 Flutter 插件的 Torrent 交接仓库实现。
@@ -163,6 +187,55 @@ class MethodChannelTorrentClientCapabilityRepository
   }
 }
 
+/// 基于 SharedPreferences 的本地兼容实测记录仓库。
+///
+/// 使用 StringList 保存 JSON，避免为少量本机记录引入数据库依赖。读取时会跳过
+/// 损坏的单条记录，防止旧版本数据影响整个页面。
+class SharedPreferencesTorrentCompatibilityRecordRepository
+    implements TorrentCompatibilityRecordRepository {
+  const SharedPreferencesTorrentCompatibilityRecordRepository();
+
+  @override
+  Future<List<TorrentClientCompatibilityRecord>> loadRecords() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rawRecords = prefs.getStringList(_compatibilityRecordsKey) ?? [];
+    final records = <TorrentClientCompatibilityRecord>[];
+
+    for (final rawRecord in rawRecords) {
+      try {
+        final decoded = jsonDecode(rawRecord);
+        if (decoded is Map) {
+          records.add(TorrentClientCompatibilityRecord.fromJson(decoded));
+        }
+      } catch (_) {
+        // 单条记录损坏时跳过，避免用户丢失其他正常记录。
+      }
+    }
+
+    records.sort((a, b) => b.recordedAt.compareTo(a.recordedAt));
+    return records;
+  }
+
+  @override
+  Future<void> addRecord(TorrentClientCompatibilityRecord record) async {
+    final prefs = await SharedPreferences.getInstance();
+    final records = [
+      record,
+      ...await loadRecords(),
+    ].take(_maxCompatibilityRecords).toList();
+    final encodedRecords = records
+        .map((item) => jsonEncode(item.toJson()))
+        .toList();
+    await prefs.setStringList(_compatibilityRecordsKey, encodedRecords);
+  }
+
+  @override
+  Future<void> clearRecords() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_compatibilityRecordsKey);
+  }
+}
+
 /// Torrent 种子文件交接仓库 Provider。
 final torrentHandoffRepositoryProvider = Provider<TorrentHandoffRepository>((
   ref,
@@ -184,4 +257,19 @@ final torrentClientCapabilitiesProvider =
     FutureProvider.autoDispose<TorrentClientCapabilities>((ref) {
       final repository = ref.watch(torrentClientCapabilityRepositoryProvider);
       return repository.detectCapabilities();
+    });
+
+/// 外部 BT 客户端兼容实测记录仓库 Provider。
+final torrentCompatibilityRecordRepositoryProvider =
+    Provider<TorrentCompatibilityRecordRepository>((ref) {
+      return const SharedPreferencesTorrentCompatibilityRecordRepository();
+    });
+
+/// 当前设备本机保存的外部 BT 客户端兼容实测记录。
+final torrentCompatibilityRecordsProvider =
+    FutureProvider.autoDispose<List<TorrentClientCompatibilityRecord>>((ref) {
+      final repository = ref.watch(
+        torrentCompatibilityRecordRepositoryProvider,
+      );
+      return repository.loadRecords();
     });

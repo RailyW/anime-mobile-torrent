@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../application/torrent_handoff_providers.dart';
 import '../domain/torrent_client_capabilities.dart';
+import '../domain/torrent_client_compatibility_record.dart';
 
 /// Torrent 种子交接首页入口。
 ///
@@ -93,6 +94,37 @@ class TorrentHandoffTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final deviceCapabilities = ref.watch(torrentClientCapabilitiesProvider);
+    final compatibilityRecords = ref.watch(torrentCompatibilityRecordsProvider);
+
+    Future<void> recordCompatibility(
+      TorrentCompatibilityOutcome outcome,
+      TorrentClientCapabilities capabilities,
+    ) async {
+      final repository = ref.read(torrentCompatibilityRecordRepositoryProvider);
+      await repository.addRecord(
+        TorrentClientCompatibilityRecord.capture(
+          outcome: outcome,
+          capabilities: capabilities,
+        ),
+      );
+      ref.invalidate(torrentCompatibilityRecordsProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('已记录：${outcome.label}')));
+      }
+    }
+
+    Future<void> clearCompatibilityRecords() async {
+      final repository = ref.read(torrentCompatibilityRecordRepositoryProvider);
+      await repository.clearRecords();
+      ref.invalidate(torrentCompatibilityRecordsProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已清空本机兼容记录')));
+      }
+    }
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
@@ -112,6 +144,13 @@ class TorrentHandoffTab extends ConsumerWidget {
           onRefresh: () => ref.invalidate(torrentClientCapabilitiesProvider),
         ),
         const SizedBox(height: 12),
+        _CompatibilityRecordPanel(
+          capabilities: deviceCapabilities,
+          records: compatibilityRecords,
+          onRecord: recordCompatibility,
+          onClear: clearCompatibilityRecords,
+        ),
+        const SizedBox(height: 12),
         const _GuidePanel(
           title: '外部 BT 客户端自检',
           summary: '用下面四个检查点确认手机里的 BT 客户端能接住 APP 交出的链接或种子文件。',
@@ -127,6 +166,265 @@ class TorrentHandoffTab extends ConsumerWidget {
         const _BoundaryNote(),
       ],
     );
+  }
+}
+
+/// 外部 BT 客户端真实设备兼容记录面板。
+///
+/// 这个面板让用户手动标记“实际试了一次之后的结果”。记录只保存在本机，
+/// 不上传、不推断具体客户端名称，避免把少量个人测试误当作官方兼容清单。
+class _CompatibilityRecordPanel extends StatelessWidget {
+  const _CompatibilityRecordPanel({
+    required this.capabilities,
+    required this.records,
+    required this.onRecord,
+    required this.onClear,
+  });
+
+  final AsyncValue<TorrentClientCapabilities> capabilities;
+  final AsyncValue<List<TorrentClientCompatibilityRecord>> records;
+  final Future<void> Function(
+    TorrentCompatibilityOutcome outcome,
+    TorrentClientCapabilities capabilities,
+  )
+  onRecord;
+  final Future<void> Function() onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('真实设备兼容记录', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 6),
+            Text(
+              '手动记录当前设备的一次交接实测结果，只保存在本机，便于后续回看直开、分享和 magnet 的真实可用性。',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 12),
+            capabilities.when(
+              data: (capabilities) {
+                return _CompatibilityRecordActions(
+                  capabilities: capabilities,
+                  onRecord: onRecord,
+                );
+              },
+              error: (error, _) {
+                return Text(
+                  '检测失败，暂不能附带当前设备摘要：$error',
+                  style: TextStyle(color: scheme.error),
+                );
+              },
+              loading: () => const Text('等待当前设备检测结果后即可记录实测结果'),
+            ),
+            const SizedBox(height: 12),
+            records.when(
+              data: (records) {
+                return _CompatibilityRecordList(
+                  records: records,
+                  onClear: onClear,
+                );
+              },
+              error: (error, _) {
+                return Text(
+                  '读取本机兼容记录失败：$error',
+                  style: TextStyle(color: scheme.error),
+                );
+              },
+              loading: () => const Text('正在读取本机兼容记录'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 兼容实测结果记录按钮组。
+class _CompatibilityRecordActions extends StatelessWidget {
+  const _CompatibilityRecordActions({
+    required this.capabilities,
+    required this.onRecord,
+  });
+
+  final TorrentClientCapabilities capabilities;
+  final Future<void> Function(
+    TorrentCompatibilityOutcome outcome,
+    TorrentClientCapabilities capabilities,
+  )
+  onRecord;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _RecordActionButton(
+          icon: Icons.check_circle_outline,
+          label: '记直开成功',
+          outcome: TorrentCompatibilityOutcome.directOpenSucceeded,
+          capabilities: capabilities,
+          onRecord: onRecord,
+        ),
+        _RecordActionButton(
+          icon: Icons.ios_share_outlined,
+          label: '记分享成功',
+          outcome: TorrentCompatibilityOutcome.shareImportSucceeded,
+          capabilities: capabilities,
+          onRecord: onRecord,
+        ),
+        _RecordActionButton(
+          icon: Icons.link_outlined,
+          label: '记 magnet 兜底',
+          outcome: TorrentCompatibilityOutcome.magnetOnlySucceeded,
+          capabilities: capabilities,
+          onRecord: onRecord,
+        ),
+        _RecordActionButton(
+          icon: Icons.error_outline,
+          label: '记交接失败',
+          outcome: TorrentCompatibilityOutcome.handoffFailed,
+          capabilities: capabilities,
+          onRecord: onRecord,
+        ),
+      ],
+    );
+  }
+}
+
+/// 单个兼容实测记录按钮。
+class _RecordActionButton extends StatelessWidget {
+  const _RecordActionButton({
+    required this.icon,
+    required this.label,
+    required this.outcome,
+    required this.capabilities,
+    required this.onRecord,
+  });
+
+  final IconData icon;
+  final String label;
+  final TorrentCompatibilityOutcome outcome;
+  final TorrentClientCapabilities capabilities;
+  final Future<void> Function(
+    TorrentCompatibilityOutcome outcome,
+    TorrentClientCapabilities capabilities,
+  )
+  onRecord;
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: () => onRecord(outcome, capabilities),
+      icon: Icon(icon),
+      label: Text(label),
+    );
+  }
+}
+
+/// 本机最近兼容实测记录列表。
+class _CompatibilityRecordList extends StatelessWidget {
+  const _CompatibilityRecordList({
+    required this.records,
+    required this.onClear,
+  });
+
+  final List<TorrentClientCompatibilityRecord> records;
+  final Future<void> Function() onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (records.isEmpty) {
+      return const Text('暂无本机实测记录');
+    }
+
+    final visibleRecords = records.take(3).toList();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('最近记录', style: theme.textTheme.titleSmall),
+        const SizedBox(height: 8),
+        for (final record in visibleRecords)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _CompatibilityRecordTile(record: record),
+          ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: onClear,
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('清空记录'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 单条本机兼容实测记录。
+class _CompatibilityRecordTile extends StatelessWidget {
+  const _CompatibilityRecordTile({required this.record});
+
+  final TorrentClientCompatibilityRecord record;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.history_outlined, color: scheme.secondary, size: 20),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${record.outcome.label} · ${_formatRecordTime(record.recordedAt)}',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                record.detectionSummary,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 格式化记录时间，避免为简单本地时间展示引入额外依赖。
+  static String _formatRecordTime(DateTime value) {
+    final local = value.toLocal();
+    final month = local.month.toString().padLeft(2, '0');
+    final day = local.day.toString().padLeft(2, '0');
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '$month-$day $hour:$minute';
   }
 }
 

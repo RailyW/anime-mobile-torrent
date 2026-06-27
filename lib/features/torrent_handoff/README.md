@@ -1,20 +1,21 @@
 # torrent_handoff 模块说明
 
-`lib/features/torrent_handoff` 负责首期 Torrent 边界内的轻量交接能力：复制 magnet、打开 magnet、保存 `.torrent` 种子文件，以及把种子文件打开或分享给外部 BT 客户端。当前真实操作入口优先落在 DMHY 结果卡片中，本模块提供通用种子交接模型、仓库、Android 外部客户端能力检测、能力说明页、外部 BT 客户端自检说明和交接失败处理引导。
+`lib/features/torrent_handoff` 负责首期 Torrent 边界内的轻量交接能力：复制 magnet、打开 magnet、保存 `.torrent` 种子文件，以及把种子文件打开或分享给外部 BT 客户端。当前真实操作入口优先落在 DMHY 结果卡片中，本模块提供通用种子交接模型、仓库、Android 外部客户端能力检测、本机兼容实测记录、能力说明页、外部 BT 客户端自检说明和交接失败处理引导。
 
 ## 当前包含文件
 
 - `domain/torrent_seed_file.dart`：通用 `.torrent` 种子文件模型，描述本地路径、文件名、大小、来源链接和 MIME 类型。
 - `domain/torrent_handoff_result.dart`：外部客户端交接结果模型，描述直开、分享兜底、无客户端、文件缺失、权限不足和未知错误。
 - `domain/torrent_client_capabilities.dart`：当前设备外部 BT 客户端能力检测模型，描述 magnet、`.torrent` 直开和 `.torrent` 分享导入三条系统交接路径。
-- `application/torrent_handoff_providers.dart`：Torrent 交接仓库接口、插件实现和外部客户端检测 Provider，使用 `open_filex` 直开 `.torrent`，使用 `share_plus` 作为分享兜底，并通过 Android MethodChannel 查询系统 resolver。
-- `presentation/torrent_handoff_tab.dart`：种子交接首页入口，明确展示 DMHY 内已接入的 magnet 打开、`.torrent` 下载直开、分享兜底能力、当前设备外部客户端检测结果、外部 BT 客户端兼容自检步骤和失败时处理路径。
+- `domain/torrent_client_compatibility_record.dart`：真实设备兼容实测记录模型，描述用户手动标记的直开成功、分享成功、magnet 兜底成功或交接失败，以及记录时的 resolver 摘要。
+- `application/torrent_handoff_providers.dart`：Torrent 交接仓库接口、插件实现、外部客户端检测 Provider 和本机兼容实测记录 Repository，使用 `open_filex` 直开 `.torrent`，使用 `share_plus` 作为分享兜底，通过 Android MethodChannel 查询系统 resolver，并使用 `SharedPreferences` 保存最近 20 条本机实测记录。
+- `presentation/torrent_handoff_tab.dart`：种子交接首页入口，明确展示 DMHY 内已接入的 magnet 打开、`.torrent` 下载直开、分享兜底能力、当前设备外部客户端检测结果、本机兼容实测记录面板、外部 BT 客户端兼容自检步骤和失败时处理路径。
 
 ## 后续文件规划
 
 - `data/`：可按需承载 `.torrent` 文件缓存管理、文件名清洗和缓存清理策略。
 - `platform/`：必要时把当前暂存在 `MainActivity.kt` 的 Android Intent resolver 检测拆成独立平台桥接类，并继续封装 FileProvider 或更细粒度的 package visibility 查询。
-- `presentation/`：可按需增加真实设备兼容记录、交接确认和操作结果反馈详情页。
+- `presentation/`：可按需增加交接确认、操作结果反馈详情页，或把当前首页内联的兼容实测记录升级为独立详情页。
 
 ## 设计边界
 
@@ -23,5 +24,5 @@
 3. magnet 和 `.torrent` 必须交给用户手机自己的 BT 客户端，失败时提供复制或分享兜底。
 4. 如果未来恢复内置下载器，应新建独立阶段和模块，不把下载器逻辑塞进本交接模块。
 5. `.torrent` 文件直开优先使用成熟插件 `open_filex`；当前 Android 原生平台桥只做 resolver 检测，不替代真实打开或分享动作。
-6. 当前自检说明不推荐具体第三方客户端，只描述系统级交接能力；真实客户端兼容名单需要基于设备测试逐步补充。
+6. 当前自检说明不推荐具体第三方客户端，只描述系统级交接能力；本机兼容实测记录只保存用户手动标记的本设备结果，不上传、不生成官方客户端名单。
 7. 当前设备检测只能证明系统 resolver 对三类 Intent 的响应情况，不能证明某个客户端导入种子后的下载成功率。

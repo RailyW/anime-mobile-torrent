@@ -1,7 +1,10 @@
+import 'package:anime_mobile_torrent/features/torrent_handoff/application/torrent_handoff_providers.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_client_capabilities.dart';
+import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_client_compatibility_record.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_handoff_result.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_file.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   group('TorrentSeedFile', () {
@@ -89,6 +92,121 @@ void main() {
       expect(capabilities.hasAnyHandoffPath, isFalse);
       expect(capabilities.magnetHandlerCount, 0);
       expect(capabilities.platformMessage, 'missing plugin');
+    });
+  });
+
+  group('TorrentClientCompatibilityRecord', () {
+    test('可以捕获当前设备检测摘要并序列化恢复', () {
+      final capabilities = TorrentClientCapabilities(
+        isPlatformBridgeAvailable: true,
+        canOpenMagnet: true,
+        canOpenTorrentFile: true,
+        canShareTorrentFile: false,
+        magnetHandlerCount: 2,
+        torrentViewHandlerCount: 1,
+        torrentShareHandlerCount: 0,
+        androidSdkInt: 35,
+        checkedAt: DateTime.fromMillisecondsSinceEpoch(1710000000000),
+      );
+      final recordedAt = DateTime.fromMillisecondsSinceEpoch(1710000001000);
+
+      final record = TorrentClientCompatibilityRecord.capture(
+        outcome: TorrentCompatibilityOutcome.directOpenSucceeded,
+        capabilities: capabilities,
+        recordedAt: recordedAt,
+      );
+      final restored = TorrentClientCompatibilityRecord.fromJson(
+        record.toJson(),
+      );
+
+      expect(restored.outcome, TorrentCompatibilityOutcome.directOpenSucceeded);
+      expect(restored.recordedAt, recordedAt);
+      expect(restored.canOpenMagnet, isTrue);
+      expect(restored.canOpenTorrentFile, isTrue);
+      expect(restored.canShareTorrentFile, isFalse);
+      expect(
+        restored.detectionSummary,
+        'magnet 2 · .torrent 直开 1 · 分享 0 · SDK 35',
+      );
+    });
+  });
+
+  group('SharedPreferencesTorrentCompatibilityRecordRepository', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    test('可以保存、倒序读取并清空本机兼容实测记录', () async {
+      const repository =
+          SharedPreferencesTorrentCompatibilityRecordRepository();
+      const capabilities = TorrentClientCapabilities(
+        isPlatformBridgeAvailable: true,
+        canOpenMagnet: true,
+        canOpenTorrentFile: false,
+        canShareTorrentFile: true,
+        magnetHandlerCount: 1,
+        torrentViewHandlerCount: 0,
+        torrentShareHandlerCount: 1,
+      );
+
+      await repository.addRecord(
+        TorrentClientCompatibilityRecord.capture(
+          outcome: TorrentCompatibilityOutcome.shareImportSucceeded,
+          capabilities: capabilities,
+          recordedAt: DateTime.fromMillisecondsSinceEpoch(1000),
+        ),
+      );
+      await repository.addRecord(
+        TorrentClientCompatibilityRecord.capture(
+          outcome: TorrentCompatibilityOutcome.magnetOnlySucceeded,
+          capabilities: capabilities,
+          recordedAt: DateTime.fromMillisecondsSinceEpoch(2000),
+        ),
+      );
+
+      final records = await repository.loadRecords();
+      expect(records, hasLength(2));
+      expect(
+        records.first.outcome,
+        TorrentCompatibilityOutcome.magnetOnlySucceeded,
+      );
+      expect(
+        records.last.outcome,
+        TorrentCompatibilityOutcome.shareImportSucceeded,
+      );
+
+      await repository.clearRecords();
+      expect(await repository.loadRecords(), isEmpty);
+    });
+
+    test('最多保留最近 20 条本机兼容实测记录', () async {
+      const repository =
+          SharedPreferencesTorrentCompatibilityRecordRepository();
+      const capabilities = TorrentClientCapabilities(
+        isPlatformBridgeAvailable: true,
+        canOpenMagnet: true,
+        canOpenTorrentFile: true,
+        canShareTorrentFile: true,
+        magnetHandlerCount: 1,
+        torrentViewHandlerCount: 1,
+        torrentShareHandlerCount: 1,
+      );
+
+      for (var index = 0; index < 25; index++) {
+        await repository.addRecord(
+          TorrentClientCompatibilityRecord.capture(
+            outcome: TorrentCompatibilityOutcome.directOpenSucceeded,
+            capabilities: capabilities,
+            recordedAt: DateTime.fromMillisecondsSinceEpoch(index),
+          ),
+        );
+      }
+
+      final records = await repository.loadRecords();
+
+      expect(records, hasLength(20));
+      expect(records.first.recordedAt, DateTime.fromMillisecondsSinceEpoch(24));
+      expect(records.last.recordedAt, DateTime.fromMillisecondsSinceEpoch(5));
     });
   });
 }

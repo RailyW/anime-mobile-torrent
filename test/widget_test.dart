@@ -55,6 +55,23 @@ void main() {
     expect(find.text('检测不可用'), findsWidgets);
 
     await tester.scrollUntilVisible(
+      find.text('真实设备兼容记录'),
+      220,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('真实设备兼容记录'), findsOneWidget);
+    expect(find.text('暂无本机实测记录'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, '记直开成功'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, '记直开成功'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('最近记录'), findsOneWidget);
+    expect(find.textContaining('直开成功'), findsWidgets);
+
+    await tester.scrollUntilVisible(
       find.text('外部 BT 客户端自检'),
       260,
       scrollable: find.byType(Scrollable).last,
