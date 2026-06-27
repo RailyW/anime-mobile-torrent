@@ -83,7 +83,7 @@ flowchart LR
 
 当前落地情况：
 
-1. 已接入可配置 OAuth 登录，使用 `flutter_appauth` 调用 Bangumi `/oauth/authorize` 和 `/oauth/access_token`，并提供本机 OAuth client 设置页；用户可以保存自己的 client id、client secret、redirect URI 和 scopes，保存或清除配置时会清理旧 token，redirect URI 必须使用当前 Android 包已注册的 `com.railyw.anime_mobile_torrent` scheme。
+1. 已接入可配置 OAuth 登录，使用 `flutter_appauth` 调用 Bangumi `/oauth/authorize` 和 `/oauth/access_token`，并提供本机 OAuth client 设置页；用户可以保存自己的 client id、client secret、redirect URI 和 scopes，保存或清除配置时会清理旧 token，过期 token 缺少 refresh token 时会自动清理本地凭据，redirect URI 必须使用当前 Android 包已注册的 `com.railyw.anime_mobile_torrent` scheme。
 2. 已通过 `flutter_secure_storage` 保存 access token、refresh token、过期时间、token 类型和 scope。
 3. 已接入 `/v0/me` 当前用户信息读取，并在 Bangumi 首页展示登录状态、用户昵称、用户名、头像、签名、刷新和退出入口。
 4. 已接入公开动画条目搜索，使用 `POST /v0/search/subjects` 和 `filter.type: [2]`。
@@ -95,7 +95,7 @@ flowchart LR
 10. 已接入动画章节观看状态同步，使用 `GET /v0/users/-/collections/{subject_id}/episodes?episode_type=...` 读取本篇、特别篇、OP、ED、PV、MAD 或其他章节收藏状态，并使用 `PATCH /v0/users/-/collections/{subject_id}/episodes` 更新单集状态、批量标记到第 N 话看过，或把当前已加载章节批量设为看过/未收藏；详情页支持章节类型筛选、展开/收起当前已加载章节、加载更多章节，并在保存后按当前类型和已加载范围刷新进度。
 11. 已接入 Bangumi 首页搜索结果、收藏列表和条目详情页 DMHY 资源搜索联动，使用条目中文名优先生成关键词并跳转到 DMHY 动画分类 RSS 搜索。
 12. 已为搜索、详情、当前用户信息、收藏读取和章节读取请求加入 429 `Retry-After` 退避重试一次，收藏写入和章节写入不自动重复提交。
-13. 已支持当前用户信息、收藏读取和章节读取在服务端返回 401 授权失效时清理本地旧 token；收藏写入和章节写入遇到 401 时也会清理 token 但保留失败反馈，避免用户误以为修改已保存。
+13. 已支持过期 token 缺少 refresh token 时清理本地凭据；当前用户信息、收藏读取和章节读取在服务端返回 401 授权失效时也会清理本地旧 token；收藏写入和章节写入遇到 401 时会清理 token 但保留失败反馈，避免用户误以为修改已保存。
 14. 跨分页批量管理和更细粒度的授权失败提示仍是后续工作。
 
 推荐实现：

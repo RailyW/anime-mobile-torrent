@@ -148,6 +148,13 @@ class BangumiOAuthToken {
   final String tokenType;
   final List<String> scopes;
 
+  /// 当前 token 是否带有可用于刷新 access token 的 refresh token。
+  ///
+  /// secure storage 恢复时会把空白字符串归一化为 null；这里仍然保留 trim
+  /// 检查，避免未来从其他来源构造 token 时把只包含空格的 refresh token
+  /// 当作可刷新凭据，导致过期 token 反复触发无法完成的刷新请求。
+  bool get hasRefreshToken => refreshToken?.trim().isNotEmpty ?? false;
+
   /// 判断 access token 是否已经接近过期。
   ///
   /// 默认预留 60 秒刷新余量，减少用户点按钮时刚好过期导致 401 的概率。

@@ -45,7 +45,8 @@ class BangumiAuthRepository {
   /// 读取并按需刷新 token。
   ///
   /// OAuth 未配置时直接返回 null，避免测试环境或开发者未设置 client 时访问
-  /// 平台 secure storage 插件。
+  /// 平台 secure storage 插件。过期 token 如果缺少 refresh token，则清理本地
+  /// 凭据并回到未登录状态，避免用户界面反复尝试一个必然失败的刷新流程。
   Future<BangumiOAuthToken?> getValidToken() async {
     if (!config.isConfigured) {
       return null;
@@ -58,6 +59,11 @@ class BangumiAuthRepository {
 
     if (!token.isExpired(DateTime.now())) {
       return token;
+    }
+
+    if (!token.hasRefreshToken) {
+      await storage.clearToken();
+      return null;
     }
 
     final refreshed = await authClient.refresh(config, token);

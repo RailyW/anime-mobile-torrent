@@ -52,6 +52,30 @@ void main() {
       expect(merged.scopes, ['write:collection']);
     });
 
+    test('可以判断 refresh token 是否可用于刷新', () {
+      const tokenWithoutRefresh = BangumiOAuthToken(
+        accessToken: 'access',
+        tokenType: 'Bearer',
+        scopes: [],
+      );
+      const tokenWithBlankRefresh = BangumiOAuthToken(
+        accessToken: 'access',
+        refreshToken: '   ',
+        tokenType: 'Bearer',
+        scopes: [],
+      );
+      const tokenWithRefresh = BangumiOAuthToken(
+        accessToken: 'access',
+        refreshToken: 'refresh',
+        tokenType: 'Bearer',
+        scopes: [],
+      );
+
+      expect(tokenWithoutRefresh.hasRefreshToken, isFalse);
+      expect(tokenWithBlankRefresh.hasRefreshToken, isFalse);
+      expect(tokenWithRefresh.hasRefreshToken, isTrue);
+    });
+
     test('临近过期时视为已过期', () {
       final token = BangumiOAuthToken(
         accessToken: 'access',
@@ -213,6 +237,30 @@ void main() {
   group('BangumiAuthRepository', () {
     setUp(() {
       FlutterSecureStorage.setMockInitialValues({});
+    });
+
+    test('过期 token 缺少 refresh token 时会清理本地凭据', () async {
+      final tokenStorage = BangumiAuthStorage(const FlutterSecureStorage());
+      await tokenStorage.saveToken(
+        BangumiOAuthToken(
+          accessToken: 'expired-access-token',
+          tokenType: 'Bearer',
+          expiresAt: DateTime.now().subtract(const Duration(minutes: 5)),
+          scopes: const ['write:collection'],
+        ),
+      );
+
+      final repository = BangumiAuthRepository(
+        config: _configuredOAuthConfig(),
+        authClient: const BangumiAuthClient(FlutterAppAuth()),
+        storage: tokenStorage,
+        apiClient: BangumiApiClient(Dio()),
+      );
+
+      final token = await repository.getValidToken();
+
+      expect(token, isNull);
+      expect(await tokenStorage.readToken(), isNull);
     });
 
     test('当前用户接口返回 401 时会清理本地 token 并回到未登录', () async {
