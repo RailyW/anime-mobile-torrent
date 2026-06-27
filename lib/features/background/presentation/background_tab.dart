@@ -202,6 +202,11 @@ class _BackgroundCapabilityPanel extends StatelessWidget {
               status: '已接入',
             ),
             _BackgroundCapabilityLine(
+              icon: Icons.notifications_active_outlined,
+              title: '通知权限',
+              status: '启动前检查',
+            ),
+            _BackgroundCapabilityLine(
               icon: Icons.sync_outlined,
               title: '低频心跳',
               status: '已接入',

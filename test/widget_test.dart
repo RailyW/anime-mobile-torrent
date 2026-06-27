@@ -136,6 +136,8 @@ void main() {
     expect(find.text('后台常驻'), findsOneWidget);
     expect(find.text('服务控制'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '启动后台'), findsOneWidget);
+    expect(find.text('通知权限'), findsOneWidget);
+    expect(find.text('启动前检查'), findsOneWidget);
     expect(find.text('DMHY 订阅检查'), findsOneWidget);
     expect(find.text('后台自动检查'), findsOneWidget);
     expect(find.text('暂无后台自动检查记录'), findsOneWidget);

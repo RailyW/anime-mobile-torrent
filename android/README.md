@@ -4,7 +4,7 @@
 
 ## 当前包含文件与目录
 
-- `app/src/main/AndroidManifest.xml`：声明网络权限、前台服务权限、前台服务类型权限、启动 Activity、Flutter embedding、Bangumi OAuth 回跳兼容设置、`flutter_foreground_task` 服务、外部 BT 客户端查询能力和 `video/*` 播放器查询能力。
+- `app/src/main/AndroidManifest.xml`：声明网络权限、前台服务权限、前台服务类型权限、Android 13+ 通知权限、启动 Activity、Flutter embedding、Bangumi OAuth 回跳兼容设置、`flutter_foreground_task` 服务、外部 BT 客户端查询能力和 `video/*` 播放器查询能力。
 - `app/src/main/kotlin/com/railyw/anime_mobile_torrent/MainActivity.kt`：Flutter 安卓宿主 Activity，当前注册 `anime_mobile_torrent/torrent_client_detection` MethodChannel，通过 PackageManager 查询 magnet、`.torrent` 直开和 `.torrent` 分享导入的 resolver 候选数量、应用名称、包名和 Activity 名称；同时注册 `anime_mobile_torrent/torrent_seed_export` MethodChannel，通过 Android Storage Access Framework 的 `ACTION_CREATE_DOCUMENT` 把用户选中的 `.torrent` 复制到系统文档位置。
 - `app/src/main/res/`：启动背景、图标和主题资源。
 - `build.gradle.kts`、`settings.gradle.kts`、`gradle.properties`：Android Gradle 构建配置，其中 app 模块通过 `appAuthRedirectScheme` manifest placeholder 注册 Bangumi OAuth 自定义 scheme。
@@ -12,7 +12,7 @@
 
 ## 设计边界
 
-1. 首期 Android 原生侧承载 Flutter UI、网络权限、Bangumi OAuth 回跳声明、用户显式启动的前台服务声明、外部 BT 客户端交接查询声明、外部播放器查询声明、外部 BT 客户端 resolver 检测通道和用户主动触发的 `.torrent` 导出通道。
+1. 首期 Android 原生侧承载 Flutter UI、网络权限、Bangumi OAuth 回跳声明、用户显式启动的前台服务声明、Android 13+ 通知权限声明、外部 BT 客户端交接查询声明、外部播放器查询声明、外部 BT 客户端 resolver 检测通道和用户主动触发的 `.torrent` 导出通道。
 2. 当前 `MainActivity.kt` 的 MethodChannel 会执行只读 resolver 查询，并在用户点击导出时通过系统文档创建器复制单个 `.torrent` 文件；它不启动外部 BT 应用、不生成种子内容、不接管 BT 下载。如果 `url_launcher`、`share_plus` 或现有平台桥不能满足 magnet、`.torrent` 或播放 Intent 的兼容性，再考虑扩展真实打开或分享平台桥。
 3. 后台常驻使用 `flutter_foreground_task` 的 Foreground Service，只承载持续通知和低频心跳，不加入 Torrent 下载任务、下载通知或 BT 引擎依赖。
 4. 当前不申请悬浮窗、精确闹钟、忽略电池优化或全文件访问权限，种子导出依赖用户显式选择目标位置后系统授予的单次写入能力，避免为首期能力引入过重系统权限。
