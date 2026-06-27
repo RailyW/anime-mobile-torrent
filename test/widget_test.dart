@@ -372,6 +372,68 @@ void main() {
     expect(find.text('已复制自动检查摘要'), findsOneWidget);
   });
 
+  testWidgets('后台页可以立即执行 DMHY 自动检查规则', (tester) async {
+    final dmhyRepository = _FakeDmhyRepository();
+    final autoCheckStorage = _FakeWidgetDmhySubscriptionAutoCheckStorage(null);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
+          backgroundResidencyRepositoryProvider.overrideWithValue(
+            _FakeWidgetBackgroundResidencyRepository(),
+          ),
+          dmhyRepositoryProvider.overrideWithValue(dmhyRepository),
+          dmhySubscriptionAutoCheckStorageProvider.overrideWithValue(
+            autoCheckStorage,
+          ),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('后台').last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byType(TextField),
+      220,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '测试动画 1080');
+    await tester.pump();
+    await tester.scrollUntilVisible(
+      find.widgetWithText(FilledButton, '添加'),
+      120,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, '添加'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.widgetWithText(OutlinedButton, '立即后台检查'),
+      120,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(OutlinedButton, '立即后台检查'));
+    await tester.pumpAndSettle();
+
+    expect(dmhyRepository.requests, hasLength(1));
+    expect(dmhyRepository.requests.single.normalizedKeyword, '测试动画 1080');
+    expect(dmhyRepository.requests.single.animeOnly, isTrue);
+    expect(dmhyRepository.requests.single.includeHtmlStats, isFalse);
+    expect(autoCheckStorage.record?.resourceCount, 1);
+    expect(autoCheckStorage.record?.latestKeyword, '测试动画 1080');
+    expect(autoCheckStorage.record?.hasNewMatches, isTrue);
+    expect(find.text('后台自动检查完成：DMHY 订阅检查发现新的资源命中'), findsOneWidget);
+    expect(find.textContaining('发现 1 条资源'), findsOneWidget);
+  });
+
   testWidgets('种子交接页可以展示外部客户端候选应用', (tester) async {
     await tester.pumpWidget(
       ProviderScope(

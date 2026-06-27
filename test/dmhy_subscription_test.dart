@@ -160,6 +160,13 @@ void main() {
     expect(state.keywords, hasLength(1));
     expect(state.lastActionMessage, '已添加订阅关键词“测试动画”');
 
+    await controller.runAutoCheckNow();
+    state = container.read(dmhySubscriptionControllerProvider).value!;
+    expect(state.autoCheckRecord?.resourceCount, 1);
+    expect(state.autoCheckRecord?.latestKeyword, '测试动画');
+    expect(state.autoCheckRecord?.hasNewMatches, isTrue);
+    expect(state.lastActionMessage, '后台自动检查完成：DMHY 订阅检查发现新的资源命中');
+
     await controller.checkAll();
     state = container.read(dmhySubscriptionControllerProvider).value!;
     expect(state.summary.totalResourceCount, 1);

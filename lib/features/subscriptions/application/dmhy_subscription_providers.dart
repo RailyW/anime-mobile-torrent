@@ -4,6 +4,7 @@ import '../../dmhy/application/dmhy_providers.dart';
 import '../data/dmhy_subscription_auto_check_storage.dart';
 import '../data/dmhy_subscription_storage.dart';
 import '../domain/dmhy_subscription.dart';
+import 'dmhy_subscription_auto_check_service.dart';
 
 /// DMHY 订阅模块的业务异常。
 ///
@@ -48,6 +49,20 @@ final dmhySubscriptionRepositoryProvider = Provider<DmhySubscriptionRepository>(
     );
   },
 );
+
+/// DMHY 订阅自动检查服务 Provider。
+///
+/// 前台订阅面板的“立即后台检查”与 Android 前台服务心跳共用同一套自动检查
+/// 编排逻辑，确保节流、新命中识别、失败记录和持久化摘要保持一致。前台手动
+/// 触发时会使用 `force: true`，方便用户不等待后台心跳窗口就验证规则。
+final dmhySubscriptionAutoCheckServiceProvider =
+    Provider<DmhySubscriptionAutoCheckService>((ref) {
+      return DmhySubscriptionAutoCheckService(
+        subscriptionRepository: ref.watch(dmhySubscriptionRepositoryProvider),
+        autoCheckStorage: ref.watch(dmhySubscriptionAutoCheckStorageProvider),
+        now: DateTime.now,
+      );
+    });
 
 /// DMHY 订阅页面控制器 Provider。
 ///
@@ -439,6 +454,56 @@ class DmhySubscriptionController
         currentState.copyWith(
           isBusy: false,
           lastActionMessage: '订阅检查失败：${_formatSubscriptionError(error)}',
+        ),
+      );
+    }
+  }
+
+  /// 立即执行一次后台自动检查规则。
+  ///
+  /// 该动作复用后台前台服务心跳使用的 `DmhySubscriptionAutoCheckService`，
+  /// 但显式传入 `force: true`，让用户在前台页面验证关键词、失败原因和新
+  /// 命中识别时不必等待低频间隔。它只检查 RSS 并写入自动检查摘要，不下载
+  /// `.torrent`，也不会打开 magnet。
+  Future<void> runAutoCheckNow() async {
+    final currentState = state.value ?? const DmhySubscriptionUiState();
+    if (currentState.isBusy) {
+      return;
+    }
+
+    if (currentState.keywords.isEmpty) {
+      state = AsyncValue.data(
+        currentState.copyWith(lastActionMessage: '请先添加订阅关键词'),
+      );
+      return;
+    }
+
+    state = AsyncValue.data(
+      currentState.copyWith(isBusy: true, lastActionMessage: '正在执行后台自动检查规则...'),
+    );
+
+    try {
+      final autoCheckService = ref.read(
+        dmhySubscriptionAutoCheckServiceProvider,
+      );
+      final autoCheckStorage = ref.read(
+        dmhySubscriptionAutoCheckStorageProvider,
+      );
+      final outcome = await autoCheckService.runIfDue(force: true);
+      final autoCheckRecord = await autoCheckStorage.loadLastRecord();
+
+      state = AsyncValue.data(
+        currentState.copyWith(
+          autoCheckRecord: autoCheckRecord,
+          isBusy: false,
+          lastActionMessage: '后台自动检查完成：${outcome.message}',
+        ),
+      );
+    } catch (error) {
+      state = AsyncValue.data(
+        currentState.copyWith(
+          isBusy: false,
+          lastActionMessage: '后台自动检查执行失败：${_formatSubscriptionError(error)}',
         ),
       );
     }

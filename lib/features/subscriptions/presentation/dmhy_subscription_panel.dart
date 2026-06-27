@@ -138,6 +138,7 @@ class _DmhySubscriptionPanelState extends ConsumerState<DmhySubscriptionPanel> {
                 },
                 onSubmitKeyword: _submitKeyword,
                 onCheckAll: controller.checkAll,
+                onRunAutoCheckNow: controller.runAutoCheckNow,
                 onRefreshAutoCheckRecord: controller.refreshAutoCheckRecord,
                 onRemoveKeyword: controller.removeKeyword,
                 onOpenDmhySearch: _openDmhySearch,
@@ -165,6 +166,7 @@ class _SubscriptionLoadedView extends StatelessWidget {
     required this.onAnimeOnlyChanged,
     required this.onSubmitKeyword,
     required this.onCheckAll,
+    required this.onRunAutoCheckNow,
     required this.onRefreshAutoCheckRecord,
     required this.onRemoveKeyword,
     required this.onOpenDmhySearch,
@@ -178,6 +180,7 @@ class _SubscriptionLoadedView extends StatelessWidget {
   final ValueChanged<bool> onAnimeOnlyChanged;
   final Future<void> Function() onSubmitKeyword;
   final Future<void> Function() onCheckAll;
+  final Future<void> Function() onRunAutoCheckNow;
   final Future<void> Function() onRefreshAutoCheckRecord;
   final Future<void> Function(String id) onRemoveKeyword;
   final void Function(String keyword, {required bool animeOnly})
@@ -246,6 +249,15 @@ class _SubscriptionLoadedView extends StatelessWidget {
                     },
               icon: const Icon(Icons.travel_explore_outlined),
               label: const Text('检查'),
+            ),
+            OutlinedButton.icon(
+              onPressed: isBusy || !state.hasKeywords
+                  ? null
+                  : () {
+                      onRunAutoCheckNow();
+                    },
+              icon: const Icon(Icons.sync_outlined),
+              label: const Text('立即后台检查'),
             ),
           ],
         ),
