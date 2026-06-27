@@ -728,6 +728,53 @@ void main() {
     expect(find.text('治愈 128'), findsOneWidget);
   });
 
+  testWidgets('Bangumi 收藏列表可以直接跳转到 DMHY 搜资源', (tester) async {
+    final dmhyRepository = _FakeDmhyRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
+          dmhyRepositoryProvider.overrideWithValue(dmhyRepository),
+          bangumiCurrentUserProvider.overrideWith(
+            (ref) async => const BangumiUser(
+              id: 1,
+              username: 'tester',
+              nickname: '测试用户',
+              userGroup: 10,
+              avatar: BangumiUserAvatar(),
+              sign: '',
+            ),
+          ),
+          bangumiMyCollectionRepositoryProvider.overrideWithValue(
+            _FakeBangumiMyCollectionListRepository(),
+          ),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.widgetWithText(TextButton, '搜资源'),
+      260,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('收藏动画 中文名'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, '搜资源'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('RSS 可用'), findsOneWidget);
+    expect(dmhyRepository.requests, hasLength(1));
+    expect(dmhyRepository.requests.single.normalizedKeyword, '收藏动画 中文名');
+    expect(dmhyRepository.requests.single.animeOnly, isTrue);
+  });
+
   testWidgets('Bangumi 条目详情可以展开已加载章节进度', (tester) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -1425,6 +1472,84 @@ class _FakeBangumiDetailCollectionRepository
       subjectId: subjectId,
       episodeType: episodeType,
     );
+  }
+}
+
+class _FakeBangumiMyCollectionListRepository
+    implements BangumiMyCollectionRepositoryContract {
+  @override
+  Future<BangumiSubjectCollectionPage?> getMyAnimeCollections({
+    BangumiCollectionType? type,
+    int limit = 20,
+    int offset = 0,
+  }) async {
+    return BangumiSubjectCollectionPage(
+      total: 1,
+      limit: limit,
+      offset: offset,
+      collections: [
+        BangumiSubjectCollection(
+          subjectId: 200,
+          subjectType: BangumiSubjectType.anime,
+          type: BangumiCollectionType.doing,
+          rate: 9,
+          comment: '收藏列表跳转测试',
+          tags: const ['追番'],
+          epStatus: 3,
+          volStatus: 0,
+          updatedAt: DateTime.utc(2026, 6, 27, 12),
+          isPrivate: false,
+          subject: const BangumiCollectionSubject(
+            id: 200,
+            type: BangumiSubjectType.anime,
+            name: 'Collection Anime',
+            nameCn: '收藏动画 中文名',
+            shortSummary: '用于测试收藏列表到 DMHY 搜索的摘要条目。',
+            airDate: '2026-04-01',
+            images: BangumiSubjectImages(),
+            eps: 12,
+            volumes: 0,
+            collectionTotal: 1234,
+            score: 8.4,
+            rank: 42,
+            tags: [],
+          ),
+        ),
+      ],
+    );
+  }
+
+  @override
+  Future<BangumiSubjectCollection?> getMySubjectCollection(int subjectId) {
+    throw UnimplementedError('收藏列表测试不读取单条收藏');
+  }
+
+  @override
+  Future<BangumiEpisodeCollectionPage?> getMySubjectEpisodeCollections({
+    required int subjectId,
+    int limit = 100,
+    int offset = 0,
+    BangumiEpisodeType episodeType = BangumiEpisodeType.mainStory,
+  }) {
+    throw UnimplementedError('收藏列表测试不读取章节收藏');
+  }
+
+  @override
+  Future<BangumiSubjectCollection?> saveMySubjectCollection({
+    required int subjectId,
+    required BangumiSubjectCollectionUpdate update,
+  }) {
+    throw UnimplementedError('收藏列表测试不写入收藏');
+  }
+
+  @override
+  Future<BangumiEpisodeCollectionPage?> saveMySubjectEpisodeStatus({
+    required int subjectId,
+    required List<int> episodeIds,
+    required BangumiEpisodeCollectionType type,
+    BangumiEpisodeType episodeType = BangumiEpisodeType.mainStory,
+  }) {
+    throw UnimplementedError('收藏列表测试不写入章节收藏');
   }
 }
 

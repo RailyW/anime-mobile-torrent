@@ -9,6 +9,7 @@ import '../application/bangumi_collection_providers.dart';
 import '../application/bangumi_providers.dart';
 import '../domain/bangumi_auth.dart';
 import '../domain/bangumi_collection.dart';
+import '../domain/bangumi_dmhy_keyword.dart';
 import '../domain/bangumi_subject.dart';
 import '../domain/bangumi_user.dart';
 import 'widgets/bangumi_info_chip.dart';
@@ -874,6 +875,9 @@ class _BangumiCollectionListItem extends StatelessWidget {
     final subject = collection.subject;
     final title = subject?.displayName ?? '条目 ID ${collection.subjectId}';
     final subtitle = subject?.subtitleName;
+    final dmhyKeyword = subject == null
+        ? ''
+        : normalizeBangumiDmhyKeyword(subject.displayName);
 
     return InkWell(
       borderRadius: BorderRadius.circular(8),
@@ -942,6 +946,31 @@ class _BangumiCollectionListItem extends StatelessWidget {
                               ? '${subject.score.toStringAsFixed(1)} · Rank ${subject.rank}'
                               : subject.score.toStringAsFixed(1),
                         ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      TextButton.icon(
+                        onPressed: dmhyKeyword.isEmpty
+                            ? null
+                            : () {
+                                // 直接从收藏列表进入 DMHY 搜索，只传递轻量关键词。
+                                // 真实 RSS 请求、种子解析和外部客户端交接仍由
+                                // DMHY 模块在目标页接管，Bangumi 不跨边界下载资源。
+                                context.goNamed(
+                                  'home',
+                                  queryParameters: {
+                                    'tab': 'dmhy',
+                                    'keyword': dmhyKeyword,
+                                  },
+                                );
+                              },
+                        icon: const Icon(Icons.manage_search_outlined),
+                        label: const Text('搜资源'),
+                      ),
                     ],
                   ),
                 ],

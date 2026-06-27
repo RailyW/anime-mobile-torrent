@@ -1,6 +1,6 @@
 # bangumi 模块说明
 
-`lib/features/bangumi` 负责 Bangumi 相关能力：OAuth 授权、当前用户信息、动画条目搜索、条目详情、收藏和进度同步。当前已接入可配置 OAuth 登录、本机 OAuth client 配置页、secure storage token 保存、`/v0/me` 当前用户读取、公开动画条目搜索、搜索输入防抖、搜索排序、搜索结果分页加载更多、读取请求 429 退避、公开条目详情读取、首页我的动画收藏分页列表、条目详情页中的个人收藏读取/修改、动画章节观看状态同步、章节类型筛选、已加载章节展开查看、章节分页加载更多、批量标记到第 N 话看过，以及从条目详情页带标题跳转到 DMHY 资源搜索。
+`lib/features/bangumi` 负责 Bangumi 相关能力：OAuth 授权、当前用户信息、动画条目搜索、条目详情、收藏和进度同步。当前已接入可配置 OAuth 登录、本机 OAuth client 配置页、secure storage token 保存、`/v0/me` 当前用户读取、公开动画条目搜索、搜索输入防抖、搜索排序、搜索结果分页加载更多、读取请求 429 退避、公开条目详情读取、首页我的动画收藏分页列表、收藏列表直接跳转 DMHY 搜索、条目详情页中的个人收藏读取/修改、动画章节观看状态同步、章节类型筛选、已加载章节展开查看、章节分页加载更多、批量标记到第 N 话看过，以及从条目详情页带标题跳转到 DMHY 资源搜索。
 
 ## 当前包含文件
 
@@ -17,7 +17,7 @@
 - `application/bangumi_providers.dart`：Bangumi 条目 Repository 抽象、HTTP 实现、公开搜索分页控制器、Riverpod 搜索 Provider 和详情 Provider。
 - `application/bangumi_auth_providers.dart`：Bangumi 授权 Repository、OAuth 编译期配置、本机配置控制器、配置存储、AppAuth、secure storage、当前用户 Provider；保存或清除本机 OAuth 配置时会清理旧 token，设置页可先仅持久化配置，等首页 route 恢复可见后再刷新 active config，避免 offstage 订阅恢复时触发构建期刷新。
 - `application/bangumi_collection_providers.dart`：Bangumi 当前用户收藏 Repository 契约与实现、动画收藏单页 Provider、动画收藏分页列表控制器、支持章节类型切换的条目章节分页加载控制器、条目收藏 Provider 和章节收藏 Provider，组合 token 刷新、`/v0/me` 用户名读取、收藏 API 和章节进度 API。
-- `presentation/bangumi_tab.dart`：Bangumi 首页入口，提供 OAuth 登录状态卡、未配置时跳转 OAuth 设置并在返回后刷新运行期配置、我的动画收藏分页列表、收藏状态筛选、加载更多、登录/退出/刷新动作、带输入防抖、排序菜单和即时提交的公开动画条目搜索 UI、搜索结果分页加载更多、结果列表和详情页跳转。
+- `presentation/bangumi_tab.dart`：Bangumi 首页入口，提供 OAuth 登录状态卡、未配置时跳转 OAuth 设置并在返回后刷新运行期配置、我的动画收藏分页列表、收藏状态筛选、加载更多、收藏条目直接跳转 DMHY 搜索、登录/退出/刷新动作、带输入防抖、排序菜单和即时提交的公开动画条目搜索 UI、搜索结果分页加载更多、结果列表和详情页跳转。
 - `presentation/bangumi_oauth_settings_page.dart`：Bangumi OAuth 设置页，提供 client id、client secret、redirect URI 和 scopes 表单，会回填已保存的本机配置，保存本机配置或恢复编译期配置；页面自身只写入本机存储和清理旧 token，账号卡由打开设置页的入口在 route 返回后刷新。
 - `presentation/bangumi_subject_detail_page.dart`：Bangumi 条目详情页，展示封面、标题、评分、简介、DMHY 资源搜索入口、我的收藏读写、动画章节观看状态同步、章节类型筛选、已加载章节展开/收起、加载更多章节、批量标记到第 N 话看过、收藏统计、维基信息和标签。
 - `presentation/widgets/bangumi_info_chip.dart`：Bangumi 模块内复用的信息标签组件。
@@ -54,7 +54,7 @@ flutter run --dart-define=BANGUMI_CLIENT_ID=你的客户端ID --dart-define=BANG
 - 新增或修改当前登录用户对单个条目的收藏，使用 `POST /v0/users/-/collections/{subject_id}`。
 - 读取当前登录用户对动画章节的观看状态，使用 `GET /v0/users/-/collections/{subject_id}/episodes?episode_type=...`，详情页可在本篇、特别篇、OP、ED、PV、MAD 和其他类型之间切换。
 - 修改当前登录用户的一批章节状态，使用 `PATCH /v0/users/-/collections/{subject_id}/episodes`，提交 `episode_id` 和 `EpisodeCollectionType`。
-- 在 Bangumi 首页展示我的动画收藏分页列表，支持按收藏状态筛选、刷新、加载更多并进入条目详情。
+- 在 Bangumi 首页展示我的动画收藏分页列表，支持按收藏状态筛选、刷新、加载更多、进入条目详情，并可从收藏条目直接带标题跳转到 DMHY 动画分类搜索。
 - 在 Bangumi 首页公开搜索输入停顿后自动触发防抖搜索，点击搜索按钮或键盘 search 会立即提交，排序菜单支持按相关度、热度、排名或评分重新加载当前关键词，并支持按服务端分页继续加载更多搜索结果；搜索、详情和收藏读取类请求遇到 Bangumi 429 时会按 `Retry-After` 轻量退避后重试一次，收藏写入和章节写入不会自动重复提交。
 - 在条目详情页展示收藏状态、评分、短评、私有标记、章节/卷进度摘要。
 - 在条目详情页修改收藏状态、评分、短评和私有标记。
