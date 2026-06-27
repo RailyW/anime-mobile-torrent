@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:anime_mobile_torrent/features/dmhy/data/dmhy_rate_limit_retry.dart';
 import 'package:anime_mobile_torrent/features/dmhy/data/dmhy_rss_client.dart';
 import 'package:anime_mobile_torrent/features/dmhy/data/dmhy_torrent_client.dart';
@@ -118,6 +120,67 @@ void main() {
         torrentUri,
         Uri.parse('https://dl.dmhy.org/2026/04/23/test.torrent'),
       );
+    });
+  });
+
+  group('DMHY torrent file download', () {
+    test('会保存到可注入的持久种子目录并自动创建目录', () async {
+      final rootDirectory = await Directory.systemTemp.createTemp(
+        'anime-mobile-torrent-dmhy-',
+      );
+      addTearDown(() async {
+        if (await rootDirectory.exists()) {
+          await rootDirectory.delete(recursive: true);
+        }
+      });
+
+      final torrentDirectory = Directory(
+        '${rootDirectory.path}${Platform.pathSeparator}dmhy_torrents',
+      );
+      final dio = Dio(BaseOptions(baseUrl: DmhyRssClient.baseUrl));
+      final requestedUris = <Uri>[];
+
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            requestedUris.add(options.uri);
+
+            if (options.uri.path.contains('/topics/view/')) {
+              return handler.resolve(
+                Response<String>(
+                  requestOptions: options,
+                  statusCode: 200,
+                  data:
+                      '<a href="//dl.dmhy.org/2026/04/23/test.torrent">torrent</a>',
+                ),
+              );
+            }
+
+            return handler.resolve(
+              Response<List<int>>(
+                requestOptions: options,
+                statusCode: 200,
+                data: [0x64, 0x38, 0x3a, 0x61],
+              ),
+            );
+          },
+        ),
+      );
+
+      final client = DmhyTorrentClient(
+        dio,
+        torrentDirectoryProvider: () async => torrentDirectory,
+      );
+
+      final torrentFile = await client.downloadTorrentFile(_buildResource());
+      final savedFile = File(torrentFile.localPath);
+
+      expect(requestedUris, hasLength(2));
+      expect(await torrentDirectory.exists(), isTrue);
+      expect(torrentFile.localPath, startsWith(torrentDirectory.path));
+      expect(torrentFile.fileName, '[字幕组] 测试动画 01 1080p.torrent');
+      expect(torrentFile.length, 4);
+      expect(await savedFile.readAsBytes(), [0x64, 0x38, 0x3a, 0x61]);
     });
   });
 }

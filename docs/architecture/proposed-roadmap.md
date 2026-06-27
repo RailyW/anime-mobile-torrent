@@ -132,7 +132,7 @@ flowchart LR
 2. 已建立 DMHY 资源模型、RSS XML 解析器、Dio RSS 客户端、Repository 抽象和 Riverpod 搜索 Provider。
 3. 已在 DMHY 首页提供关键词搜索 UI、Bangumi 初始关键词自动搜索、动画分类开关和 RSS 结果列表。
 4. 已支持从 RSS 结果复制 magnet 或通过系统外部应用打开 magnet。
-5. 已支持按用户点击解析 DMHY 详情页 `.torrent` 链接，并把种子文件下载到 APP 临时目录、写入最近种子记录后优先直开外部 BT 客户端，直开失败时自动降级到系统分享面板。
+5. 已支持按用户点击解析 DMHY 详情页 `.torrent` 链接，并把种子文件下载到 APP 专属文档目录的 `dmhy_torrents` 子目录、写入最近种子记录后优先直开外部 BT 客户端，直开失败时自动降级到系统分享面板。
 6. 已在 DMHY 资源卡片中读取外部 BT 客户端能力检测结果，在用户点击前提示 `.torrent` 直开、分享导入、只可用 magnet 或未发现客户端状态；有 resolver 候选应用时会展示候选客户端名称，并把主按钮动态调整为“打开种子”“分享种子”或“复制磁力”。
 7. 已从 DMHY RSS 标题和简介文本中提取字幕组、话数、分辨率、片源、编码、封装格式、字幕说明、归一化字幕语言和文本中的大小标签，并在资源卡片中展示；RSS `enclosure.length` 不作为视频文件大小使用。
 8. 已在前台 DMHY 搜索中按需解析 HTML 列表页，合并真实大小、種子、下載和完成统计；后台订阅检查关闭该增强以减少额外请求。
@@ -167,7 +167,7 @@ flowchart LR
 当前落地情况：
 
 1. 已通过 `url_launcher` 支持 `magnet:` 外部打开，并保留复制兜底。
-2. 已通过 DMHY 详情页解析和 Dio 下载 `.torrent` 种子文件到 APP 临时目录。
+2. 已通过 DMHY 详情页解析和 Dio 下载 `.torrent` 种子文件到 APP 专属文档目录下的 `dmhy_torrents` 子目录。
 3. 已抽象通用 `TorrentSeedFile`、`TorrentHandoffResult`、`TorrentHandoffRepository` 和 Riverpod Provider。
 4. 已通过 `open_filex` 直接打开 `.torrent` 文件给外部 BT 客户端。
 5. 已通过 `share_plus` 在直开失败时自动打开系统分享面板，作为外部客户端兼容兜底。

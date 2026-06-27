@@ -28,15 +28,21 @@ class DmhyTorrentException implements Exception {
 /// DMHY `.torrent` 种子文件客户端。
 ///
 /// 客户端职责分两步：先读取 DMHY 详情页并解析 `.torrent` 下载链接，再把
-/// 种子文件下载到 APP 临时目录。它不添加 BT 任务，也不下载种子指向的
-/// 视频内容。
+/// 种子文件下载到 APP 私有持久目录。它不添加 BT 任务，也不下载种子指向
+/// 的视频内容。
 class DmhyTorrentClient {
-  DmhyTorrentClient(this._dio, {DmhyRateLimitRetry? rateLimitRetry})
-    : _rateLimitRetry = rateLimitRetry ?? DmhyRateLimitRetry();
+  DmhyTorrentClient(
+    this._dio, {
+    DmhyRateLimitRetry? rateLimitRetry,
+    Future<Directory> Function()? torrentDirectoryProvider,
+  }) : _rateLimitRetry = rateLimitRetry ?? DmhyRateLimitRetry(),
+       _torrentDirectoryProvider =
+           torrentDirectoryProvider ?? _defaultTorrentDirectory;
 
   final Dio _dio;
   final DmhyTorrentPageParser _parser = const DmhyTorrentPageParser();
   final DmhyRateLimitRetry _rateLimitRetry;
+  final Future<Directory> Function() _torrentDirectoryProvider;
 
   /// 根据 RSS 资源详情页解析 `.torrent` 下载链接。
   Future<Uri> findTorrentUri(DmhyResource resource) async {
@@ -69,7 +75,11 @@ class DmhyTorrentClient {
     }
   }
 
-  /// 下载 `.torrent` 种子文件到 APP 临时目录。
+  /// 下载 `.torrent` 种子文件到 APP 私有持久目录。
+  ///
+  /// 最近种子记录会长期保存本地路径，因此这里不能使用系统临时目录。
+  /// APP 专属文档目录不需要额外存储权限，也不会暴露公共下载目录；用户仍
+  /// 通过外部 BT 客户端接收种子文件，而不是由本模块管理 BT 任务。
   Future<DmhyTorrentFile> downloadTorrentFile(DmhyResource resource) async {
     final torrentUri = await findTorrentUri(resource);
 
@@ -86,7 +96,8 @@ class DmhyTorrentClient {
         throw const DmhyTorrentException('DMHY 返回了空种子文件');
       }
 
-      final directory = await getTemporaryDirectory();
+      final directory = await _torrentDirectoryProvider();
+      await directory.create(recursive: true);
       final fileName = _buildTorrentFileName(resource, torrentUri);
       final file = File('${directory.path}${Platform.pathSeparator}$fileName');
       await file.writeAsBytes(bytes, flush: true);
@@ -137,6 +148,17 @@ class DmhyTorrentClient {
       statusCode: statusCode,
     );
   }
+}
+
+/// 默认的 DMHY 种子文件保存目录。
+///
+/// 使用 APP 专属文档目录下的固定子目录，保证最近种子记录在系统清理临时
+/// 文件后仍有较大概率可用；同时不写入公共下载目录，避免新增存储权限。
+Future<Directory> _defaultTorrentDirectory() async {
+  final documentsDirectory = await getApplicationDocumentsDirectory();
+  return Directory(
+    '${documentsDirectory.path}${Platform.pathSeparator}dmhy_torrents',
+  );
 }
 
 String _buildTorrentFileName(DmhyResource resource, Uri torrentUri) {
