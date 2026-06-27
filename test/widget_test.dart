@@ -567,6 +567,44 @@ void main() {
     );
   });
 
+  testWidgets('Bangumi 搜索结果可以直接跳转到 DMHY 搜资源', (tester) async {
+    final bangumiRepository = _FakeBangumiRepository();
+    final dmhyRepository = _FakeDmhyRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
+          bangumiRepositoryProvider.overrideWithValue(bangumiRepository),
+          dmhyRepositoryProvider.overrideWithValue(dmhyRepository),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '测试动画');
+    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.widgetWithText(TextButton, '搜资源'),
+      180,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, '搜资源'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('RSS 可用'), findsOneWidget);
+    expect(find.text('“测试动画 中文名” 在动画分类找到 1 条 RSS 资源'), findsOneWidget);
+    expect(dmhyRepository.requests, hasLength(1));
+    expect(dmhyRepository.requests.single.normalizedKeyword, '测试动画 中文名');
+    expect(dmhyRepository.requests.single.animeOnly, isTrue);
+  });
+
   testWidgets('Bangumi 搜索排序切换会重新加载当前关键词', (tester) async {
     final repository = _FakeBangumiRepository();
 

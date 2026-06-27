@@ -1344,6 +1344,7 @@ class _BangumiSubjectCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final dmhyKeyword = normalizeBangumiDmhyKeyword(subject.displayName);
 
     return Card(
       child: InkWell(
@@ -1408,9 +1409,28 @@ class _BangumiSubjectCard extends StatelessWidget {
                       ),
                     ],
                     const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
+                    Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 8,
+                      runSpacing: 8,
                       children: [
+                        TextButton.icon(
+                          onPressed: dmhyKeyword.isEmpty
+                              ? null
+                              : () {
+                                  // 搜索结果页只负责生成 DMHY 关键词并跳转；真实 RSS
+                                  // 搜索、种子下载和外部客户端交接仍由 DMHY 模块执行。
+                                  context.goNamed(
+                                    'home',
+                                    queryParameters: {
+                                      'tab': 'dmhy',
+                                      'keyword': dmhyKeyword,
+                                    },
+                                  );
+                                },
+                          icon: const Icon(Icons.manage_search_outlined),
+                          label: const Text('搜资源'),
+                        ),
                         Icon(
                           Icons.chevron_right,
                           color: scheme.onSurfaceVariant,
