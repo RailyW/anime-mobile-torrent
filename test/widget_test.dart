@@ -99,6 +99,7 @@ void main() {
     expect(find.textContaining('暂无实测样本'), findsOneWidget);
     expect(find.text('暂无本机实测记录'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, '记直开成功'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, '记导入成功'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(OutlinedButton, '记直开成功'));
     await tester.pumpAndSettle();
@@ -554,8 +555,10 @@ void main() {
 
     expect(find.widgetWithText(OutlinedButton, '复制报告'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, '复制模板'), findsOneWidget);
-    await tester.tap(find.widgetWithText(OutlinedButton, '记分享成功'));
+    await tester.tap(find.widgetWithText(OutlinedButton, '记导入成功'));
     await tester.pumpAndSettle();
+    expect(find.text('优先观察：导出手动导入'), findsOneWidget);
+    expect(find.text('导出导入 1'), findsOneWidget);
 
     await tester.ensureVisible(find.widgetWithText(OutlinedButton, '复制报告'));
     await tester.tap(find.widgetWithText(OutlinedButton, '复制报告'));
@@ -565,10 +568,11 @@ void main() {
     expect(copiedText, contains('Anime Mobile Torrent 外部 BT 客户端兼容报告'));
     expect(copiedText, contains('## 本机兼容清单摘要'));
     expect(copiedText, contains('可用样本: 1/1 条可用'));
-    expect(copiedText, contains('优先观察路径: .torrent 分享导入'));
+    expect(copiedText, contains('优先观察路径: 导出手动导入'));
+    expect(copiedText, contains('.torrent 导出手动导入成功: 1'));
     expect(copiedText, contains('测试 BT'));
     expect(copiedText, contains('分享导入器'));
-    expect(copiedText, contains('分享成功'));
+    expect(copiedText, contains('导入成功'));
     expect(copiedText, contains('APP 只下载和交接 .torrent 文件'));
     expect(find.text('已复制兼容报告'), findsOneWidget);
 
@@ -580,8 +584,8 @@ void main() {
 
     expect(copiedText, contains('Anime Mobile Torrent 外部 BT 客户端兼容记录模板'));
     expect(copiedText, contains('| 路径 | 应用 | 包名 | Activity |'));
-    expect(copiedText, contains('| .torrent 分享导入成功 | 1 |'));
-    expect(copiedText, contains('| 推荐观察路径 | .torrent 分享导入 |'));
+    expect(copiedText, contains('| .torrent 导出手动导入成功 | 1 |'));
+    expect(copiedText, contains('| 推荐观察路径 | 导出手动导入 |'));
     expect(copiedText, contains('- 导出 `.torrent` 后手动导入是否成功：'));
     expect(find.text('已复制兼容模板'), findsOneWidget);
 
@@ -593,8 +597,8 @@ void main() {
     expect(copiedText, contains('| 日期 | 设备/系统 | Android SDK | BT 客户端/包名 |'));
     expect(copiedText, contains('| 待填写设备型号/Android 版本 | 35 |'));
     expect(copiedText, contains('| 可用（候选 1 个） | 未发现（候选 0 个） |'));
-    expect(copiedText, contains('| 可用（候选 1 个） | 待实测 |'));
-    expect(copiedText, contains('| .torrent 分享导入 | 本机样本 1/1 条可用；'));
+    expect(copiedText, contains('| 可用（候选 1 个） | 可用（实测 1 次） |'));
+    expect(copiedText, contains('| 导出手动导入 | 本机样本 1/1 条可用；'));
     expect(find.text('已复制汇总行'), findsOneWidget);
 
     await tester.ensureVisible(find.widgetWithText(TextButton, '删除本条'));

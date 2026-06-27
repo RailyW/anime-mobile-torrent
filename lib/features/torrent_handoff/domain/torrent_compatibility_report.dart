@@ -89,6 +89,7 @@ class TorrentCompatibilityReport {
       ..writeln('可用样本: ${summary.successfulRatioLabel}')
       ..writeln('.torrent 直开成功: ${summary.directOpenSuccesses}')
       ..writeln('.torrent 分享导入成功: ${summary.shareImportSuccesses}')
+      ..writeln('.torrent 导出手动导入成功: ${summary.exportManualImportSuccesses}')
       ..writeln('magnet 兜底成功: ${summary.magnetFallbackSuccesses}')
       ..writeln('交接失败: ${summary.handoffFailures}')
       ..writeln('优先观察路径: ${summary.leadingOutcomeLabel}')
@@ -200,6 +201,9 @@ class TorrentCompatibilityReport {
       )
       ..writeln('| .torrent 直开成功 | ${summary.directOpenSuccesses} |')
       ..writeln('| .torrent 分享导入成功 | ${summary.shareImportSuccesses} |')
+      ..writeln(
+        '| .torrent 导出手动导入成功 | ${summary.exportManualImportSuccesses} |',
+      )
       ..writeln('| magnet 兜底成功 | ${summary.magnetFallbackSuccesses} |')
       ..writeln('| 交接失败 | ${summary.handoffFailures} |')
       ..writeln(
@@ -234,7 +238,8 @@ class TorrentCompatibilityReport {
         '| ${_formatDate(generatedAt)} | 待填写设备型号/Android 版本 '
         '| ${_escapeMarkdownCell(capabilities.androidSdkInt?.toString() ?? '未知')} '
         '| 待填写客户端名和包名 | 可用/不可用/未测 | 可用/不可用/未测 '
-        '| 可用/不可用/未测 | 可用/不可用/未测 '
+        '| 可用/不可用/未测 '
+        '| ${_escapeMarkdownCell(_formatExportManualImportStatus(summary, emptyLabel: '可用/不可用/未测'))} '
         '| ${_escapeMarkdownCell(summary.leadingOutcomeLabel)} '
         '| APP 只交接 .torrent；视频由外部 BT 客户端下载 |',
       )
@@ -275,7 +280,7 @@ class TorrentCompatibilityReport {
         '| ${_escapeMarkdownCell(_formatSummaryPathStatus(capabilities, TorrentClientHandoffPath.magnet))} '
         '| ${_escapeMarkdownCell(_formatSummaryPathStatus(capabilities, TorrentClientHandoffPath.torrentView))} '
         '| ${_escapeMarkdownCell(_formatSummaryPathStatus(capabilities, TorrentClientHandoffPath.torrentShare))} '
-        '| 待实测 '
+        '| ${_escapeMarkdownCell(_formatExportManualImportStatus(summary, emptyLabel: '待实测'))} '
         '| ${_escapeMarkdownCell(summary.leadingOutcomeLabel)} '
         '| 本机样本 ${_escapeMarkdownCell(summary.successfulRatioLabel)}；APP 只交接 .torrent |',
       );
@@ -374,6 +379,22 @@ class TorrentCompatibilityReport {
     };
 
     return _formatPathStatus(isAvailable, handlerCount);
+  }
+
+  /// 生成导出后手动导入路径在汇总表中的状态。
+  ///
+  /// 这条路径不是 Android resolver 能自动探测的 Intent 能力，只能来自用户
+  /// 手动实测记录；没有样本时使用调用方指定的空状态文案，避免把“未测”
+  /// 误写成“不可用”。
+  static String _formatExportManualImportStatus(
+    TorrentCompatibilitySummary summary, {
+    required String emptyLabel,
+  }) {
+    final successCount = summary.exportManualImportSuccesses;
+    if (successCount <= 0) {
+      return emptyLabel;
+    }
+    return '可用（实测 $successCount 次）';
   }
 
   /// 格式化本地日期时间。

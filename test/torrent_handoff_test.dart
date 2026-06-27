@@ -184,6 +184,10 @@ void main() {
         restored.detectionSummary,
         'magnet 2 · .torrent 直开 1 · 分享 0 · SDK 35',
       );
+      expect(
+        TorrentCompatibilityOutcome.fromWireName('exportManualImportSucceeded'),
+        TorrentCompatibilityOutcome.exportManualImportSucceeded,
+      );
     });
 
     test('可以识别同一条本机实测记录', () {
@@ -244,6 +248,11 @@ void main() {
           recordedAt: DateTime(2026, 6, 27, 12, 10),
         ),
         TorrentClientCompatibilityRecord.capture(
+          outcome: TorrentCompatibilityOutcome.exportManualImportSucceeded,
+          capabilities: capabilities,
+          recordedAt: DateTime(2026, 6, 27, 12, 12),
+        ),
+        TorrentClientCompatibilityRecord.capture(
           outcome: TorrentCompatibilityOutcome.handoffFailed,
           capabilities: capabilities,
           recordedAt: DateTime(2026, 6, 27, 12, 15),
@@ -252,11 +261,12 @@ void main() {
 
       final summary = TorrentCompatibilitySummary.fromRecords(records);
 
-      expect(summary.totalRecords, 4);
-      expect(summary.successfulRecords, 3);
-      expect(summary.successfulRatioLabel, '3/4 条可用');
+      expect(summary.totalRecords, 5);
+      expect(summary.successfulRecords, 4);
+      expect(summary.successfulRatioLabel, '4/5 条可用');
       expect(summary.directOpenSuccesses, 1);
       expect(summary.shareImportSuccesses, 2);
+      expect(summary.exportManualImportSuccesses, 1);
       expect(summary.magnetFallbackSuccesses, 0);
       expect(summary.handoffFailures, 1);
       expect(
@@ -325,6 +335,11 @@ void main() {
           capabilities: capabilities,
           recordedAt: DateTime(2026, 6, 27, 12, 45),
         ),
+        TorrentClientCompatibilityRecord.capture(
+          outcome: TorrentCompatibilityOutcome.exportManualImportSucceeded,
+          capabilities: capabilities,
+          recordedAt: DateTime(2026, 6, 27, 12, 50),
+        ),
       ];
 
       final report = TorrentCompatibilityReport(
@@ -341,11 +356,13 @@ void main() {
       expect(report, contains('包名: com.example.bt'));
       expect(report, contains('分享导入器'));
       expect(report, contains('## 本机兼容清单摘要'));
-      expect(report, contains('记录总数: 1'));
-      expect(report, contains('可用样本: 1/1 条可用'));
+      expect(report, contains('记录总数: 2'));
+      expect(report, contains('可用样本: 2/2 条可用'));
       expect(report, contains('.torrent 分享导入成功: 1'));
+      expect(report, contains('.torrent 导出手动导入成功: 1'));
       expect(report, contains('优先观察路径: .torrent 分享导入'));
       expect(report, contains('1. 2026-06-27 12:45 分享成功'));
+      expect(report, contains('2. 2026-06-27 12:50 导入成功'));
       expect(
         report,
         contains('检测摘要: magnet 1 · .torrent 直开 0 · 分享 1 · SDK 35'),
@@ -385,6 +402,11 @@ void main() {
           capabilities: capabilities,
           recordedAt: DateTime(2026, 6, 27, 12, 45),
         ),
+        TorrentClientCompatibilityRecord.capture(
+          outcome: TorrentCompatibilityOutcome.exportManualImportSucceeded,
+          capabilities: capabilities,
+          recordedAt: DateTime(2026, 6, 27, 12, 50),
+        ),
       ];
 
       final template = TorrentCompatibilityReport(
@@ -404,8 +426,10 @@ void main() {
       );
       expect(template, contains('| .torrent 直开 | 未发现候选客户端 | - | - |'));
       expect(template, contains('| .torrent 分享导入成功 | 1 |'));
+      expect(template, contains('| .torrent 导出手动导入成功 | 1 |'));
       expect(template, contains('| 推荐观察路径 | .torrent 分享导入 |'));
       expect(template, contains('| 2026-06-27 | 待填写设备型号/Android 版本 | 35 |'));
+      expect(template, contains('| 可用（实测 1 次） | .torrent 分享导入 |'));
       expect(template, contains('- 导出 `.torrent` 后手动导入是否成功：'));
       expect(template, contains('视频由外部 BT 客户端下载'));
     });
@@ -423,7 +447,7 @@ void main() {
       );
       final records = [
         TorrentClientCompatibilityRecord.capture(
-          outcome: TorrentCompatibilityOutcome.shareImportSucceeded,
+          outcome: TorrentCompatibilityOutcome.exportManualImportSucceeded,
           capabilities: capabilities,
           recordedAt: DateTime(2026, 6, 27, 12, 45),
         ),
@@ -441,8 +465,8 @@ void main() {
         contains('| 2026-06-27 | 待填写设备型号/Android 版本 | 35 | 待填写客户端名和包名 |'),
       );
       expect(summaryRow, contains('| 可用（候选 2 个） | 未发现（候选 0 个） |'));
-      expect(summaryRow, contains('| 可用（候选 1 个） | 待实测 |'));
-      expect(summaryRow, contains('| .torrent 分享导入 | 本机样本 1/1 条可用；'));
+      expect(summaryRow, contains('| 可用（候选 1 个） | 可用（实测 1 次） |'));
+      expect(summaryRow, contains('| 导出手动导入 | 本机样本 1/1 条可用；'));
     });
   });
 

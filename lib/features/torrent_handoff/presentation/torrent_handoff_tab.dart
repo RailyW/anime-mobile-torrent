@@ -69,6 +69,11 @@ class TorrentHandoffTab extends ConsumerWidget {
       description: '如果直开没有命中客户端，请在系统分享面板里选择 BT 客户端导入种子文件。',
     ),
     _GuideItem(
+      icon: Icons.save_alt_outlined,
+      title: '导出导入',
+      description: '如果直开和分享都不稳定，可以导出 .torrent 文件，再从外部 BT 客户端内手动导入。',
+    ),
+    _GuideItem(
       icon: Icons.play_circle_outline,
       title: '视频播放交接',
       description: '外部客户端下载完成后，回到“播放”页手动选择本地视频文件；APP 不扫描外部下载目录。',
@@ -93,7 +98,7 @@ class TorrentHandoffTab extends ConsumerWidget {
     _GuideItem(
       icon: Icons.refresh_outlined,
       title: '分享也失败',
-      description: '重新下载种子文件，并确认外部客户端允许从系统分享入口接收 .torrent 文件。',
+      description: '重新下载种子文件，并尝试导出 .torrent 后从外部 BT 客户端内手动导入。',
     ),
   ];
 
@@ -296,7 +301,7 @@ class TorrentHandoffTab extends ConsumerWidget {
         const SizedBox(height: 12),
         const _GuidePanel(
           title: '外部 BT 客户端自检',
-          summary: '用下面四个检查点确认手机里的 BT 客户端能接住 APP 交出的链接或种子文件。',
+          summary: '用下面五个检查点确认手机里的 BT 客户端能接住 APP 交出的链接或种子文件。',
           items: _compatibilityChecks,
         ),
         const SizedBox(height: 12),
@@ -649,7 +654,7 @@ class _CompatibilityRecordPanel extends StatelessWidget {
             Text('真实设备兼容记录', style: theme.textTheme.titleMedium),
             const SizedBox(height: 6),
             Text(
-              '手动记录当前设备的一次交接实测结果，只保存在本机，便于后续回看直开、分享和 magnet 的真实可用性。',
+              '手动记录当前设备的一次交接实测结果，只保存在本机，便于后续回看直开、分享、导出导入和 magnet 的真实可用性。',
               style: theme.textTheme.bodyMedium?.copyWith(
                 color: scheme.onSurfaceVariant,
               ),
@@ -771,6 +776,13 @@ class _CompatibilityRecordActions extends StatelessWidget {
           icon: Icons.ios_share_outlined,
           label: '记分享成功',
           outcome: TorrentCompatibilityOutcome.shareImportSucceeded,
+          capabilities: capabilities,
+          onRecord: onRecord,
+        ),
+        _RecordActionButton(
+          icon: Icons.save_alt_outlined,
+          label: '记导入成功',
+          outcome: TorrentCompatibilityOutcome.exportManualImportSucceeded,
           capabilities: capabilities,
           onRecord: onRecord,
         ),
@@ -912,6 +924,12 @@ class _CompatibilitySummaryCard extends StatelessWidget {
                     capabilities,
                     TorrentClientHandoffPath.torrentShare,
                   ),
+                ),
+                _CompatibilityPathChip(
+                  icon: Icons.save_alt_outlined,
+                  label: '导出导入',
+                  count: summary.exportManualImportSuccesses,
+                  currentStatus: '手动路径',
                 ),
                 _CompatibilityPathChip(
                   icon: Icons.link_outlined,

@@ -10,6 +10,7 @@ class TorrentCompatibilitySummary {
     required this.totalRecords,
     required this.directOpenSuccesses,
     required this.shareImportSuccesses,
+    required this.exportManualImportSuccesses,
     required this.magnetFallbackSuccesses,
     required this.handoffFailures,
     required this.leadingOutcome,
@@ -36,6 +37,8 @@ class TorrentCompatibilitySummary {
           counts[TorrentCompatibilityOutcome.directOpenSucceeded] ?? 0,
       shareImportSuccesses:
           counts[TorrentCompatibilityOutcome.shareImportSucceeded] ?? 0,
+      exportManualImportSuccesses:
+          counts[TorrentCompatibilityOutcome.exportManualImportSucceeded] ?? 0,
       magnetFallbackSuccesses:
           counts[TorrentCompatibilityOutcome.magnetOnlySucceeded] ?? 0,
       handoffFailures: counts[TorrentCompatibilityOutcome.handoffFailed] ?? 0,
@@ -52,6 +55,9 @@ class TorrentCompatibilitySummary {
   /// `.torrent` 分享导入成功次数。
   final int shareImportSuccesses;
 
+  /// `.torrent` 导出后从外部 BT 客户端内手动导入成功次数。
+  final int exportManualImportSuccesses;
+
   /// magnet 兜底成功次数。
   final int magnetFallbackSuccesses;
 
@@ -67,9 +73,12 @@ class TorrentCompatibilitySummary {
   /// 是否已经有本机实测样本。
   bool get hasRecords => totalRecords > 0;
 
-  /// 直开、分享和 magnet 三类可用样本总数。
+  /// 直开、分享、导出手动导入和 magnet 四类可用样本总数。
   int get successfulRecords =>
-      directOpenSuccesses + shareImportSuccesses + magnetFallbackSuccesses;
+      directOpenSuccesses +
+      shareImportSuccesses +
+      exportManualImportSuccesses +
+      magnetFallbackSuccesses;
 
   /// 面向用户的可用样本比例。
   String get successfulRatioLabel {
@@ -88,6 +97,7 @@ class TorrentCompatibilitySummary {
     return switch (outcome) {
       TorrentCompatibilityOutcome.directOpenSucceeded => '.torrent 直开',
       TorrentCompatibilityOutcome.shareImportSucceeded => '.torrent 分享导入',
+      TorrentCompatibilityOutcome.exportManualImportSucceeded => '导出手动导入',
       TorrentCompatibilityOutcome.magnetOnlySucceeded => 'magnet 兜底',
       TorrentCompatibilityOutcome.handoffFailed => '需要复查交接失败',
     };
@@ -104,6 +114,8 @@ class TorrentCompatibilitySummary {
         '最近本机样本中，直接打开 .torrent 文件的成功记录最多或优先级最高。',
       TorrentCompatibilityOutcome.shareImportSucceeded =>
         '最近本机样本中，通过系统分享面板导入 .torrent 的成功记录更稳定。',
+      TorrentCompatibilityOutcome.exportManualImportSucceeded =>
+        '最近本机样本中，导出 .torrent 后从外部 BT 客户端内手动导入更稳定。',
       TorrentCompatibilityOutcome.magnetOnlySucceeded =>
         '最近本机样本中，magnet 复制或打开更适合作为兜底路径。',
       TorrentCompatibilityOutcome.handoffFailed =>
@@ -116,6 +128,8 @@ class TorrentCompatibilitySummary {
     return switch (outcome) {
       TorrentCompatibilityOutcome.directOpenSucceeded => directOpenSuccesses,
       TorrentCompatibilityOutcome.shareImportSucceeded => shareImportSuccesses,
+      TorrentCompatibilityOutcome.exportManualImportSucceeded =>
+        exportManualImportSuccesses,
       TorrentCompatibilityOutcome.magnetOnlySucceeded =>
         magnetFallbackSuccesses,
       TorrentCompatibilityOutcome.handoffFailed => handoffFailures,
@@ -132,6 +146,7 @@ class TorrentCompatibilitySummary {
     const successPriority = [
       TorrentCompatibilityOutcome.directOpenSucceeded,
       TorrentCompatibilityOutcome.shareImportSucceeded,
+      TorrentCompatibilityOutcome.exportManualImportSucceeded,
       TorrentCompatibilityOutcome.magnetOnlySucceeded,
     ];
 

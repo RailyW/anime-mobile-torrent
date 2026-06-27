@@ -19,6 +19,13 @@ enum TorrentCompatibilityOutcome {
     description: '分享面板导入可用',
   ),
 
+  /// `.torrent` 文件已经导出到用户选择的位置，并能从外部 BT 客户端内手动导入。
+  exportManualImportSucceeded(
+    wireName: 'exportManualImportSucceeded',
+    label: '导入成功',
+    description: '导出后手动导入可用',
+  ),
+
   /// `.torrent` 文件交接不可用，但 magnet 复制或打开可以作为兜底。
   magnetOnlySucceeded(
     wireName: 'magnetOnlySucceeded',
@@ -30,7 +37,7 @@ enum TorrentCompatibilityOutcome {
   handoffFailed(
     wireName: 'handoffFailed',
     label: '交接失败',
-    description: '直开、分享和 magnet 均需复查',
+    description: '直开、分享、导出和 magnet 均需复查',
   );
 
   const TorrentCompatibilityOutcome({
