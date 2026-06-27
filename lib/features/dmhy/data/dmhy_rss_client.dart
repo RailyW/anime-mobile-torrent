@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:xml/xml.dart';
 
 import '../domain/dmhy_resource.dart';
+import 'dmhy_rate_limit_retry.dart';
 import 'dmhy_rss_parser.dart';
 
 /// DMHY RSS 调用异常。
@@ -29,7 +30,8 @@ class DmhyRssException implements Exception {
 /// 该类只封装 RSS 请求和解析，不负责 Flutter 状态、不直接处理复制或打开
 /// magnet。后续详情页 `.torrent` 解析会放在同一 data 模块内的独立客户端。
 class DmhyRssClient {
-  DmhyRssClient(this._dio);
+  DmhyRssClient(this._dio, {DmhyRateLimitRetry? rateLimitRetry})
+    : _rateLimitRetry = rateLimitRetry ?? DmhyRateLimitRetry();
 
   static const baseUrl = 'https://dmhy.org';
   static const userAgent =
@@ -37,6 +39,7 @@ class DmhyRssClient {
 
   final Dio _dio;
   final DmhyRssParser _parser = const DmhyRssParser();
+  final DmhyRateLimitRetry _rateLimitRetry;
 
   /// 复用同一套 DMHY HTTP 配置给详情页和种子文件下载客户端。
   ///
@@ -81,9 +84,11 @@ class DmhyRssClient {
     }
 
     try {
-      final response = await _dio.get<String>(
-        animeOnly ? '/topics/rss/sort_id/2/rss.xml' : '/topics/rss/rss.xml',
-        queryParameters: {'keyword': normalizedKeyword},
+      final response = await _rateLimitRetry.send<String>(
+        () => _dio.get<String>(
+          animeOnly ? '/topics/rss/sort_id/2/rss.xml' : '/topics/rss/rss.xml',
+          queryParameters: {'keyword': normalizedKeyword},
+        ),
       );
 
       final xmlText = response.data;

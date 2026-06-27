@@ -5,6 +5,7 @@
 ## 当前包含文件
 
 - `dmhy_rss_parser_test.dart`：DMHY RSS 解析器单元测试，验证 RSS item 的标题、详情页、发布时间、作者、分类、简介、magnet 和轻量资源元数据解析。
+- `dmhy_client_retry_test.dart`：DMHY HTTP 客户端单元测试，验证 RSS 搜索和详情页解析请求遇到 429 时会按 `Retry-After` 退避并重试一次。
 - `dmhy_torrent_page_parser_test.dart`：DMHY 详情页种子链接解析器单元测试，验证协议相对链接、相对路径链接和无种子链接兜底。
 - `torrent_handoff_test.dart`：Torrent 交接模型单元测试，验证通用种子文件模型、文件大小格式化、交接结果中文提示、外部 BT 客户端能力检测结果解析、本机兼容实测记录序列化、最近种子记录序列化和 `SharedPreferences` 持久化仓库。
 - `background_residency_test.dart`：后台常驻模型和控制器单元测试，验证初始状态、启动、刷新和停止状态流转。

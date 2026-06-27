@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../domain/dmhy_resource.dart';
 import '../domain/dmhy_torrent_file.dart';
+import 'dmhy_rate_limit_retry.dart';
 import 'dmhy_torrent_page_parser.dart';
 
 /// DMHY 种子文件解析和下载异常。
@@ -30,17 +31,21 @@ class DmhyTorrentException implements Exception {
 /// 种子文件下载到 APP 临时目录。它不添加 BT 任务，也不下载种子指向的
 /// 视频内容。
 class DmhyTorrentClient {
-  DmhyTorrentClient(this._dio);
+  DmhyTorrentClient(this._dio, {DmhyRateLimitRetry? rateLimitRetry})
+    : _rateLimitRetry = rateLimitRetry ?? DmhyRateLimitRetry();
 
   final Dio _dio;
   final DmhyTorrentPageParser _parser = const DmhyTorrentPageParser();
+  final DmhyRateLimitRetry _rateLimitRetry;
 
   /// 根据 RSS 资源详情页解析 `.torrent` 下载链接。
   Future<Uri> findTorrentUri(DmhyResource resource) async {
     try {
-      final response = await _dio.get<String>(
-        resource.detailUri.toString(),
-        options: Options(responseType: ResponseType.plain),
+      final response = await _rateLimitRetry.send<String>(
+        () => _dio.get<String>(
+          resource.detailUri.toString(),
+          options: Options(responseType: ResponseType.plain),
+        ),
       );
 
       final htmlText = response.data;
@@ -69,9 +74,11 @@ class DmhyTorrentClient {
     final torrentUri = await findTorrentUri(resource);
 
     try {
-      final response = await _dio.get<List<int>>(
-        torrentUri.toString(),
-        options: Options(responseType: ResponseType.bytes),
+      final response = await _rateLimitRetry.send<List<int>>(
+        () => _dio.get<List<int>>(
+          torrentUri.toString(),
+          options: Options(responseType: ResponseType.bytes),
+        ),
       );
 
       final bytes = response.data;
