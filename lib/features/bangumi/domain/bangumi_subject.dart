@@ -28,6 +28,25 @@ enum BangumiSubjectType {
   }
 }
 
+/// Bangumi 搜索排序方式。
+///
+/// 官方搜索接口当前支持 `match`、`heat`、`rank`、`score`。枚举同时保存
+/// API 提交值和 UI 展示文案，让搜索页面不需要重复维护一份排序映射表。
+enum BangumiSubjectSearchSort {
+  match('match', '相关度'),
+  heat('heat', '热度'),
+  rank('rank', '排名'),
+  score('score', '评分');
+
+  const BangumiSubjectSearchSort(this.apiValue, this.label);
+
+  /// Bangumi OpenAPI `sort` 字段需要的字符串值。
+  final String apiValue;
+
+  /// 展示在 Flutter 搜索排序菜单中的中文名称。
+  final String label;
+}
+
 /// Bangumi 条目封面地址集合。
 ///
 /// API 会返回多种尺寸的封面图。UI 优先使用 `common` 或 `medium`，

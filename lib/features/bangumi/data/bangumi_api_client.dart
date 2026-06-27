@@ -5,21 +5,6 @@ import '../domain/bangumi_episode_collection.dart';
 import '../domain/bangumi_subject.dart';
 import '../domain/bangumi_user.dart';
 
-/// Bangumi 搜索排序方式。
-///
-/// 官方搜索接口当前支持 `match`、`heat`、`rank`、`score`。首期默认使用
-/// `match`，后续可以在 UI 中暴露排序菜单。
-enum BangumiSubjectSearchSort {
-  match('match'),
-  heat('heat'),
-  rank('rank'),
-  score('score');
-
-  const BangumiSubjectSearchSort(this.apiValue);
-
-  final String apiValue;
-}
-
 /// Bangumi API 调用异常。
 ///
 /// UI 层只需要展示用户可理解的错误文本，调试时仍可通过 `statusCode`

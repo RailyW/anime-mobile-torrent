@@ -33,6 +33,7 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
 
   Timer? _searchDebounceTimer;
   BangumiSubjectSearchRequest? _searchRequest;
+  BangumiSubjectSearchSort _selectedSort = BangumiSubjectSearchSort.match;
 
   @override
   void dispose() {
@@ -76,8 +77,8 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
 
   /// 把已经归一化的关键词转换为搜索请求状态。
   ///
-  /// 同一个关键词重复提交时不重建请求，避免搜索按钮和防抖回调在极短时间内
-  /// 造成相同 Provider 请求重复刷新。
+  /// 同一个关键词和排序重复提交时不重建请求，避免搜索按钮、防抖回调或排序
+  /// 菜单在极短时间内造成相同 Provider 请求重复刷新。
   void _applySearchKeyword(String keyword) {
     if (keyword.isEmpty) {
       setState(() {
@@ -86,13 +87,38 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
       return;
     }
 
-    if (_searchRequest?.normalizedKeyword == keyword) {
+    if (_searchRequest?.normalizedKeyword == keyword &&
+        _searchRequest?.sort == _selectedSort) {
       return;
     }
 
     setState(() {
-      _searchRequest = BangumiSubjectSearchRequest(keyword: keyword, limit: 20);
+      _searchRequest = BangumiSubjectSearchRequest(
+        keyword: keyword,
+        limit: 20,
+        sort: _selectedSort,
+      );
     });
+  }
+
+  /// 更新 Bangumi 搜索排序。
+  ///
+  /// 排序属于服务端搜索条件，用户切换后如果当前已有关键词，立即按新排序重新
+  /// 拉取第一页；如果输入框为空，则只保存菜单选择，等待下一次搜索提交。
+  void _handleSortChanged(BangumiSubjectSearchSort sort) {
+    if (_selectedSort == sort) {
+      return;
+    }
+
+    _searchDebounceTimer?.cancel();
+    setState(() {
+      _selectedSort = sort;
+    });
+
+    final keyword = _keywordController.text.trim();
+    if (keyword.isNotEmpty) {
+      _applySearchKeyword(keyword);
+    }
   }
 
   @override
@@ -108,8 +134,10 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
         const SizedBox(height: 16),
         _BangumiSearchBar(
           controller: _keywordController,
+          selectedSort: _selectedSort,
           onChanged: _scheduleDebouncedSearch,
           onSubmitted: _submitSearch,
+          onSortChanged: _handleSortChanged,
         ),
         const SizedBox(height: 16),
         if (request == null) ...[
@@ -954,43 +982,93 @@ class _BangumiCollectionError extends StatelessWidget {
 class _BangumiSearchBar extends StatelessWidget {
   const _BangumiSearchBar({
     required this.controller,
+    required this.selectedSort,
     required this.onChanged,
     required this.onSubmitted,
+    required this.onSortChanged,
   });
 
   final TextEditingController controller;
+  final BangumiSubjectSearchSort selectedSort;
   final ValueChanged<String> onChanged;
   final VoidCallback onSubmitted;
+  final ValueChanged<BangumiSubjectSearchSort> onSortChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: TextField(
-            controller: controller,
-            decoration: const InputDecoration(
-              border: OutlineInputBorder(),
-              labelText: '动画关键词',
-              hintText: '例如：葬送的芙莉莲',
-              prefixIcon: Icon(Icons.search_outlined),
-            ),
-            textInputAction: TextInputAction.search,
-            onChanged: onChanged,
-            onSubmitted: (_) => onSubmitted(),
-          ),
-        ),
-        const SizedBox(width: 8),
-        SizedBox(
-          height: 56,
-          child: FilledButton.icon(
-            onPressed: onSubmitted,
-            icon: const Icon(Icons.search_outlined),
-            label: const Text('搜索'),
-          ),
-        ),
+    final keywordField = TextField(
+      controller: controller,
+      decoration: const InputDecoration(
+        border: OutlineInputBorder(),
+        labelText: '动画关键词',
+        hintText: '例如：葬送的芙莉莲',
+        prefixIcon: Icon(Icons.search_outlined),
+      ),
+      textInputAction: TextInputAction.search,
+      onChanged: onChanged,
+      onSubmitted: (_) => onSubmitted(),
+    );
+    final sortDropdown = DropdownButtonFormField<BangumiSubjectSearchSort>(
+      initialValue: selectedSort,
+      decoration: const InputDecoration(
+        border: OutlineInputBorder(),
+        labelText: '排序',
+        prefixIcon: Icon(Icons.sort_outlined),
+      ),
+      items: [
+        for (final sort in BangumiSubjectSearchSort.values)
+          DropdownMenuItem(value: sort, child: Text(sort.label)),
       ],
+      onChanged: (sort) {
+        if (sort == null) {
+          return;
+        }
+
+        onSortChanged(sort);
+      },
+    );
+    final searchButton = SizedBox(
+      height: 56,
+      child: FilledButton.icon(
+        onPressed: onSubmitted,
+        icon: const Icon(Icons.search_outlined),
+        label: const Text('搜索'),
+      ),
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 搜索区在平板/桌面测试视口保持单行，减少结果列表被挤压；窄屏手机上
+        // 排序菜单换到下一行，保证输入框和按钮不会互相压缩。
+        if (constraints.maxWidth >= 560) {
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: keywordField),
+              const SizedBox(width: 8),
+              SizedBox(width: 148, child: sortDropdown),
+              const SizedBox(width: 8),
+              searchButton,
+            ],
+          );
+        }
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: keywordField),
+                const SizedBox(width: 8),
+                searchButton,
+              ],
+            ),
+            const SizedBox(height: 8),
+            sortDropdown,
+          ],
+        );
+      },
     );
   }
 }

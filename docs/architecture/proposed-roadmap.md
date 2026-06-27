@@ -88,7 +88,7 @@ flowchart LR
 3. 已接入 `/v0/me` 当前用户信息读取，并在 Bangumi 首页展示登录状态、用户昵称、用户名、头像、签名、刷新和退出入口。
 4. 已接入公开动画条目搜索，使用 `POST /v0/search/subjects` 和 `filter.type: [2]`。
 5. 已建立 Bangumi 条目模型、用户模型、OAuth token 模型、收藏模型、Dio API 客户端、Repository 抽象、Riverpod 搜索 Provider、详情 Provider、当前用户 Provider 和当前用户收藏 Provider。
-6. 已在 Bangumi 首页提供关键词搜索 UI、输入防抖、搜索按钮即时提交、结果列表和搜索结果分页加载更多。
+6. 已在 Bangumi 首页提供关键词搜索 UI、输入防抖、排序菜单、搜索按钮即时提交、结果列表和搜索结果分页加载更多。
 7. 已接入公开条目详情，使用 `GET /v0/subjects/{subject_id}`，支持从搜索结果进入详情页。
 8. 已接入条目详情页个人收藏读取和修改，支持想看、看过、在看、搁置、抛弃、评分、短评和私有标记。
 9. 已接入当前用户动画收藏列表读取，使用 `GET /v0/users/{username}/collections?subject_type=2`，并在 Bangumi 首页提供分页列表、状态筛选、刷新和加载更多。

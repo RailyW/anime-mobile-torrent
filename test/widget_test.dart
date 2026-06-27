@@ -167,6 +167,50 @@ void main() {
     expect(find.text('Test Anime'), findsOneWidget);
     expect(find.textContaining('8.1 · Rank 12 · 345 人评分'), findsOneWidget);
     expect(repository.searchRequests, hasLength(1));
+    expect(
+      repository.searchRequests.single.sort,
+      BangumiSubjectSearchSort.match,
+    );
+  });
+
+  testWidgets('Bangumi 搜索排序切换会重新加载当前关键词', (tester) async {
+    final repository = _FakeBangumiRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
+          bangumiRepositoryProvider.overrideWithValue(repository),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '测试动画');
+    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.pumpAndSettle();
+
+    expect(repository.searchRequests, hasLength(1));
+    expect(
+      repository.searchRequests.single.sort,
+      BangumiSubjectSearchSort.match,
+    );
+
+    await tester.tap(
+      find.byType(DropdownButtonFormField<BangumiSubjectSearchSort>),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text(BangumiSubjectSearchSort.score.label).last);
+    await tester.pumpAndSettle();
+
+    expect(repository.searchRequests, hasLength(2));
+    expect(repository.searchRequests.last.normalizedKeyword, '测试动画');
+    expect(repository.searchRequests.last.sort, BangumiSubjectSearchSort.score);
+    expect(repository.searchRequests.last.offset, 0);
   });
 
   testWidgets('Bangumi 搜索输入停顿后会自动触发防抖搜索', (tester) async {
