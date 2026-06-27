@@ -135,6 +135,28 @@ void main() {
     expect(find.text('暂无订阅关键词'), findsOneWidget);
   });
 
+  testWidgets('种子交接页可以跳转到播放页手动选择视频', (tester) async {
+    await tester.pumpWidget(_buildTestApp());
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('种子').last);
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.widgetWithText(FilledButton, '去播放页选择视频'),
+      220,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, '去播放页选择视频'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('手动选择'), findsOneWidget);
+    expect(find.text('选择视频'), findsOneWidget);
+    expect(find.text('最近视频'), findsOneWidget);
+  });
+
   testWidgets('可以在设置页保存 Bangumi OAuth 本机配置', (tester) async {
     await tester.pumpWidget(_buildTestApp());
     await tester.pumpAndSettle();

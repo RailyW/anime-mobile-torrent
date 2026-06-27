@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 
 import '../application/torrent_handoff_providers.dart';
 import '../domain/torrent_client_capabilities.dart';
@@ -193,6 +194,16 @@ class TorrentHandoffTab extends ConsumerWidget {
       }
     }
 
+    /// 跳转到播放页，让用户在外部 BT 客户端完成真实视频下载后手动选择文件。
+    ///
+    /// 这里仅复用首页已有的 `tab=playback` 深链，不把播放模块的状态或文件选择
+    /// 逻辑泄漏进种子交接模块，保持“交种子”和“交视频”两个边界独立。
+    void openPlaybackTab() {
+      context.go(
+        Uri(path: '/', queryParameters: {'tab': 'playback'}).toString(),
+      );
+    }
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
       children: [
@@ -217,6 +228,7 @@ class TorrentHandoffTab extends ConsumerWidget {
           onShare: shareSeedHistoryItem,
           onDelete: deleteSeedHistoryItem,
           onClear: clearSeedHistory,
+          onOpenPlayback: openPlaybackTab,
         ),
         const SizedBox(height: 12),
         _CompatibilityRecordPanel(
@@ -256,6 +268,7 @@ class _SeedHistoryPanel extends StatelessWidget {
     required this.onShare,
     required this.onDelete,
     required this.onClear,
+    required this.onOpenPlayback,
   });
 
   final AsyncValue<List<TorrentSeedHistoryItem>> items;
@@ -263,6 +276,7 @@ class _SeedHistoryPanel extends StatelessWidget {
   final Future<void> Function(TorrentSeedHistoryItem item) onShare;
   final Future<void> Function(TorrentSeedHistoryItem item) onDelete;
   final Future<void> Function() onClear;
+  final VoidCallback onOpenPlayback;
 
   @override
   Widget build(BuildContext context) {
@@ -306,9 +320,58 @@ class _SeedHistoryPanel extends StatelessWidget {
               },
               loading: () => const Text('正在读取最近种子'),
             ),
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 12),
+            _PlaybackSelectionShortcut(onOpenPlayback: onOpenPlayback),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 从种子交接流程跳到播放流程的轻量入口。
+///
+/// APP 不知道外部 BT 客户端把视频下载到了哪里，也不会主动扫描外部目录。
+/// 这个入口只负责把用户带到播放页，由用户通过系统文件选择器显式选择视频。
+class _PlaybackSelectionShortcut extends StatelessWidget {
+  const _PlaybackSelectionShortcut({required this.onOpenPlayback});
+
+  final VoidCallback onOpenPlayback;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(Icons.play_circle_outline, color: scheme.primary),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('外部客户端下载完成后', style: theme.textTheme.titleSmall),
+              const SizedBox(height: 4),
+              Text(
+                '前往播放页手动选择本地视频文件，再交给手机系统或第三方播放器。',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 10),
+              FilledButton.icon(
+                onPressed: onOpenPlayback,
+                icon: const Icon(Icons.play_arrow_outlined),
+                label: const Text('去播放页选择视频'),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
