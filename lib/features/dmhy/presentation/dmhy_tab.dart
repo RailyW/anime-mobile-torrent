@@ -556,6 +556,18 @@ class _DmhyFilterBar extends StatelessWidget {
                       );
                     },
                   ),
+                if (options.sources.isNotEmpty)
+                  _DmhyStringFilterDropdown(
+                    key: const Key('dmhy-filter-source'),
+                    label: '片源筛选',
+                    value: filter.source,
+                    options: options.sources,
+                    onChanged: (value) {
+                      onChanged(
+                        filter.copyWith(source: DmhyFilterValue(value)),
+                      );
+                    },
+                  ),
                 if (options.mediaFormats.isNotEmpty)
                   _DmhyStringFilterDropdown(
                     key: const Key('dmhy-filter-media-format'),
@@ -577,6 +589,18 @@ class _DmhyFilterBar extends StatelessWidget {
                     onChanged: (value) {
                       onChanged(
                         filter.copyWith(videoCodec: DmhyFilterValue(value)),
+                      );
+                    },
+                  ),
+                if (options.subtitleLabels.isNotEmpty)
+                  _DmhyStringFilterDropdown(
+                    key: const Key('dmhy-filter-subtitle-label'),
+                    label: '字幕说明筛选',
+                    value: filter.subtitleLabel,
+                    options: options.subtitleLabels,
+                    onChanged: (value) {
+                      onChanged(
+                        filter.copyWith(subtitleLabel: DmhyFilterValue(value)),
                       );
                     },
                   ),

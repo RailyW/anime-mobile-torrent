@@ -729,8 +729,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(dmhyRepository.requests, hasLength(1));
-    expect(find.text('[猫耳字幕] 测试动画 01 1080p HEVC MKV'), findsOneWidget);
-    expect(find.text('[桜都字幕组] 测试动画 01 720p AVC MP4'), findsOneWidget);
+    expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
+    expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('dmhy-filter-release-group')));
     await tester.pumpAndSettle();
@@ -739,15 +739,38 @@ void main() {
 
     expect(dmhyRepository.requests, hasLength(1));
     expect(find.text('筛选后显示 1/2 条'), findsOneWidget);
-    expect(find.text('[猫耳字幕] 测试动画 01 1080p HEVC MKV'), findsOneWidget);
-    expect(find.text('[桜都字幕组] 测试动画 01 720p AVC MP4'), findsNothing);
+    expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
+    expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsNothing);
 
     await tester.tap(find.widgetWithText(TextButton, '清除筛选'));
     await tester.pumpAndSettle();
 
     expect(dmhyRepository.requests, hasLength(1));
-    expect(find.text('[猫耳字幕] 测试动画 01 1080p HEVC MKV'), findsOneWidget);
-    expect(find.text('[桜都字幕组] 测试动画 01 720p AVC MP4'), findsOneWidget);
+    expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
+    expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('dmhy-filter-source')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('BDRip').last);
+    await tester.pumpAndSettle();
+
+    expect(dmhyRepository.requests, hasLength(1));
+    expect(find.text('筛选后显示 1/2 条'), findsOneWidget);
+    expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsNothing);
+    expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(TextButton, '清除筛选'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('dmhy-filter-subtitle-label')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('简繁内封').last);
+    await tester.pumpAndSettle();
+
+    expect(dmhyRepository.requests, hasLength(1));
+    expect(find.text('筛选后显示 1/2 条'), findsOneWidget);
+    expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
+    expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsNothing);
   });
 
   testWidgets('DMHY 种子按钮可以下载并交给外部 BT 客户端', (tester) async {
@@ -1223,14 +1246,16 @@ class _FilterableFakeDmhyRepository implements DmhyRepository {
     requests.add(request);
     return [
       _buildFilterableDmhyResource(
-        title: '[猫耳字幕] 测试动画 01 1080p HEVC MKV',
+        title: '[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV',
         detailPath: '20_neko',
         sizeLabel: '1.25 GB',
+        subtitleLabel: '简繁内封',
       ),
       _buildFilterableDmhyResource(
-        title: '[桜都字幕组] 测试动画 01 720p AVC MP4',
+        title: '[桜都字幕组] 测试动画 01 720p BDRip AVC MP4',
         detailPath: '21_sakurato',
         sizeLabel: '700 MB',
+        subtitleLabel: '英文字幕',
       ),
     ];
   }
@@ -1282,6 +1307,7 @@ DmhyResource _buildFilterableDmhyResource({
   required String title,
   required String detailPath,
   required String sizeLabel,
+  required String subtitleLabel,
 }) {
   return DmhyResource(
     title: title,
@@ -1290,10 +1316,10 @@ DmhyResource _buildFilterableDmhyResource({
     publishedAt: DateTime.utc(2026, 4, 23, 2, 30),
     author: 'test_team',
     categoryName: '動畫',
-    descriptionText: '筛选测试资源 $sizeLabel 简繁内封',
+    descriptionText: '筛选测试资源 $sizeLabel $subtitleLabel',
     metadata: DmhyResourceMetadata.fromText(
       title: title,
-      descriptionText: '筛选测试资源 $sizeLabel 简繁内封',
+      descriptionText: '筛选测试资源 $sizeLabel $subtitleLabel',
     ),
     stats: DmhyResourceStats(
       sizeLabel: sizeLabel,

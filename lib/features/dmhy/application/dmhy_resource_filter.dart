@@ -10,8 +10,10 @@ class DmhyResourceFilter {
   const DmhyResourceFilter({
     this.releaseGroup,
     this.resolution,
+    this.source,
     this.mediaFormat,
     this.videoCodec,
+    this.subtitleLabel,
     this.sizeRange,
   });
 
@@ -19,8 +21,10 @@ class DmhyResourceFilter {
   const DmhyResourceFilter.empty()
     : releaseGroup = null,
       resolution = null,
+      source = null,
       mediaFormat = null,
       videoCodec = null,
+      subtitleLabel = null,
       sizeRange = null;
 
   /// 字幕组或发布组名称。
@@ -29,11 +33,17 @@ class DmhyResourceFilter {
   /// 资源分辨率，例如 `1080p`。
   final String? resolution;
 
+  /// 资源片源，例如 `WEB-DL`、`BDRip` 或 `TVRip`。
+  final String? source;
+
   /// 封装格式，例如 `MKV` 或 `MP4`。
   final String? mediaFormat;
 
   /// 视频编码，例如 `HEVC/H.265`。
   final String? videoCodec;
+
+  /// 字幕说明，例如 `简繁内封`、`英文字幕` 或 `无字幕`。
+  final String? subtitleLabel;
 
   /// 文件大小区间。
   final DmhyResourceSizeRange? sizeRange;
@@ -42,8 +52,10 @@ class DmhyResourceFilter {
   bool get isEmpty =>
       releaseGroup == null &&
       resolution == null &&
+      source == null &&
       mediaFormat == null &&
       videoCodec == null &&
+      subtitleLabel == null &&
       sizeRange == null;
 
   /// 当前是否至少启用了一个筛选条件。
@@ -66,8 +78,10 @@ class DmhyResourceFilter {
     final metadata = resource.metadata;
     return _matchesText(releaseGroup, metadata.releaseGroup) &&
         _matchesText(resolution, metadata.resolution) &&
+        _matchesText(source, metadata.source) &&
         _matchesText(mediaFormat, metadata.mediaFormat) &&
         _matchesText(videoCodec, metadata.videoCodec) &&
+        _matchesText(subtitleLabel, metadata.subtitleLabel) &&
         _matchesSizeRange(sizeRange, resource);
   }
 
@@ -78,8 +92,10 @@ class DmhyResourceFilter {
   DmhyResourceFilter copyWith({
     DmhyFilterValue<String>? releaseGroup,
     DmhyFilterValue<String>? resolution,
+    DmhyFilterValue<String>? source,
     DmhyFilterValue<String>? mediaFormat,
     DmhyFilterValue<String>? videoCodec,
+    DmhyFilterValue<String>? subtitleLabel,
     DmhyFilterValue<DmhyResourceSizeRange>? sizeRange,
   }) {
     return DmhyResourceFilter(
@@ -87,8 +103,12 @@ class DmhyResourceFilter {
           ? this.releaseGroup
           : releaseGroup.value,
       resolution: resolution == null ? this.resolution : resolution.value,
+      source: source == null ? this.source : source.value,
       mediaFormat: mediaFormat == null ? this.mediaFormat : mediaFormat.value,
       videoCodec: videoCodec == null ? this.videoCodec : videoCodec.value,
+      subtitleLabel: subtitleLabel == null
+          ? this.subtitleLabel
+          : subtitleLabel.value,
       sizeRange: sizeRange == null ? this.sizeRange : sizeRange.value,
     );
   }
@@ -166,8 +186,10 @@ class DmhyResourceFilterOptions {
   const DmhyResourceFilterOptions({
     required this.releaseGroups,
     required this.resolutions,
+    required this.sources,
     required this.mediaFormats,
     required this.videoCodecs,
+    required this.subtitleLabels,
     required this.hasSize,
   });
 
@@ -179,39 +201,49 @@ class DmhyResourceFilterOptions {
   ) {
     final releaseGroups = <String>{};
     final resolutions = <String>{};
+    final sources = <String>{};
     final mediaFormats = <String>{};
     final videoCodecs = <String>{};
+    final subtitleLabels = <String>{};
     var hasSize = false;
 
     for (final resource in resources) {
       _addOption(releaseGroups, resource.metadata.releaseGroup);
       _addOption(resolutions, resource.metadata.resolution);
+      _addOption(sources, resource.metadata.source);
       _addOption(mediaFormats, resource.metadata.mediaFormat);
       _addOption(videoCodecs, resource.metadata.videoCodec);
+      _addOption(subtitleLabels, resource.metadata.subtitleLabel);
       hasSize = hasSize || dmhyResourceSizeBytes(resource) != null;
     }
 
     return DmhyResourceFilterOptions(
       releaseGroups: _sortedOptions(releaseGroups),
       resolutions: _sortedOptions(resolutions),
+      sources: _sortedOptions(sources),
       mediaFormats: _sortedOptions(mediaFormats),
       videoCodecs: _sortedOptions(videoCodecs),
+      subtitleLabels: _sortedOptions(subtitleLabels),
       hasSize: hasSize,
     );
   }
 
   final List<String> releaseGroups;
   final List<String> resolutions;
+  final List<String> sources;
   final List<String> mediaFormats;
   final List<String> videoCodecs;
+  final List<String> subtitleLabels;
   final bool hasSize;
 
   /// 当前结果是否没有任何可用筛选项。
   bool get isEmpty =>
       releaseGroups.isEmpty &&
       resolutions.isEmpty &&
+      sources.isEmpty &&
       mediaFormats.isEmpty &&
       videoCodecs.isEmpty &&
+      subtitleLabels.isEmpty &&
       !hasSize;
 
   /// 当前结果是否至少有一个可用筛选项。
