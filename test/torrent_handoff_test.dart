@@ -323,6 +323,63 @@ void main() {
       );
       expect(report, contains('APP 只下载和交接 .torrent 文件'));
     });
+
+    test('可以生成用于跨设备汇总的 Markdown 兼容模板', () {
+      final capabilities = TorrentClientCapabilities(
+        isPlatformBridgeAvailable: true,
+        canOpenMagnet: true,
+        canOpenTorrentFile: false,
+        canShareTorrentFile: true,
+        magnetHandlerCount: 1,
+        torrentViewHandlerCount: 0,
+        torrentShareHandlerCount: 1,
+        magnetHandlers: const [
+          TorrentClientAppCandidate(
+            label: '测试 BT',
+            packageName: 'com.example.bt',
+            activityName: 'com.example.bt.MagnetActivity',
+          ),
+        ],
+        torrentShareHandlers: const [
+          TorrentClientAppCandidate(
+            label: '分享导入器',
+            packageName: 'com.example.share',
+            activityName: 'com.example.share.ImportActivity',
+          ),
+        ],
+        androidSdkInt: 35,
+        checkedAt: DateTime(2026, 6, 27, 12, 30),
+      );
+      final records = [
+        TorrentClientCompatibilityRecord.capture(
+          outcome: TorrentCompatibilityOutcome.shareImportSucceeded,
+          capabilities: capabilities,
+          recordedAt: DateTime(2026, 6, 27, 12, 45),
+        ),
+      ];
+
+      final template = TorrentCompatibilityReport(
+        capabilities: capabilities,
+        records: records,
+        generatedAt: DateTime(2026, 6, 27, 13),
+      ).toMarkdownTemplate();
+
+      expect(template, contains('# Anime Mobile Torrent 外部 BT 客户端兼容记录模板'));
+      expect(template, contains('| Android SDK | 35 |'));
+      expect(template, contains('| magnet 打开 | 可用（候选 1 个） |'));
+      expect(
+        template,
+        contains(
+          '| magnet 打开 | 测试 BT | com.example.bt | com.example.bt.MagnetActivity |',
+        ),
+      );
+      expect(template, contains('| .torrent 直开 | 未发现候选客户端 | - | - |'));
+      expect(template, contains('| .torrent 分享导入成功 | 1 |'));
+      expect(template, contains('| 推荐观察路径 | .torrent 分享导入 |'));
+      expect(template, contains('| 2026-06-27 | 待填写设备型号/Android 版本 | 35 |'));
+      expect(template, contains('- 导出 `.torrent` 后手动导入是否成功：'));
+      expect(template, contains('视频由外部 BT 客户端下载'));
+    });
   });
 
   group('SharedPreferencesTorrentCompatibilityRecordRepository', () {

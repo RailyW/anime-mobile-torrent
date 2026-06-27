@@ -121,6 +121,139 @@ class TorrentCompatibilityReport {
     return buffer.toString().trimRight();
   }
 
+  /// 生成适合跨设备整理的 Markdown 记录模板。
+  ///
+  /// 纯文本报告偏向诊断阅读；Markdown 模板偏向复制到文档或 issue 后继续
+  /// 手工补充设备型号、客户端版本和导出手动导入结果。这里仍只使用调用方
+  /// 已传入的本机检测和实测记录，不读取额外系统信息，也不上传任何数据。
+  String toMarkdownTemplate() {
+    final summary = TorrentCompatibilitySummary.fromRecords(records);
+    final buffer = StringBuffer()
+      ..writeln('# Anime Mobile Torrent 外部 BT 客户端兼容记录模板')
+      ..writeln()
+      ..writeln('- 生成时间：${_formatDateTime(generatedAt)}')
+      ..writeln('- 使用边界：APP 只下载和交接 `.torrent` 文件，不下载种子指向的视频内容。')
+      ..writeln()
+      ..writeln('## 当前设备自动检测')
+      ..writeln()
+      ..writeln('| 项目 | 当前值 |')
+      ..writeln('| --- | --- |')
+      ..writeln(
+        '| 检测通道 | ${_escapeMarkdownCell(_formatPlatformBridge(capabilities))} |',
+      )
+      ..writeln(
+        '| Android SDK | ${_escapeMarkdownCell(capabilities.androidSdkInt?.toString() ?? '未知')} |',
+      )
+      ..writeln(
+        '| magnet 打开 | ${_escapeMarkdownCell(_formatPathStatus(capabilities.canOpenMagnet, capabilities.magnetHandlerCount))} |',
+      )
+      ..writeln(
+        '| .torrent 直开 | ${_escapeMarkdownCell(_formatPathStatus(capabilities.canOpenTorrentFile, capabilities.torrentViewHandlerCount))} |',
+      )
+      ..writeln(
+        '| .torrent 分享导入 | ${_escapeMarkdownCell(_formatPathStatus(capabilities.canShareTorrentFile, capabilities.torrentShareHandlerCount))} |',
+      );
+
+    final platformMessage = capabilities.platformMessage;
+    if (platformMessage != null && platformMessage.isNotEmpty) {
+      buffer.writeln('| 平台信息 | ${_escapeMarkdownCell(platformMessage)} |');
+    }
+
+    final checkedAt = capabilities.checkedAt;
+    if (checkedAt != null) {
+      buffer.writeln(
+        '| 检测时间 | ${_escapeMarkdownCell(_formatDateTime(checkedAt))} |',
+      );
+    }
+
+    buffer
+      ..writeln()
+      ..writeln('## 候选客户端清单')
+      ..writeln()
+      ..writeln('| 路径 | 应用 | 包名 | Activity |')
+      ..writeln('| --- | --- | --- | --- |');
+    _writeCandidateMarkdownRows(
+      buffer,
+      pathLabel: 'magnet 打开',
+      handlers: capabilities.magnetHandlers,
+    );
+    _writeCandidateMarkdownRows(
+      buffer,
+      pathLabel: '.torrent 直开',
+      handlers: capabilities.torrentViewHandlers,
+    );
+    _writeCandidateMarkdownRows(
+      buffer,
+      pathLabel: '.torrent 分享导入',
+      handlers: capabilities.torrentShareHandlers,
+    );
+
+    buffer
+      ..writeln()
+      ..writeln('## 本机实测摘要')
+      ..writeln()
+      ..writeln('| 项目 | 当前值 |')
+      ..writeln('| --- | --- |')
+      ..writeln('| 记录总数 | ${summary.totalRecords} |')
+      ..writeln(
+        '| 可用样本 | ${_escapeMarkdownCell(summary.successfulRatioLabel)} |',
+      )
+      ..writeln('| .torrent 直开成功 | ${summary.directOpenSuccesses} |')
+      ..writeln('| .torrent 分享导入成功 | ${summary.shareImportSuccesses} |')
+      ..writeln('| magnet 兜底成功 | ${summary.magnetFallbackSuccesses} |')
+      ..writeln('| 交接失败 | ${summary.handoffFailures} |')
+      ..writeln(
+        '| 推荐观察路径 | ${_escapeMarkdownCell(summary.leadingOutcomeLabel)} |',
+      )
+      ..writeln()
+      ..writeln('## 本机实测记录')
+      ..writeln()
+      ..writeln('| 时间 | 结果 | 检测摘要 |')
+      ..writeln('| --- | --- | --- |');
+    if (records.isEmpty) {
+      buffer.writeln('| 待填写 | 待实测 | 暂无本机实测记录 |');
+    } else {
+      for (final record in records) {
+        buffer.writeln(
+          '| ${_escapeMarkdownCell(_formatDateTime(record.recordedAt))} '
+          '| ${_escapeMarkdownCell(record.outcome.label)} '
+          '| ${_escapeMarkdownCell(record.detectionSummary)} |',
+        );
+      }
+    }
+
+    buffer
+      ..writeln()
+      ..writeln('## 跨设备汇总行')
+      ..writeln()
+      ..writeln(
+        '| 日期 | 设备/系统 | Android SDK | BT 客户端/包名 | magnet | .torrent 直开 | 分享导入 | 导出手动导入 | 推荐路径 | 备注 |',
+      )
+      ..writeln('| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |')
+      ..writeln(
+        '| ${_formatDate(generatedAt)} | 待填写设备型号/Android 版本 '
+        '| ${_escapeMarkdownCell(capabilities.androidSdkInt?.toString() ?? '未知')} '
+        '| 待填写客户端名和包名 | 可用/不可用/未测 | 可用/不可用/未测 '
+        '| 可用/不可用/未测 | 可用/不可用/未测 '
+        '| ${_escapeMarkdownCell(summary.leadingOutcomeLabel)} '
+        '| APP 只交接 .torrent；视频由外部 BT 客户端下载 |',
+      )
+      ..writeln()
+      ..writeln('## 手动补充项')
+      ..writeln()
+      ..writeln('- 设备型号：')
+      ..writeln('- Android 版本：')
+      ..writeln('- 外部 BT 客户端名称与版本：')
+      ..writeln('- `.torrent` 直开是否成功导入：')
+      ..writeln('- 系统分享面板是否成功导入：')
+      ..writeln('- 导出 `.torrent` 后手动导入是否成功：')
+      ..writeln('- magnet 复制或打开是否可作为兜底：')
+      ..writeln('- 外部客户端下载完成后，播放页手动选择视频是否可播放：')
+      ..writeln('- 备注：');
+
+    return buffer.toString().trimRight();
+  }
+
   /// 写入某一类 Intent 路径下的候选客户端列表。
   static void _writeCandidateSection(
     StringBuffer buffer, {
@@ -141,6 +274,32 @@ class TorrentCompatibilityReport {
       if (handler.activityName.isNotEmpty) {
         buffer.writeln('  Activity: ${handler.activityName}');
       }
+    }
+  }
+
+  /// 写入 Markdown 表格中的候选客户端行。
+  ///
+  /// 每条候选来自 Android resolver；同一个客户端可能在不同路径下暴露不同
+  /// Activity，因此模板按路径逐行展示，方便后续手动核对哪条 Intent 真正可用。
+  static void _writeCandidateMarkdownRows(
+    StringBuffer buffer, {
+    required String pathLabel,
+    required List<TorrentClientAppCandidate> handlers,
+  }) {
+    if (handlers.isEmpty) {
+      buffer.writeln(
+        '| ${_escapeMarkdownCell(pathLabel)} | 未发现候选客户端 | - | - |',
+      );
+      return;
+    }
+
+    for (final handler in handlers) {
+      buffer.writeln(
+        '| ${_escapeMarkdownCell(pathLabel)} '
+        '| ${_escapeMarkdownCell(handler.displayName)} '
+        '| ${_escapeMarkdownCell(_blankToDash(handler.packageName))} '
+        '| ${_escapeMarkdownCell(_blankToDash(handler.activityName))} |',
+      );
     }
   }
 
@@ -170,5 +329,30 @@ class TorrentCompatibilityReport {
     final hour = local.hour.toString().padLeft(2, '0');
     final minute = local.minute.toString().padLeft(2, '0');
     return '$year-$month-$day $hour:$minute';
+  }
+
+  /// 格式化仅包含日期的字段，用于跨设备汇总表。
+  static String _formatDate(DateTime value) {
+    final local = value.toLocal();
+    final year = local.year.toString().padLeft(4, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    final day = local.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
+  }
+
+  /// 转义 Markdown 表格单元格中会破坏结构的字符。
+  static String _escapeMarkdownCell(String value) {
+    return value
+        .replaceAll(r'\', r'\\')
+        .replaceAll('|', r'\|')
+        .replaceAll('\r\n', '<br>')
+        .replaceAll('\n', '<br>')
+        .replaceAll('\r', '<br>');
+  }
+
+  /// 将空白值显示为短横线，减少模板中的空单元格。
+  static String _blankToDash(String value) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? '-' : trimmed;
   }
 }

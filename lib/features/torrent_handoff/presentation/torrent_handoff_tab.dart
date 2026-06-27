@@ -146,6 +146,19 @@ class TorrentHandoffTab extends ConsumerWidget {
       await Clipboard.setData(ClipboardData(text: report));
     }
 
+    Future<void> copyCompatibilityTemplate(
+      TorrentClientCapabilities capabilities,
+      List<TorrentClientCompatibilityRecord> records,
+    ) async {
+      final template = TorrentCompatibilityReport(
+        capabilities: capabilities,
+        records: records,
+        generatedAt: DateTime.now(),
+      ).toMarkdownTemplate();
+
+      await Clipboard.setData(ClipboardData(text: template));
+    }
+
     Future<void> openSeedHistoryItem(TorrentSeedHistoryItem item) async {
       final repository = ref.read(torrentHandoffRepositoryProvider);
       final result = await repository.openSeedFileWithShareFallback(
@@ -250,6 +263,7 @@ class TorrentHandoffTab extends ConsumerWidget {
           onRecord: recordCompatibility,
           onClear: clearCompatibilityRecords,
           onCopyReport: copyCompatibilityReport,
+          onCopyTemplate: copyCompatibilityTemplate,
         ),
         const SizedBox(height: 12),
         const _GuidePanel(
@@ -557,6 +571,7 @@ class _CompatibilityRecordPanel extends StatelessWidget {
     required this.onRecord,
     required this.onClear,
     required this.onCopyReport,
+    required this.onCopyTemplate,
   });
 
   final AsyncValue<TorrentClientCapabilities> capabilities;
@@ -572,6 +587,11 @@ class _CompatibilityRecordPanel extends StatelessWidget {
     List<TorrentClientCompatibilityRecord> records,
   )
   onCopyReport;
+  final Future<void> Function(
+    TorrentClientCapabilities capabilities,
+    List<TorrentClientCompatibilityRecord> records,
+  )
+  onCopyTemplate;
 
   @override
   Widget build(BuildContext context) {
@@ -627,6 +647,7 @@ class _CompatibilityRecordPanel extends StatelessWidget {
                   ),
                   onRecord: onRecord,
                   onCopyReport: onCopyReport,
+                  onCopyTemplate: onCopyTemplate,
                 );
               },
               error: (error, _) {
@@ -667,6 +688,7 @@ class _CompatibilityRecordActions extends StatelessWidget {
     required this.records,
     required this.onRecord,
     required this.onCopyReport,
+    required this.onCopyTemplate,
   });
 
   final TorrentClientCapabilities capabilities;
@@ -681,6 +703,11 @@ class _CompatibilityRecordActions extends StatelessWidget {
     List<TorrentClientCompatibilityRecord> records,
   )
   onCopyReport;
+  final Future<void> Function(
+    TorrentClientCapabilities capabilities,
+    List<TorrentClientCompatibilityRecord> records,
+  )
+  onCopyTemplate;
 
   @override
   Widget build(BuildContext context) {
@@ -729,6 +756,20 @@ class _CompatibilityRecordActions extends StatelessWidget {
           },
           icon: const Icon(Icons.content_copy_outlined),
           label: const Text('复制报告'),
+        ),
+        OutlinedButton.icon(
+          key: const Key('torrent-copy-compatibility-template'),
+          onPressed: () async {
+            await onCopyTemplate(capabilities, records);
+            if (!context.mounted) {
+              return;
+            }
+            final messenger = ScaffoldMessenger.of(context);
+            messenger.clearSnackBars();
+            messenger.showSnackBar(const SnackBar(content: Text('已复制兼容模板')));
+          },
+          icon: const Icon(Icons.table_chart_outlined),
+          label: const Text('复制模板'),
         ),
       ],
     );
