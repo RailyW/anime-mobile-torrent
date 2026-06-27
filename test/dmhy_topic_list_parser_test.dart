@@ -104,7 +104,64 @@ void main() {
       expect(requestedPaths, ['/topics/rss/sort_id/2/rss.xml']);
       expect(resources.single.stats.isEmpty, isTrue);
     });
+
+    test('前台搜索可以按 HTML 种子数倒序排列资源', () async {
+      final repository = _buildSortableRepository();
+
+      final resources = await repository.searchResources(
+        const DmhySearchRequest(
+          keyword: '测试动画',
+          sort: DmhyResourceSort.seedDesc,
+        ),
+      );
+
+      expect(resources.map((resource) => resource.title), [
+        '[字幕组] 高种子资源 01 1080p',
+        '[字幕组] 中种子资源 01 1080p',
+        '[字幕组] 低种子资源 01 1080p',
+      ]);
+    });
+
+    test('前台搜索可以按 HTML 大小倒序排列资源', () async {
+      final repository = _buildSortableRepository();
+
+      final resources = await repository.searchResources(
+        const DmhySearchRequest(
+          keyword: '测试动画',
+          sort: DmhyResourceSort.sizeDesc,
+        ),
+      );
+
+      expect(resources.map((resource) => resource.title), [
+        '[字幕组] 低种子资源 01 1080p',
+        '[字幕组] 高种子资源 01 1080p',
+        '[字幕组] 中种子资源 01 1080p',
+      ]);
+    });
   });
+}
+
+DmhyRssRepository _buildSortableRepository() {
+  final dio = _buildDmhyDio((options, handler) {
+    if (options.path.contains('/topics/rss/')) {
+      return handler.resolve(
+        Response<String>(
+          requestOptions: options,
+          statusCode: 200,
+          data: _buildSortableRssXml(),
+        ),
+      );
+    }
+
+    return handler.resolve(
+      Response<String>(
+        requestOptions: options,
+        statusCode: 200,
+        data: _buildSortableTopicListHtml(),
+      ),
+    );
+  });
+  return DmhyRssRepository(DmhyRssClient(dio), DmhyTorrentClient(dio));
 }
 
 Dio _buildDmhyDio(
@@ -161,6 +218,79 @@ String _buildTopicListHtml() {
       <td>-</td>
       <td>-</td>
       <td>-</td>
+      <td>test_team</td>
+    </tr>
+  </tbody>
+</table>
+''';
+}
+
+String _buildSortableRssXml() {
+  return '''
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title><![CDATA[[字幕组] 低种子资源 01 1080p]]></title>
+      <link>http://share.dmhy.org/topics/view/10_low.html</link>
+      <description><![CDATA[测试简介 3.00 GB]]></description>
+      <pubDate>Thu, 23 Apr 2026 10:31:00 +0800</pubDate>
+      <enclosure url="magnet:?xt=urn:btih:LOW" length="1" type="application/x-bittorrent"></enclosure>
+    </item>
+    <item>
+      <title><![CDATA[[字幕组] 高种子资源 01 1080p]]></title>
+      <link>http://share.dmhy.org/topics/view/11_high.html</link>
+      <description><![CDATA[测试简介 1.50 GB]]></description>
+      <pubDate>Thu, 23 Apr 2026 10:30:00 +0800</pubDate>
+      <enclosure url="magnet:?xt=urn:btih:HIGH" length="1" type="application/x-bittorrent"></enclosure>
+    </item>
+    <item>
+      <title><![CDATA[[字幕组] 中种子资源 01 1080p]]></title>
+      <link>http://share.dmhy.org/topics/view/12_mid.html</link>
+      <description><![CDATA[测试简介 700 MB]]></description>
+      <pubDate>Thu, 23 Apr 2026 10:29:00 +0800</pubDate>
+      <enclosure url="magnet:?xt=urn:btih:MID" length="1" type="application/x-bittorrent"></enclosure>
+    </item>
+  </channel>
+</rss>
+''';
+}
+
+String _buildSortableTopicListHtml() {
+  return '''
+<table id="topic_list">
+  <tbody>
+    <tr>
+      <td>2026/04/23 10:31</td>
+      <td>動畫</td>
+      <td class="title"><a href="/topics/view/10_low.html">[字幕组] 低种子资源 01 1080p</a></td>
+      <td><a class="download-arrow arrow-magnet" href="magnet:?xt=urn:btih:LOW"></a></td>
+      <td>3.00GB</td>
+      <td><span class="btl_1">4</span></td>
+      <td><span class="bts_1">6</span></td>
+      <td>8</td>
+      <td>test_team</td>
+    </tr>
+    <tr>
+      <td>2026/04/23 10:30</td>
+      <td>動畫</td>
+      <td class="title"><a href="/topics/view/11_high.html">[字幕组] 高种子资源 01 1080p</a></td>
+      <td><a class="download-arrow arrow-magnet" href="magnet:?xt=urn:btih:HIGH"></a></td>
+      <td>1.50GB</td>
+      <td><span class="btl_1">88</span></td>
+      <td><span class="bts_1">100</span></td>
+      <td>120</td>
+      <td>test_team</td>
+    </tr>
+    <tr>
+      <td>2026/04/23 10:29</td>
+      <td>動畫</td>
+      <td class="title"><a href="/topics/view/12_mid.html">[字幕组] 中种子资源 01 1080p</a></td>
+      <td><a class="download-arrow arrow-magnet" href="magnet:?xt=urn:btih:MID"></a></td>
+      <td>700MB</td>
+      <td><span class="btl_1">20</span></td>
+      <td><span class="bts_1">40</span></td>
+      <td>60</td>
       <td>test_team</td>
     </tr>
   </tbody>

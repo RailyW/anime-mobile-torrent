@@ -510,6 +510,47 @@ void main() {
     expect(find.text('外部客户端检测不可用，点击后会继续尝试系统交接'), findsOneWidget);
   });
 
+  testWidgets('DMHY 搜索排序切换会重新加载当前关键词', (tester) async {
+    final dmhyRepository = _SortableFakeDmhyRepository();
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
+          dmhyRepositoryProvider.overrideWithValue(dmhyRepository),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('DMHY').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '测试动画 1080');
+    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.pumpAndSettle();
+
+    expect(dmhyRepository.requests, hasLength(1));
+    expect(dmhyRepository.requests.single.sort, DmhyResourceSort.publishedDesc);
+    expect(find.text('排序：发布时间'), findsOneWidget);
+
+    await tester.tap(find.byType(DropdownButtonFormField<DmhyResourceSort>));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(DmhyResourceSort.seedDesc.label).last);
+    await tester.pumpAndSettle();
+
+    expect(dmhyRepository.requests, hasLength(2));
+    expect(dmhyRepository.requests.last.normalizedKeyword, '测试动画 1080');
+    expect(dmhyRepository.requests.last.sort, DmhyResourceSort.seedDesc);
+    expect(find.text('排序：种子数'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('[字幕组] 高种子资源 01 1080p')).dy,
+      lessThan(tester.getTopLeft(find.text('[字幕组] 低种子资源 01 1080p')).dy),
+    );
+  });
+
   testWidgets('DMHY 种子按钮可以下载并交给外部 BT 客户端', (tester) async {
     final fakeHandoffRepository = _FakeTorrentHandoffRepository();
 
@@ -866,6 +907,76 @@ class _FakeDmhyRepository implements DmhyRepository {
       length: 128,
     );
   }
+}
+
+class _SortableFakeDmhyRepository implements DmhyRepository {
+  final List<DmhySearchRequest> requests = [];
+
+  @override
+  Future<List<DmhyResource>> searchResources(DmhySearchRequest request) async {
+    requests.add(request);
+    final lowSeedResource = _buildSortableDmhyResource(
+      title: '[字幕组] 低种子资源 01 1080p',
+      detailPath: '10_low',
+      seedCount: 4,
+      publishedAt: DateTime.utc(2026, 4, 23, 2, 31),
+    );
+    final highSeedResource = _buildSortableDmhyResource(
+      title: '[字幕组] 高种子资源 01 1080p',
+      detailPath: '11_high',
+      seedCount: 88,
+      publishedAt: DateTime.utc(2026, 4, 23, 2, 30),
+    );
+
+    // 这个 fake 只模拟 UI 关心的排序差异：默认按发布时间新资源在前，
+    // 切到“种子数”后把热度更高的资源放到前面。
+    return switch (request.sort) {
+      DmhyResourceSort.seedDesc => [highSeedResource, lowSeedResource],
+      _ => [lowSeedResource, highSeedResource],
+    };
+  }
+
+  @override
+  Future<Uri> findTorrentUri(DmhyResource resource) async {
+    return Uri.parse('https://dl.dmhy.org/2026/04/23/sortable.torrent');
+  }
+
+  @override
+  Future<DmhyTorrentFile> downloadTorrentFile(DmhyResource resource) async {
+    return DmhyTorrentFile(
+      sourceUri: Uri.parse('https://dl.dmhy.org/2026/04/23/sortable.torrent'),
+      localPath: 'sortable.torrent',
+      fileName: 'sortable.torrent',
+      length: 256,
+    );
+  }
+}
+
+DmhyResource _buildSortableDmhyResource({
+  required String title,
+  required String detailPath,
+  required int seedCount,
+  required DateTime publishedAt,
+}) {
+  return DmhyResource(
+    title: title,
+    detailUri: Uri.parse('http://share.dmhy.org/topics/view/$detailPath.html'),
+    magnetUri: Uri.parse('magnet:?xt=urn:btih:$detailPath'),
+    publishedAt: publishedAt,
+    author: 'test_team',
+    categoryName: '動畫',
+    descriptionText: '排序测试资源',
+    metadata: DmhyResourceMetadata.fromText(
+      title: '$title HEVC MP4',
+      descriptionText: '排序测试资源 1.00 GB 简繁内封',
+    ),
+    stats: DmhyResourceStats(
+      sizeLabel: '1.00 GB',
+      seedCount: seedCount,
+      downloadCount: seedCount + 10,
+      completedCount: seedCount + 20,
+    ),
+  );
 }
 
 class _FakeTorrentHandoffRepository implements TorrentHandoffRepository {

@@ -34,6 +34,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
 
   DmhySearchRequest? _searchRequest;
   bool _animeOnly = true;
+  DmhyResourceSort _sort = DmhyResourceSort.publishedDesc;
 
   @override
   void initState() {
@@ -84,6 +85,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
       _searchRequest = DmhySearchRequest(
         keyword: keyword,
         animeOnly: animeOnly,
+        sort: _sort,
       );
       _animeOnly = animeOnly;
     }
@@ -112,6 +114,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
       _searchRequest = DmhySearchRequest(
         keyword: keyword,
         animeOnly: _animeOnly,
+        sort: _sort,
       );
     });
   }
@@ -125,7 +128,29 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
       final keyword = _keywordController.text.trim();
       _searchRequest = keyword.isEmpty
           ? null
-          : DmhySearchRequest(keyword: keyword, animeOnly: value);
+          : DmhySearchRequest(keyword: keyword, animeOnly: value, sort: _sort);
+    });
+  }
+
+  /// 切换 DMHY 资源排序方式。
+  ///
+  /// 排序是搜索请求的一部分。如果用户已经输入并提交过关键词，切换后立即
+  /// 用当前关键词重新请求；如果输入框为空，则只更新菜单选择，等待下一次搜索。
+  void _setSort(DmhyResourceSort value) {
+    if (_sort == value) {
+      return;
+    }
+
+    setState(() {
+      _sort = value;
+      final keyword = _keywordController.text.trim();
+      _searchRequest = keyword.isEmpty
+          ? null
+          : DmhySearchRequest(
+              keyword: keyword,
+              animeOnly: _animeOnly,
+              sort: value,
+            );
     });
   }
 
@@ -141,7 +166,9 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
         _DmhySearchBar(
           controller: _keywordController,
           animeOnly: _animeOnly,
+          selectedSort: _sort,
           onAnimeOnlyChanged: _setAnimeOnly,
+          onSortChanged: _setSort,
           onSubmitted: _submitSearch,
         ),
         const SizedBox(height: 16),
@@ -210,46 +237,97 @@ class _DmhySearchBar extends StatelessWidget {
   const _DmhySearchBar({
     required this.controller,
     required this.animeOnly,
+    required this.selectedSort,
     required this.onAnimeOnlyChanged,
+    required this.onSortChanged,
     required this.onSubmitted,
   });
 
   final TextEditingController controller;
   final bool animeOnly;
+  final DmhyResourceSort selectedSort;
   final ValueChanged<bool> onAnimeOnlyChanged;
+  final ValueChanged<DmhyResourceSort> onSortChanged;
   final VoidCallback onSubmitted;
 
   @override
   Widget build(BuildContext context) {
+    final keywordField = TextField(
+      controller: controller,
+      decoration: const InputDecoration(
+        border: OutlineInputBorder(),
+        labelText: '资源关键词',
+        hintText: '例如：葬送的芙莉莲 1080',
+        prefixIcon: Icon(Icons.manage_search_outlined),
+      ),
+      textInputAction: TextInputAction.search,
+      onSubmitted: (_) => onSubmitted(),
+    );
+    final sortDropdown = DropdownButtonFormField<DmhyResourceSort>(
+      initialValue: selectedSort,
+      isExpanded: true,
+      decoration: const InputDecoration(
+        border: OutlineInputBorder(),
+        labelText: '排序',
+        prefixIcon: Icon(Icons.sort_outlined),
+      ),
+      items: [
+        for (final sort in DmhyResourceSort.values)
+          DropdownMenuItem(value: sort, child: Text(sort.label)),
+      ],
+      onChanged: (sort) {
+        if (sort == null) {
+          return;
+        }
+
+        onSortChanged(sort);
+      },
+    );
+    final searchButton = SizedBox(
+      height: 56,
+      child: FilledButton.icon(
+        onPressed: onSubmitted,
+        icon: const Icon(Icons.search_outlined),
+        label: const Text('搜索'),
+      ),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: TextField(
-                controller: controller,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  labelText: '资源关键词',
-                  hintText: '例如：葬送的芙莉莲 1080',
-                  prefixIcon: Icon(Icons.manage_search_outlined),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            // 宽屏测试视口把输入、排序和按钮放在一行；窄屏手机让排序菜单换行，
+            // 避免关键词输入框和搜索按钮被压缩到难以点击。
+            if (constraints.maxWidth >= 560) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: keywordField),
+                  const SizedBox(width: 8),
+                  SizedBox(width: 168, child: sortDropdown),
+                  const SizedBox(width: 8),
+                  searchButton,
+                ],
+              );
+            }
+
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: keywordField),
+                    const SizedBox(width: 8),
+                    searchButton,
+                  ],
                 ),
-                textInputAction: TextInputAction.search,
-                onSubmitted: (_) => onSubmitted(),
-              ),
-            ),
-            const SizedBox(width: 8),
-            SizedBox(
-              height: 56,
-              child: FilledButton.icon(
-                onPressed: onSubmitted,
-                icon: const Icon(Icons.search_outlined),
-                label: const Text('搜索'),
-              ),
-            ),
-          ],
+                const SizedBox(height: 8),
+                sortDropdown,
+              ],
+            );
+          },
         ),
         const SizedBox(height: 8),
         SwitchListTile(
@@ -328,6 +406,7 @@ class _DmhySearchResult extends ConsumerWidget {
               keyword: request.normalizedKeyword,
               count: resources.length,
               animeOnly: request.animeOnly,
+              sort: request.sort,
             ),
             const SizedBox(height: 8),
             for (final resource in resources)
@@ -779,20 +858,36 @@ class _ResultSummary extends StatelessWidget {
     required this.keyword,
     required this.count,
     required this.animeOnly,
+    required this.sort,
   });
 
   final String keyword;
   final int count;
   final bool animeOnly;
+  final DmhyResourceSort sort;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scope = animeOnly ? '动画分类' : '全站';
 
-    return Text(
-      '“$keyword” 在$scope找到 $count 条 RSS 资源',
-      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '“$keyword” 在$scope找到 $count 条 RSS 资源',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          '排序：${sort.label}',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 }
