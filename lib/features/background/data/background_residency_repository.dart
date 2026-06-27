@@ -40,12 +40,9 @@ class FlutterForegroundTaskResidencyRepository
   static const _serviceId = 977;
   static const _heartbeatIntervalMs = 15 * 60 * 1000;
   static const _notificationRoute = backgroundResidencyBackgroundRoute;
+  static const _openLatestDmhyButtonId = 'open_latest_dmhy_resource';
   static const _openBackgroundButtonId = 'open_background_residency';
   static const _stopButtonId = 'stop_background_residency';
-  static const _notificationButtons = [
-    NotificationButton(id: _openBackgroundButtonId, text: '查看后台'),
-    NotificationButton(id: _stopButtonId, text: '停止后台'),
-  ];
 
   @override
   Future<BackgroundResidencySnapshot> refreshStatus() async {
@@ -93,7 +90,9 @@ class FlutterForegroundTaskResidencyRepository
           await FlutterForegroundTask.updateService(
             notificationTitle: 'Anime Mobile Torrent 正在后台运行',
             notificationText: '点击通知查看后台订阅检查，或用按钮查看后台/停止服务。',
-            notificationButtons: _notificationButtons,
+            notificationButtons: buildBackgroundNotificationButtons(
+              _notificationRoute,
+            ),
             notificationInitialRoute: _notificationRoute,
           );
         }
@@ -103,7 +102,9 @@ class FlutterForegroundTaskResidencyRepository
           serviceTypes: const [ForegroundServiceTypes.dataSync],
           notificationTitle: 'Anime Mobile Torrent 正在后台运行',
           notificationText: '点击通知查看后台订阅检查，或用按钮查看后台/停止服务。',
-          notificationButtons: _notificationButtons,
+          notificationButtons: buildBackgroundNotificationButtons(
+            _notificationRoute,
+          ),
           notificationInitialRoute: _notificationRoute,
           callback: startBackgroundResidencyService,
         );
@@ -225,6 +226,14 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
 
   bool _isCheckingSubscription = false;
 
+  /// 最近一次写入前台服务通知的首页路由。
+  ///
+  /// 通知按钮回调只会传入按钮 id，不会附带 `notificationInitialRoute`，因此
+  /// 后台 isolate 需要自己记住最近一次通知可打开的位置，供“查看资源”按钮把
+  /// 用户带回最新命中的 DMHY 搜索页。
+  String _latestNotificationRoute =
+      FlutterForegroundTaskResidencyRepository._notificationRoute;
+
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     await _handleTick(timestamp);
@@ -259,14 +268,14 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
   }) async {
     final timeLabel = _formatClock(timestamp.toLocal());
     final route = buildBackgroundNotificationInitialRoute(outcome);
+    _latestNotificationRoute = route;
     await FlutterForegroundTask.updateService(
       notificationTitle: 'Anime Mobile Torrent 正在后台运行',
       notificationText: _formatHeartbeatNotificationText(
         timeLabel: timeLabel,
         initialRoute: route,
       ),
-      notificationButtons:
-          FlutterForegroundTaskResidencyRepository._notificationButtons,
+      notificationButtons: buildBackgroundNotificationButtons(route),
       notificationInitialRoute: route,
     );
     FlutterForegroundTask.sendDataToMain({
@@ -293,6 +302,7 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
             outcome.status == DmhySubscriptionAutoCheckStatus.failed;
         final detail = _formatSubscriptionNotificationDetail(outcome);
         final route = buildBackgroundNotificationInitialRoute(outcome);
+        _latestNotificationRoute = route;
         await FlutterForegroundTask.updateService(
           notificationTitle: isFailed ? 'DMHY 订阅检查失败' : 'DMHY 订阅检查已完成',
           notificationText: _formatSubscriptionNotificationText(
@@ -300,8 +310,7 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
             timeLabel: timeLabel,
             initialRoute: route,
           ),
-          notificationButtons:
-              FlutterForegroundTaskResidencyRepository._notificationButtons,
+          notificationButtons: buildBackgroundNotificationButtons(route),
           notificationInitialRoute: route,
         );
       }
@@ -314,11 +323,14 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
         'message': error.toString(),
         'checkedAt': timestamp.toIso8601String(),
       });
+      _latestNotificationRoute =
+          FlutterForegroundTaskResidencyRepository._notificationRoute;
       await FlutterForegroundTask.updateService(
         notificationTitle: 'DMHY 订阅检查失败',
         notificationText: '保活仍在运行，点击查看后台订阅检查。',
-        notificationButtons:
-            FlutterForegroundTaskResidencyRepository._notificationButtons,
+        notificationButtons: buildBackgroundNotificationButtons(
+          FlutterForegroundTaskResidencyRepository._notificationRoute,
+        ),
         notificationInitialRoute:
             FlutterForegroundTaskResidencyRepository._notificationRoute,
       );
@@ -342,6 +354,23 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
       return;
     }
 
+    if (id ==
+        FlutterForegroundTaskResidencyRepository._openLatestDmhyButtonId) {
+      // “查看资源”只在通知路由指向 DMHY 搜索时展示；这里仍做一次兜底校验，
+      // 防止旧通知按钮或异常状态把用户带到空白/无意义路由。
+      final route = _isDmhySearchRoute(_latestNotificationRoute)
+          ? _latestNotificationRoute
+          : FlutterForegroundTaskResidencyRepository._notificationRoute;
+      FlutterForegroundTask.sendDataToMain(
+        buildBackgroundNotificationOpenRouteRequest(
+          timestamp: DateTime.now(),
+          route: route,
+          source: 'notificationButton:openLatestDmhy',
+        ),
+      );
+      return;
+    }
+
     if (id != FlutterForegroundTaskResidencyRepository._stopButtonId) {
       return;
     }
@@ -355,19 +384,62 @@ class BackgroundResidencyTaskHandler extends TaskHandler {
   }
 }
 
-/// 生成通知按钮请求主 isolate 打开后台页的消息。
+/// 根据通知主点击路由生成当前应展示的通知按钮集合。
+///
+/// 当通知已经指向 DMHY 搜索页时，按钮区额外提供“查看资源”，让用户不必点
+/// 通知主体也能明确进入最新命中的资源搜索；没有新命中上下文时只保留后台页
+/// 和停止服务两个基础按钮，避免常驻通知在普通心跳时显得过度打扰。
+List<NotificationButton> buildBackgroundNotificationButtons(
+  String initialRoute,
+) {
+  if (_isDmhySearchRoute(initialRoute)) {
+    return const [
+      NotificationButton(
+        id: FlutterForegroundTaskResidencyRepository._openLatestDmhyButtonId,
+        text: '查看资源',
+      ),
+      NotificationButton(
+        id: FlutterForegroundTaskResidencyRepository._openBackgroundButtonId,
+        text: '查看后台',
+      ),
+      NotificationButton(
+        id: FlutterForegroundTaskResidencyRepository._stopButtonId,
+        text: '停止后台',
+      ),
+    ];
+  }
+
+  return const [
+    NotificationButton(
+      id: FlutterForegroundTaskResidencyRepository._openBackgroundButtonId,
+      text: '查看后台',
+    ),
+    NotificationButton(
+      id: FlutterForegroundTaskResidencyRepository._stopButtonId,
+      text: '停止后台',
+    ),
+  ];
+}
+
+/// 生成通知按钮请求主 isolate 打开指定 APP 路由的消息。
 ///
 /// 这个消息不调用 `FlutterForegroundTask.launchApp`，因此不需要悬浮窗权限。
-/// 当 APP 主 isolate 仍在内存中时，根组件会收到该消息并导航到后台页；如果
+/// 当 APP 主 isolate 仍在内存中时，根组件会收到该消息并导航到指定路由；如果
 /// 主 isolate 不存在，通知主点击仍会使用 `notificationInitialRoute` 兜底。
+/// 调用方传入空路由时会降级到后台页，避免向主 isolate 发送不可导航请求。
 Map<String, Object?> buildBackgroundNotificationOpenRouteRequest({
   required DateTime timestamp,
+  String route = backgroundResidencyBackgroundRoute,
+  String source = 'notificationButton',
 }) {
+  final normalizedRoute = route.trim();
   return {
     'type': backgroundResidencyOpenRouteRequestedMessageType,
-    'route': backgroundResidencyBackgroundRoute,
+    'route': normalizedRoute.isEmpty
+        ? backgroundResidencyBackgroundRoute
+        : normalizedRoute,
     'timestamp': timestamp.toIso8601String(),
-    'source': 'notificationButton',
+    'source': source,
   };
 }
 

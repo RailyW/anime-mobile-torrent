@@ -80,6 +80,29 @@ void main() {
     expect(noKeywordRoute, '/?tab=background');
   });
 
+  test('后台通知新订阅命中时按钮包含查看资源入口', () {
+    final route = Uri(
+      path: '/',
+      queryParameters: const {
+        'tab': 'dmhy',
+        'keyword': '测试动画',
+        'animeOnly': 'true',
+      },
+    ).toString();
+
+    final buttons = buildBackgroundNotificationButtons(route);
+
+    expect(buttons.map((button) => button.text), ['查看资源', '查看后台', '停止后台']);
+  });
+
+  test('后台通知无新订阅命中时只保留后台和停止按钮', () {
+    final buttons = buildBackgroundNotificationButtons(
+      backgroundResidencyBackgroundRoute,
+    );
+
+    expect(buttons.map((button) => button.text), ['查看后台', '停止后台']);
+  });
+
   test('后台通知查看后台按钮会生成主 isolate 路由请求', () {
     final message = buildBackgroundNotificationOpenRouteRequest(
       timestamp: DateTime.utc(2026, 6, 27, 15, 30),
@@ -89,6 +112,27 @@ void main() {
     expect(message['route'], backgroundResidencyBackgroundRoute);
     expect(message['source'], 'notificationButton');
     expect(message['timestamp'], '2026-06-27T15:30:00.000Z');
+  });
+
+  test('后台通知查看资源按钮会生成最新 DMHY 路由请求', () {
+    final route = Uri(
+      path: '/',
+      queryParameters: const {
+        'tab': 'dmhy',
+        'keyword': '测试动画',
+        'animeOnly': 'true',
+      },
+    ).toString();
+    final message = buildBackgroundNotificationOpenRouteRequest(
+      timestamp: DateTime.utc(2026, 6, 27, 15, 45),
+      route: route,
+      source: 'notificationButton:openLatestDmhy',
+    );
+
+    expect(message['type'], backgroundResidencyOpenRouteRequestedMessageType);
+    expect(message['route'], route);
+    expect(message['source'], 'notificationButton:openLatestDmhy');
+    expect(message['timestamp'], '2026-06-27T15:45:00.000Z');
   });
 
   test('BackgroundResidencyController 可以启动、刷新和停止服务', () async {

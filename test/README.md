@@ -11,7 +11,7 @@
 - `dmhy_filter_preference_test.dart`：DMHY 前台筛选偏好单元测试，验证字幕组偏好序列化、`SharedPreferences` 存取和 Riverpod 控制器保存/清除动作。
 - `dmhy_torrent_page_parser_test.dart`：DMHY 详情页种子链接解析器单元测试，验证协议相对链接、相对路径链接和无种子链接兜底。
 - `torrent_handoff_test.dart`：Torrent 交接模型单元测试，验证通用种子文件模型、文件大小格式化、交接结果中文提示、种子导出结果中文提示、Android 导出通道状态映射、外部 BT 客户端能力检测结果与候选应用解析、本机兼容实测记录序列化、本机兼容实测记录身份匹配与单条删除、本机兼容清单摘要聚合、导出后手动导入成功样本统计、兼容报告纯文本生成、跨设备 Markdown 兼容模板生成、跨设备汇总行生成、最近种子记录序列化、`SharedPreferences` 持久化仓库，以及最近种子单条删除、整体清空和超过 20 条自动淘汰时的本地种子文件清理。
-- `background_residency_test.dart`：后台常驻模型和控制器单元测试，验证初始状态、新订阅命中通知路由、重复命中回后台摘要页、无命中上下文通知路由、通知查看后台按钮消息、启动、刷新和停止状态流转。
+- `background_residency_test.dart`：后台常驻模型和控制器单元测试，验证初始状态、新订阅命中通知路由、重复命中回后台摘要页、无命中上下文通知路由、新订阅命中通知查看资源按钮、通知查看后台按钮消息、最新 DMHY 路由按钮消息、启动、刷新和停止状态流转。
 - `dmhy_subscription_test.dart`：DMHY 订阅检查单元测试，验证订阅关键词序列化、`SharedPreferences` 持久化、Repository 去重与 RSS 检查、自动检查间隔节流、最新命中搜索上下文和新命中标记持久化、自动检查摘要复制文本、重复命中识别、新标题命中识别、失败原因持久化，以及 Riverpod 控制器的添加、手动检查、立即后台检查、后台摘要刷新和删除状态流。
 - `bangumi_auth_test.dart`：Bangumi OAuth token 与配置单元测试，验证 secure storage 字段恢复、刷新 token 合并、过期判断、默认未配置状态、用户输入配置归一化、redirect URI scheme 校验、本机配置 JSON 序列化、`SharedPreferences` 配置存储，以及保存或清除本机 OAuth 配置时会清理旧 token。
 - `bangumi_api_client_test.dart`：Bangumi HTTP 客户端单元测试，验证读取类请求遇到 429 会按 `Retry-After` 退避并重试一次，且收藏写入类请求不会自动重复提交。
