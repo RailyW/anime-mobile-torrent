@@ -23,7 +23,7 @@
 | 能力 | 推荐方案 | 主要原因 |
 | --- | --- | --- |
 | Bangumi API | 官方 OpenAPI + `openapi-generator` 的 `dart-dio` 生成器 | 官方契约清晰，便于跟随接口变化 |
-| Bangumi OAuth | 系统浏览器/Custom Tabs + 安全 token 存储 | 符合移动端授权习惯，避免 WebView 承担登录风险 |
+| Bangumi OAuth | WebView 授权页截获 Bangumi HTTPS 代理回调 + 安全 token 存储 | Bangumi 当前会把 callback 拼成 `https://bgm.tv/oauth/<redirect_uri>`，应用内截获导航比 Custom Tabs 自定义 scheme 回跳更可靠 |
 | Token 存储 | `flutter_secure_storage` 或 Android Keystore 背书存储 | access token 和 refresh token 不应明文存储 |
 | Torrent 交接 MVP | Android Intent、系统分享、剪贴板复制 + `url_launcher` 或原生平台桥 | 不内置 BT 下载器，复杂度和合规压力显著下降 |
 | `.torrent` 种子文件获取 | DMHY 详情页解析 + APP 专属缓存目录 + FileProvider `content://` URI | APP 只保存种子文件，不直接下载视频本体 |

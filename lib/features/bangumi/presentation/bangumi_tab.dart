@@ -12,6 +12,7 @@ import '../domain/bangumi_collection.dart';
 import '../domain/bangumi_dmhy_keyword.dart';
 import '../domain/bangumi_subject.dart';
 import '../domain/bangumi_user.dart';
+import 'bangumi_oauth_authorization_page.dart';
 import 'widgets/bangumi_info_chip.dart';
 import 'widgets/bangumi_rating_line.dart';
 import 'widgets/bangumi_subject_cover.dart';
@@ -282,16 +283,52 @@ class _BangumiAccountPanelState extends ConsumerState<_BangumiAccountPanel> {
 
   /// 发起 Bangumi OAuth 登录。
   ///
-  /// AppAuth 会打开系统浏览器或 Custom Tabs。登录成功后 token 已由
-  /// Repository 写入 secure storage，这里只需要刷新当前用户 Provider。
+  /// Bangumi 授权完成后会落到 `https://bgm.tv/oauth/<callback_url>`，因此
+  /// 这里先通过 WebView 授权页截获 code，再交给 Repository 交换并保存
+  /// token。登录成功后只需要刷新当前用户 Provider。
   Future<void> _login(BuildContext context) async {
     setState(() {
       _isBusy = true;
     });
 
     try {
+      final config = ref.read(bangumiOAuthConfigProvider);
+      final authorizationResult = await Navigator.of(context)
+          .push<BangumiOAuthAuthorizationPageResult>(
+            MaterialPageRoute(
+              builder: (_) => BangumiOAuthAuthorizationPage(config: config),
+            ),
+          );
+
+      if (!context.mounted) {
+        return;
+      }
+
+      if (authorizationResult == null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已取消 Bangumi 登录')));
+        return;
+      }
+
+      final authorizationError = authorizationResult.errorMessage;
+      if (authorizationError != null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(authorizationError)));
+        return;
+      }
+
+      final authorizationCode = authorizationResult.authorizationCode;
+      if (authorizationCode == null) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Bangumi 授权结果缺少 code')));
+        return;
+      }
+
       final repository = ref.read(bangumiAuthRepositoryProvider);
-      await repository.login();
+      await repository.loginWithAuthorizationCode(authorizationCode);
       ref.invalidate(bangumiCurrentUserProvider);
 
       if (!context.mounted) {

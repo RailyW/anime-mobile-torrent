@@ -83,7 +83,7 @@ flowchart LR
 
 当前落地情况：
 
-1. 已接入可配置 OAuth 登录，使用 `flutter_appauth` 调用 Bangumi `/oauth/authorize` 和 `/oauth/access_token`，并提供本机 OAuth client 设置页；用户可以保存自己的 client id、client secret、redirect URI 和 scopes，保存或清除配置时会清理旧 token，过期 token 缺少 refresh token 时会自动清理本地凭据，redirect URI 必须使用当前 Android 包已注册的 `com.railyw.anime_mobile_torrent` scheme。
+1. 已接入可配置 OAuth 登录，使用 `webview_flutter` 打开 Bangumi `/oauth/authorize` 并截获 `https://bgm.tv/oauth/<redirect_uri>?code=...` 代理回调，使用 Dio 表单调用 `/oauth/access_token`，并提供本机 OAuth client 设置页；用户可以保存自己的 client id、client secret、redirect URI 和 scopes，保存或清除配置时会清理旧 token，过期 token 缺少 refresh token 时会自动清理本地凭据，redirect URI 必须使用当前默认的 `com.railyw.anime_mobile_torrent` scheme，移动端请求默认不传 `scope` 参数，实际权限以 Bangumi 开发者后台勾选项为准。
 2. 已通过 `flutter_secure_storage` 保存 access token、refresh token、过期时间、token 类型和 scope。
 3. 已接入 `/v0/me` 当前用户信息读取，并在 Bangumi 首页展示登录状态、用户昵称、用户名、头像、签名、刷新和退出入口。
 4. 已接入公开动画条目搜索，使用 `POST /v0/search/subjects` 和 `filter.type: [2]`。
@@ -108,7 +108,7 @@ flowchart LR
 待确认：
 
 1. 当前移动端支持通过设置页或 `--dart-define` 配置 OAuth `client_secret`；发布前仍需确认是否改为后端 token broker，避免分发共享 client secret。
-2. 当前 Bangumi OAuth 回调使用自定义 scheme `com.railyw.anime_mobile_torrent:/oauth/bangumi`，本机设置页会校验 scheme；发布前可继续评估 App Links。
+2. 当前 Bangumi OAuth 后台 callback 仍配置为自定义 scheme `com.railyw.anime_mobile_torrent://oauth/bangumi`，但移动端会在 WebView 中截获 Bangumi 生成的 HTTPS 代理回调；旧版单斜杠配置会在读取时归一化，发布前可继续评估后端 token broker 或更正式的 App Links/中转页方案。
 
 ### 阶段 2：DMHY 搜索与资源选择
 

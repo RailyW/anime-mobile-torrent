@@ -19,7 +19,7 @@
 当前仓库已完成 Flutter Android 工程初始化，并建立了应用壳、模块目录和首期外部 BT 客户端交接边界。已确认的优先方向如下：
 
 1. 安卓前端使用 Flutter。
-2. Bangumi 接入优先使用官方 OpenAPI；当前 OAuth 登录使用 `flutter_appauth`，token 使用 `flutter_secure_storage` 保存，并提供本机 OAuth client 设置页。
+2. Bangumi 接入优先使用官方 OpenAPI；当前 OAuth 登录使用 `webview_flutter` 打开授权页并截获 Bangumi 的 HTTPS 代理回调，token 交换使用 Dio 表单请求，token 使用 `flutter_secure_storage` 保存，并提供本机 OAuth client 设置页。
 3. 首期不内置 BT 下载器，只负责 DMHY 磁力链接、`.torrent` 种子文件获取，以及直开、分享或导出给外部 BT 客户端处理。
 4. DMHY 首期优先使用官方 RSS，并已按需解析详情页获取 `.torrent` 文件链接；RSS 结果会展示从标题/简介中提取的轻量资源标签。
 5. 播放首期使用系统文件选择器和外部播放器交接，不内置视频播放器，也不扫描外部 BT 客户端下载目录。
@@ -67,10 +67,10 @@ flutter run --dart-define=BANGUMI_CLIENT_ID=你的客户端ID --dart-define=BANG
 Bangumi 开发者后台的 redirect URI 应配置为：
 
 ```text
-com.railyw.anime_mobile_torrent:/oauth/bangumi
+com.railyw.anime_mobile_torrent://oauth/bangumi
 ```
 
-当前 Android 包只注册 `com.railyw.anime_mobile_torrent` scheme；设置页会拒绝其他 scheme 的 redirect URI，避免授权后无法回跳 APP。
+Bangumi 授权完成后当前会跳到 `https://bgm.tv/oauth/<redirect_uri>?code=...`，APP 会在 WebView 中截获这个代理回调页并阻止进入空白页。设置页仍会拒绝其他 scheme 的 redirect URI，避免 token 交换参数与开发者后台配置不一致。Bangumi OAuth 请求默认不传 `scope` 参数，权限以开发者后台应用设置中勾选的访问权限为准。
 
 ## 当前状态
 

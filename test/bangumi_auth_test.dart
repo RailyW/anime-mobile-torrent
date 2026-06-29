@@ -5,7 +5,6 @@ import 'package:anime_mobile_torrent/features/bangumi/data/bangumi_auth_storage.
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_auth.dart';
 import 'package:anime_mobile_torrent/features/bangumi/data/bangumi_oauth_config_storage.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter_appauth/flutter_appauth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -101,7 +100,8 @@ void main() {
 
       expect(config.isConfigured, isFalse);
       expect(config.redirectUri, BangumiOAuthConfig.defaultRedirectUri);
-      expect(config.scopes, ['write:collection']);
+      expect(config.scopes, isEmpty);
+      expect(config.requestScopes, isNull);
     });
 
     test('可以从用户输入归一化 OAuth 配置', () {
@@ -118,6 +118,7 @@ void main() {
       expect(config.redirectUri, BangumiOAuthConfig.defaultRedirectUri);
       expect(config.scopes, ['write:collection', 'read']);
       expect(config.scopesText, 'write:collection read');
+      expect(config.requestScopes, isNull);
     });
 
     test('可以序列化并从本机 JSON 恢复 OAuth 配置', () {
@@ -134,9 +135,48 @@ void main() {
       expect(restored.clientSecret, 'secret');
       expect(
         restored.redirectUri,
-        '${BangumiOAuthConfig.defaultRedirectScheme}:/callback',
+        '${BangumiOAuthConfig.defaultRedirectScheme}://callback',
       );
       expect(restored.scopes, ['write:collection']);
+    });
+
+    test('授权 URL 会省略 scope 并保留 state', () {
+      final config = _configuredOAuthConfig();
+      final uri = config.authorizationUri(state: 'state-value');
+
+      expect(
+        uri.toString(),
+        contains(BangumiOAuthConfig.authorizationEndpoint),
+      );
+      expect(uri.queryParameters['client_id'], 'client-id');
+      expect(uri.queryParameters['redirect_uri'], config.redirectUri);
+      expect(uri.queryParameters['response_type'], 'code');
+      expect(uri.queryParameters['state'], 'state-value');
+      expect(uri.queryParameters.containsKey('scope'), isFalse);
+    });
+
+    test('可以解析 Bangumi 代理回调中的授权 code', () {
+      final config = _configuredOAuthConfig();
+      final callback = config.tryParseAuthorizationCallback(
+        '${BangumiOAuthConfig.callbackProxyOrigin}'
+        '${config.redirectUri}?code=auth-code&state=state-value',
+      );
+
+      expect(callback, isNotNull);
+      expect(callback?.code, 'auth-code');
+      expect(callback?.state, 'state-value');
+      expect(callback?.error, isNull);
+    });
+
+    test('可以兼容标准自定义 scheme 回调', () {
+      final config = _configuredOAuthConfig();
+      final callback = config.tryParseAuthorizationCallback(
+        '${config.redirectUri}?code=auth-code&state=state-value',
+      );
+
+      expect(callback, isNotNull);
+      expect(callback?.code, 'auth-code');
+      expect(callback?.state, 'state-value');
     });
 
     test('不支持当前 APK scheme 的 redirect URI 不视为可登录配置', () {
@@ -178,6 +218,69 @@ void main() {
 
       await storage.clearConfig();
       expect(await storage.loadConfig(), isNull);
+    });
+  });
+
+  group('BangumiAuthClient', () {
+    test('授权 code 交换会按 Bangumi 表单协议提交并解析 token', () async {
+      RequestOptions? capturedRequest;
+      final dio = Dio();
+      dio.interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) {
+            capturedRequest = options;
+            return handler.resolve(
+              Response<Map<String, dynamic>>(
+                requestOptions: options,
+                statusCode: 200,
+                data: {
+                  'access_token': 'access-token',
+                  'refresh_token': 'refresh-token',
+                  'expires_in': 3600,
+                  'token_type': 'Bearer',
+                  'scope': 'read:collection',
+                },
+              ),
+            );
+          },
+        ),
+      );
+
+      final client = BangumiAuthClient(
+        dio,
+        now: () => DateTime.utc(2026, 6, 29, 10),
+      );
+
+      final token = await client.exchangeAuthorizationCode(
+        _configuredOAuthConfig(),
+        const BangumiOAuthAuthorizationCode(
+          code: 'authorization-code',
+          state: 'state-value',
+        ),
+      );
+
+      expect(capturedRequest?.method, 'POST');
+      expect(capturedRequest?.uri.toString(), BangumiOAuthConfig.tokenEndpoint);
+      expect(capturedRequest?.contentType, Headers.formUrlEncodedContentType);
+      expect(
+        capturedRequest?.data,
+        containsPair('grant_type', 'authorization_code'),
+      );
+      expect(capturedRequest?.data, containsPair('client_id', 'client-id'));
+      expect(
+        capturedRequest?.data,
+        containsPair('client_secret', 'client-secret'),
+      );
+      expect(capturedRequest?.data, containsPair('code', 'authorization-code'));
+      expect(
+        capturedRequest?.data,
+        containsPair('redirect_uri', BangumiOAuthConfig.defaultRedirectUri),
+      );
+      expect(capturedRequest?.data, containsPair('state', 'state-value'));
+      expect(token.accessToken, 'access-token');
+      expect(token.refreshToken, 'refresh-token');
+      expect(token.expiresAt, DateTime.utc(2026, 6, 29, 11));
+      expect(token.scopes, ['read:collection']);
     });
   });
 
@@ -252,7 +355,7 @@ void main() {
 
       final repository = BangumiAuthRepository(
         config: _configuredOAuthConfig(),
-        authClient: const BangumiAuthClient(FlutterAppAuth()),
+        authClient: BangumiAuthClient(Dio()),
         storage: tokenStorage,
         apiClient: BangumiApiClient(Dio()),
       );
@@ -294,7 +397,7 @@ void main() {
 
       final repository = BangumiAuthRepository(
         config: _configuredOAuthConfig(),
-        authClient: const BangumiAuthClient(FlutterAppAuth()),
+        authClient: BangumiAuthClient(Dio()),
         storage: tokenStorage,
         apiClient: BangumiApiClient(dio),
       );

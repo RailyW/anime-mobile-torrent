@@ -115,9 +115,7 @@ class _BangumiOAuthSettingsPageState
     _redirectUriController.text = config.redirectUri.isEmpty
         ? BangumiOAuthConfig.defaultRedirectUri
         : config.redirectUri;
-    _scopesController.text = config.scopesText.isEmpty
-        ? 'write:collection'
-        : config.scopesText;
+    _scopesController.text = config.scopesText;
     _seededFromProvider = true;
   }
 
@@ -345,13 +343,13 @@ class _SettingsForm extends StatelessWidget {
                 decoration: const InputDecoration(
                   labelText: 'Scopes',
                   prefixIcon: Icon(Icons.rule_outlined),
-                  helperText: '默认 write:collection；多个 scope 可用空格或逗号分隔。',
+                  helperText: '建议留空；Bangumi 按开发者后台勾选权限授权。',
                 ),
                 textInputAction: TextInputAction.done,
               ),
               const SizedBox(height: 16),
               Text(
-                '配置只保存在本机，用于发起 OAuth 授权。发布版本仍建议评估后端 token broker，避免在移动端分发共享 client secret。',
+                '配置只保存在本机，用于发起 OAuth 授权。Bangumi 当前不接受请求 URL 中的 scope 参数，权限请在开发者后台勾选；发布版本仍建议评估后端 token broker，避免在移动端分发共享 client secret。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),

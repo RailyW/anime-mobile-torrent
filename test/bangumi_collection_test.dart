@@ -8,7 +8,6 @@ import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_collection.
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_episode_collection.dart';
 import 'package:anime_mobile_torrent/features/bangumi/domain/bangumi_subject.dart';
 import 'package:dio/dio.dart';
-import 'package:flutter_appauth/flutter_appauth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -302,7 +301,7 @@ void main() {
     final apiClient = BangumiApiClient(dio);
     final authRepository = BangumiAuthRepository(
       config: _configuredOAuthConfig(),
-      authClient: const BangumiAuthClient(FlutterAppAuth()),
+      authClient: BangumiAuthClient(Dio()),
       storage: tokenStorage,
       apiClient: apiClient,
     );

@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:math';
+
 /// Bangumi OAuth 客户端配置。
 ///
 /// 移动端不应把 client secret 写进仓库。默认配置从 `--dart-define` 读取：
@@ -15,14 +18,26 @@ class BangumiOAuthConfig {
   /// APP 默认使用的 Android 自定义 scheme。
   static const defaultRedirectScheme = 'com.railyw.anime_mobile_torrent';
 
-  /// AppAuth 推荐的移动端 redirect URI 形态。
-  static const defaultRedirectUri = '$defaultRedirectScheme:/oauth/bangumi';
+  /// APP 默认的移动端 redirect URI 形态。
+  ///
+  /// Bangumi 授权页会把单斜杠自定义 URI（例如
+  /// `com.example:/oauth/callback`）错误落成站内路径，导致 Android
+  /// 生成代理回调时会产生更难识别的站内路径；双斜杠 URI 更接近标准
+  /// OAuth 自定义 scheme 写法，也便于 WebView 稳定识别 Bangumi 代理回调。
+  static const defaultRedirectUri = '$defaultRedirectScheme://oauth/bangumi';
 
   /// Bangumi OAuth 授权端点。
   static const authorizationEndpoint = 'https://bgm.tv/oauth/authorize';
 
   /// Bangumi OAuth token 交换端点。
   static const tokenEndpoint = 'https://bgm.tv/oauth/access_token';
+
+  /// Bangumi 授权完成后实际落地的 HTTPS 回调前缀。
+  ///
+  /// 2026-06-29 实测：Bangumi 不会直接把浏览器重定向到开发者后台填写的
+  /// callback URL，而是生成 `https://bgm.tv/oauth/<callback_url>?code=...`。
+  /// 因此移动端需要识别这个代理回调页，并从 query 中取回授权 code。
+  static const callbackProxyOrigin = 'https://bgm.tv/oauth/';
 
   final String clientId;
   final String clientSecret;
@@ -39,7 +54,7 @@ class BangumiOAuthConfig {
     );
     const scopes = String.fromEnvironment(
       'BANGUMI_OAUTH_SCOPES',
-      defaultValue: 'write:collection',
+      defaultValue: '',
     );
 
     return BangumiOAuthConfig(
@@ -52,8 +67,11 @@ class BangumiOAuthConfig {
 
   /// 从用户输入构造 OAuth 配置。
   ///
-  /// scopes 支持空格或逗号分隔；如果用户留空，则沿用默认 `write:collection`
-  /// scope，避免保存出一个无法进行收藏写入的配置。
+  /// scopes 支持空格或逗号分隔。
+  ///
+  /// Bangumi 当前授权端点会拒绝请求 URL 中的 `scope` 参数，实际授权范围
+  /// 由开发者后台应用设置中的勾选项决定。因此 scopes 只作为本机记录保留，
+  /// OAuth 请求会通过 [requestScopes] 统一省略 scope 参数。
   factory BangumiOAuthConfig.fromUserInput({
     required String clientId,
     required String clientSecret,
@@ -64,12 +82,8 @@ class BangumiOAuthConfig {
     return BangumiOAuthConfig(
       clientId: clientId.trim(),
       clientSecret: clientSecret.trim(),
-      redirectUri: redirectUri.trim().isEmpty
-          ? defaultRedirectUri
-          : redirectUri.trim(),
-      scopes: parsedScopes.isEmpty
-          ? _parseScopes('write:collection')
-          : parsedScopes,
+      redirectUri: _normalizeRedirectUri(redirectUri),
+      scopes: parsedScopes,
     );
   }
 
@@ -102,12 +116,87 @@ class BangumiOAuthConfig {
   /// scopes 面向表单展示的字符串。
   String get scopesText => scopes.join(' ');
 
-  /// Redirect URI 是否使用当前 Android Manifest 已注册的 scheme。
+  /// OAuth 授权请求中实际发送给 Bangumi 的 scope。
   ///
-  /// `flutter_appauth` 只能接收 Android intent-filter 中声明过的 scheme。
-  /// 当前 APK 固定声明 `com.railyw.anime_mobile_torrent`，因此本机配置页
-  /// 允许用户调整完整 redirect URI，但 scheme 必须保持一致，否则授权完成
-  /// 后系统无法把浏览器回跳交还给 APP。
+  /// 2026-06-29 实机验证：即使开发者后台已勾选全部权限，Bangumi 授权端点
+  /// 对 `scope=write:collection` 或全量 scope 仍返回 `invalid_scope`；省略
+  /// scope 参数时授权页会展示后台勾选的权限并正常签发 code。这里固定返回
+  /// null，让授权 URL 不生成 `scope` 查询参数。
+  List<String>? get requestScopes => null;
+
+  /// 构造 Bangumi 授权页 URL。
+  ///
+  /// Bangumi 当前不接受 `scope` 参数，因此这里只传 OAuth 必需字段。`state`
+  /// 由 UI 层生成并在回调时校验，用来确认回来的 code 属于本次登录请求。
+  Uri authorizationUri({required String state}) {
+    return Uri.parse(authorizationEndpoint).replace(
+      queryParameters: {
+        'client_id': clientId,
+        'response_type': 'code',
+        'redirect_uri': redirectUri,
+        'state': state,
+      },
+    );
+  }
+
+  /// 创建 OAuth state。
+  ///
+  /// 使用 `Random.secure` 生成不可预测的 URL-safe 字符串，避免授权回调被
+  /// 其他页面或旧请求混淆。默认 24 字节会产生约 32 个 base64url 字符。
+  static String createState({int byteLength = 24}) {
+    final random = Random.secure();
+    final bytes = List<int>.generate(
+      byteLength,
+      (_) => random.nextInt(256),
+      growable: false,
+    );
+    return base64UrlEncode(bytes).replaceAll('=', '');
+  }
+
+  /// 尝试从浏览器导航 URL 字符串中解析 Bangumi 授权回调。
+  ///
+  /// 同时支持两种形态：
+  /// 1. 标准 OAuth 自定义 scheme：`com.railyw...://oauth/bangumi?code=...`。
+  /// 2. Bangumi 当前实际生成的代理页：
+  ///    `https://bgm.tv/oauth/com.railyw...://oauth/bangumi?code=...`。
+  ///
+  /// 返回 null 表示这只是普通页面导航，WebView 应继续加载。
+  BangumiOAuthAuthorizationCallback? tryParseAuthorizationCallback(String url) {
+    final directPrefix = redirectUri;
+    final proxyPrefix = '$callbackProxyOrigin$redirectUri';
+    final encodedProxyPrefix =
+        '$callbackProxyOrigin${Uri.encodeComponent(redirectUri)}';
+
+    final isDirectCallback =
+        url == directPrefix || url.startsWith('$directPrefix?');
+    final isProxyCallback =
+        url == proxyPrefix ||
+        url.startsWith('$proxyPrefix?') ||
+        url == encodedProxyPrefix ||
+        url.startsWith('$encodedProxyPrefix?');
+
+    if (!isDirectCallback && !isProxyCallback) {
+      return null;
+    }
+
+    final queryStart = url.indexOf('?');
+    final queryParameters = queryStart < 0
+        ? const <String, String>{}
+        : Uri.splitQueryString(url.substring(queryStart + 1));
+
+    return BangumiOAuthAuthorizationCallback(
+      code: _blankToNull(queryParameters['code']),
+      state: _blankToNull(queryParameters['state']),
+      error: _blankToNull(queryParameters['error']),
+      errorDescription: _blankToNull(queryParameters['error_description']),
+    );
+  }
+
+  /// Redirect URI 是否使用当前 APP 支持的默认 scheme。
+  ///
+  /// 当前设置页允许用户调整完整 redirect URI，但 scheme 必须保持默认值，
+  /// 这样开发者后台、授权 URL、Bangumi 代理回调识别和 token 交换参数能够
+  /// 始终描述同一个移动端客户端。
   static bool hasSupportedRedirectScheme(String value) {
     final trimmedValue = value.trim();
     final schemeEndIndex = trimmedValue.indexOf(':');
@@ -127,6 +216,38 @@ class BangumiOAuthConfig {
       'scopes': scopes,
     };
   }
+}
+
+/// Bangumi 授权回调内容。
+///
+/// 授权成功时 [code] 有值；用户拒绝或服务端报错时 [error] 有值。该模型只
+/// 表示浏览器回调中的 query 字段，不负责 token 交换。
+class BangumiOAuthAuthorizationCallback {
+  const BangumiOAuthAuthorizationCallback({
+    required this.code,
+    required this.state,
+    required this.error,
+    required this.errorDescription,
+  });
+
+  final String? code;
+  final String? state;
+  final String? error;
+  final String? errorDescription;
+}
+
+/// 已通过 state 校验的授权 code。
+///
+/// token 交换阶段需要同时带上 code、state 和 redirect URI，以匹配 Bangumi
+/// `/oauth/access_token` 的表单参数契约。
+class BangumiOAuthAuthorizationCode {
+  const BangumiOAuthAuthorizationCode({
+    required this.code,
+    required this.state,
+  });
+
+  final String code;
+  final String state;
 }
 
 /// Bangumi OAuth token。
@@ -217,6 +338,22 @@ List<String> _parseScopes(String rawScopes) {
       .toList();
 
   return List.unmodifiable(scopes);
+}
+
+String _normalizeRedirectUri(String rawRedirectUri) {
+  final redirectUri = rawRedirectUri.trim();
+  if (redirectUri.isEmpty) {
+    return BangumiOAuthConfig.defaultRedirectUri;
+  }
+
+  final legacyPrefix = '${BangumiOAuthConfig.defaultRedirectScheme}:/';
+  final currentPrefix = '${BangumiOAuthConfig.defaultRedirectScheme}://';
+  if (redirectUri.startsWith(legacyPrefix) &&
+      !redirectUri.startsWith(currentPrefix)) {
+    return '$currentPrefix${redirectUri.substring(legacyPrefix.length)}';
+  }
+
+  return redirectUri;
 }
 
 String? _blankToNull(String? value) {

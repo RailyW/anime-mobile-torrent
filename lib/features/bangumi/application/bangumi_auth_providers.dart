@@ -1,4 +1,4 @@
-import 'package:flutter_appauth/flutter_appauth.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -30,9 +30,14 @@ class BangumiAuthRepository {
   /// 当前 OAuth 配置是否可用于登录。
   bool get isConfigured => config.isConfigured;
 
-  /// 发起 OAuth 登录并保存 token。
-  Future<BangumiOAuthToken> login() async {
-    final token = await authClient.authorize(config);
+  /// 使用授权页返回的 code 完成 OAuth 登录并保存 token。
+  Future<BangumiOAuthToken> loginWithAuthorizationCode(
+    BangumiOAuthAuthorizationCode authorizationCode,
+  ) async {
+    final token = await authClient.exchangeAuthorizationCode(
+      config,
+      authorizationCode,
+    );
     await storage.saveToken(token);
     return token;
   }
@@ -204,11 +209,6 @@ class BangumiOAuthConfigController extends AsyncNotifier<BangumiOAuthConfig> {
   }
 }
 
-/// Flutter AppAuth Provider。
-final flutterAppAuthProvider = Provider<FlutterAppAuth>((ref) {
-  return const FlutterAppAuth();
-});
-
 /// Flutter secure storage Provider。
 final flutterSecureStorageProvider = Provider<FlutterSecureStorage>((ref) {
   return const FlutterSecureStorage();
@@ -220,10 +220,24 @@ final bangumiAuthStorageProvider = Provider<BangumiAuthStorage>((ref) {
   return BangumiAuthStorage(storage);
 });
 
+/// Bangumi OAuth token 端点专用 Dio Provider。
+///
+/// 授权页由 WebView 承担，这个 Dio 只调用 `/oauth/access_token`。保留独立
+/// 实例可以避免和公开 API 客户端的 baseUrl、重试策略互相影响。
+final bangumiOAuthDioProvider = Provider<Dio>((ref) {
+  return Dio(
+    BaseOptions(
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 20),
+      sendTimeout: const Duration(seconds: 10),
+    ),
+  );
+});
+
 /// Bangumi OAuth 客户端 Provider。
 final bangumiAuthClientProvider = Provider<BangumiAuthClient>((ref) {
-  final appAuth = ref.watch(flutterAppAuthProvider);
-  return BangumiAuthClient(appAuth);
+  final dio = ref.watch(bangumiOAuthDioProvider);
+  return BangumiAuthClient(dio);
 });
 
 /// Bangumi 授权仓库 Provider。

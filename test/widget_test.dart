@@ -193,7 +193,7 @@ void main() {
     await tester.enterText(find.byType(TextFormField).at(1), 'client-secret');
     await tester.enterText(
       find.byType(TextFormField).at(2),
-      'com.railyw.anime_mobile_torrent:/oauth/bangumi',
+      'com.railyw.anime_mobile_torrent://oauth/bangumi',
     );
     await tester.enterText(
       find.byType(TextFormField).at(3),
@@ -252,7 +252,7 @@ void main() {
     );
     expect(
       tester.widget<TextFormField>(fields.at(2)).controller?.text,
-      '${BangumiOAuthConfig.defaultRedirectScheme}:/saved',
+      '${BangumiOAuthConfig.defaultRedirectScheme}://saved',
     );
     expect(
       tester.widget<TextFormField>(fields.at(3)).controller?.text,
