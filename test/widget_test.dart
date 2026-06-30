@@ -690,18 +690,19 @@ void main() {
     expect(find.text('搜索结果'), findsOneWidget);
     expect(repository.searchRequests.single.offset, 0);
 
-    await tester.scrollUntilVisible(
-      find.widgetWithText(OutlinedButton, '加载更多'),
-      280,
-      scrollable: find.byType(Scrollable).last,
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.widgetWithText(OutlinedButton, '加载更多'));
+    // 滚到接近底部应触发无限滚动自动加载下一页，无需点击按钮。
+    await tester.drag(find.byType(Scrollable).last, const Offset(0, -3000));
     await tester.pumpAndSettle();
 
     expect(repository.searchRequests, hasLength(2));
     expect(repository.searchRequests.last.offset, 20);
+
+    await tester.scrollUntilVisible(
+      find.text('测试动画 中文名 25'),
+      280,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
     expect(find.text('测试动画 中文名 25'), findsOneWidget);
   });
 

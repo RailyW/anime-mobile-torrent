@@ -31,17 +31,65 @@ class BangumiTab extends ConsumerStatefulWidget {
 class _BangumiTabState extends ConsumerState<BangumiTab> {
   static const Duration _searchDebounceDuration = Duration(milliseconds: 650);
 
+  /// 距列表底部多少像素时触发自动加载下一页。
+  static const double _infiniteScrollThreshold = 400;
+
   final TextEditingController _keywordController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
 
   Timer? _searchDebounceTimer;
   BangumiSubjectSearchRequest? _searchRequest;
   BangumiSubjectSearchSort _selectedSort = BangumiSubjectSearchSort.match;
 
   @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_handleScroll);
+  }
+
+  @override
   void dispose() {
     _searchDebounceTimer?.cancel();
+    _scrollController
+      ..removeListener(_handleScroll)
+      ..dispose();
     _keywordController.dispose();
     super.dispose();
+  }
+
+  /// 滚动到接近底部时自动加载下一页。
+  ///
+  /// 收藏浏览和搜索结果共用同一个滚动视图，这里按当前是否有搜索请求决定推进
+  /// 哪一个分页控制器；具体的 hasMore / isLoading 判断仍交给控制器自身，因此
+  /// 高频滚动回调即使重复触发也不会发起重复请求。
+  void _handleScroll() {
+    if (!_scrollController.hasClients) {
+      return;
+    }
+
+    final position = _scrollController.position;
+    if (position.pixels < position.maxScrollExtent - _infiniteScrollThreshold) {
+      return;
+    }
+
+    final request = _searchRequest;
+    if (request != null) {
+      final provider = bangumiSubjectSearchListControllerProvider(request);
+      final state = ref.read(provider);
+      if (state.hasMore && !state.isLoading) {
+        ref.read(provider.notifier).loadNextPage();
+      }
+      return;
+    }
+
+    final collectionState = ref.read(
+      bangumiMyAnimeCollectionListControllerProvider,
+    );
+    if (collectionState.hasMore && !collectionState.isLoading) {
+      ref
+          .read(bangumiMyAnimeCollectionListControllerProvider.notifier)
+          .loadNextPage();
+    }
   }
 
   /// 根据输入变化安排一次防抖搜索。
@@ -139,6 +187,7 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
       body: SafeArea(
         top: false,
         child: ListView(
+          controller: _scrollController,
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
           children: [
             _SearchField(
@@ -248,7 +297,7 @@ class _SortChips extends StatelessWidget {
 /// 我的收藏区。
 ///
 /// 根据登录状态展示三种形态：加载中、未登录（引导去“我的”登录）、已登录
-/// （筛选 chips + 收藏列表 + 加载更多）。收藏读取、分页与筛选逻辑完全复用既有
+/// （筛选 chips + 收藏列表 + 滚动到底自动加载）。收藏读取、分页与筛选逻辑完全复用既有
 /// 控制器，仅重做视觉与登录引导。
 class _MyCollectionsSection extends ConsumerStatefulWidget {
   const _MyCollectionsSection();
@@ -319,7 +368,6 @@ class _MyCollectionsSectionState extends ConsumerState<_MyCollectionsSection> {
         return _CollectionsContent(
           state: listState,
           onRefresh: listController.refresh,
-          onLoadMore: listController.loadNextPage,
           onTypeChanged: listController.selectType,
         );
       },
@@ -377,13 +425,11 @@ class _CollectionsContent extends StatelessWidget {
   const _CollectionsContent({
     required this.state,
     required this.onRefresh,
-    required this.onLoadMore,
     required this.onTypeChanged,
   });
 
   final BangumiMyAnimeCollectionListState state;
   final Future<void> Function() onRefresh;
-  final Future<void> Function() onLoadMore;
   final Future<void> Function(BangumiCollectionType? type) onTypeChanged;
 
   @override
@@ -442,19 +488,13 @@ class _CollectionsContent extends StatelessWidget {
             ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.error),
           ),
         ],
-        if (state.hasMore) ...[
-          const SizedBox(height: 4),
-          Center(
-            child: OutlinedButton.icon(
-              onPressed: state.isLoading ? null : () => onLoadMore(),
-              icon: state.isLoading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.expand_more_outlined),
-              label: Text(state.isLoading ? '加载中…' : '加载更多'),
+        if (state.isLoading && collections.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          const Center(
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
           ),
         ],
@@ -463,7 +503,11 @@ class _CollectionsContent extends StatelessWidget {
   }
 }
 
-/// 收藏状态筛选 chips。
+/// 收藏状态筛选行。
+///
+/// 把最常用的「在看 / 想看 / 看过」直接平铺成 chip，较少用的「搁置 / 抛弃」和
+/// 「全部」收进一个「更多」下拉里，从而把整组筛选压在一行内。当前选中项落在
+/// 「更多」集合时，「更多」会高亮并显示该项标签。
 class _CollectionFilterChips extends StatelessWidget {
   const _CollectionFilterChips({
     required this.selectedType,
@@ -475,24 +519,107 @@ class _CollectionFilterChips extends StatelessWidget {
   final bool isBusy;
   final Future<void> Function(BangumiCollectionType? type) onTypeChanged;
 
+  /// 直接平铺展示的三个常用分类。
+  static const List<BangumiCollectionType> _inlineTypes = [
+    BangumiCollectionType.doing,
+    BangumiCollectionType.wish,
+    BangumiCollectionType.done,
+  ];
+
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
+    final moreSelected = !_inlineTypes.contains(selectedType);
+    final moreLabel = moreSelected ? (selectedType?.label ?? '全部') : '更多';
+
+    return Row(
       children: [
-        ChoiceChip(
-          label: const Text('全部'),
-          selected: selectedType == null,
-          onSelected: isBusy ? null : (_) => onTypeChanged(null),
-        ),
-        for (final type in BangumiCollectionType.values)
+        for (final type in _inlineTypes) ...[
           ChoiceChip(
             label: Text(type.label),
             selected: selectedType == type,
+            showCheckmark: false,
             onSelected: isBusy ? null : (_) => onTypeChanged(type),
           ),
+          const SizedBox(width: 8),
+        ],
+        _MoreFilterMenu(
+          label: moreLabel,
+          selected: moreSelected,
+          isBusy: isBusy,
+          onTypeChanged: onTypeChanged,
+        ),
       ],
+    );
+  }
+}
+
+/// 收藏筛选行末尾的「更多」下拉。
+///
+/// 用一个外观贴近 ChoiceChip 的下拉按钮承载「搁置 / 抛弃 / 全部」。这里用
+/// 每个菜单项的 onTap 回传选择，避免 PopupMenuButton 把 null 选项当作取消而
+/// 不触发 onSelected 的已知陷阱（“全部”对应 null）。
+class _MoreFilterMenu extends StatelessWidget {
+  const _MoreFilterMenu({
+    required this.label,
+    required this.selected,
+    required this.isBusy,
+    required this.onTypeChanged,
+  });
+
+  final String label;
+  final bool selected;
+  final bool isBusy;
+  final Future<void> Function(BangumiCollectionType? type) onTypeChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final foreground = selected
+        ? scheme.onSecondaryContainer
+        : scheme.onSurfaceVariant;
+
+    return PopupMenuButton<BangumiCollectionType?>(
+      enabled: !isBusy,
+      tooltip: '更多收藏分类',
+      position: PopupMenuPosition.under,
+      itemBuilder: (context) => [
+        PopupMenuItem<BangumiCollectionType?>(
+          onTap: () => onTypeChanged(BangumiCollectionType.onHold),
+          child: const Text('搁置'),
+        ),
+        PopupMenuItem<BangumiCollectionType?>(
+          onTap: () => onTypeChanged(BangumiCollectionType.dropped),
+          child: const Text('抛弃'),
+        ),
+        PopupMenuItem<BangumiCollectionType?>(
+          onTap: () => onTypeChanged(null),
+          child: const Text('全部'),
+        ),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? scheme.secondaryContainer : null,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? Colors.transparent : scheme.outlineVariant,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: foreground,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Icon(Icons.arrow_drop_down, size: 20, color: foreground),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -529,7 +656,7 @@ class _CollectionCard extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               BangumiSubjectCover(
                 imageUrl: subject?.images.preferredListUrl,
@@ -540,6 +667,7 @@ class _CollectionCard extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
@@ -578,33 +706,32 @@ class _CollectionCard extends StatelessWidget {
                           AppChip(label: '看到 ${collection.epStatus} 话'),
                       ],
                     ),
-                    if (dmhyKeyword.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: TextButton.icon(
-                          style: TextButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            minimumSize: const Size(0, 36),
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          ),
-                          onPressed: () {
-                            context.goNamed(
-                              'home',
-                              queryParameters: {
-                                'tab': 'dmhy',
-                                'keyword': dmhyKeyword,
-                              },
-                            );
-                          },
-                          icon: const Icon(Icons.search_outlined, size: 18),
-                          label: const Text('搜资源'),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
+              if (dmhyKeyword.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  onPressed: () {
+                    context.goNamed(
+                      'home',
+                      queryParameters: {
+                        'tab': 'dmhy',
+                        'keyword': dmhyKeyword,
+                      },
+                    );
+                  },
+                  icon: const Icon(Icons.search_outlined, size: 18),
+                  label: const Text('搜资源'),
+                ),
+              ],
             ],
           ),
         ),
@@ -615,7 +742,7 @@ class _CollectionCard extends StatelessWidget {
 
 /// 搜索结果区。
 ///
-/// 复用既有搜索分页控制器，处理加载、错误、空结果与分页加载更多。
+/// 复用既有搜索分页控制器，处理加载、错误、空结果与滚动到底自动加载下一页。
 class _SearchResultSection extends ConsumerStatefulWidget {
   const _SearchResultSection({required this.request});
 
@@ -730,19 +857,13 @@ class _SearchResultSectionState extends ConsumerState<_SearchResultSection> {
             ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.error),
           ),
         ],
-        if (state.hasMore) ...[
-          const SizedBox(height: 4),
-          Center(
-            child: OutlinedButton.icon(
-              onPressed: state.isLoading ? null : controller.loadNextPage,
-              icon: state.isLoading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.expand_more_outlined),
-              label: Text(state.isLoading ? '加载中…' : '加载更多'),
+        if (state.hasMore && state.isLoading) ...[
+          const SizedBox(height: 14),
+          const Center(
+            child: SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
           ),
         ],
