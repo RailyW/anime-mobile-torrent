@@ -1,25 +1,25 @@
 # torrent_handoff 模块说明
 
-`lib/features/torrent_handoff` 负责首期 Torrent 边界内的轻量交接能力：复制 magnet、打开 magnet、保存 `.torrent` 种子文件，以及把种子文件打开、分享或导出给用户手动导入外部 BT 客户端。当前真实操作入口优先落在 DMHY 结果卡片中，本模块提供通用种子交接模型、种子文件导出结果模型、最近种子记录、本地种子文件清理、仓库、Android 外部客户端能力检测、Android 系统文档创建器导出、本机兼容实测记录、本机兼容实测记录单条删除、本机兼容清单摘要、兼容报告复制、跨设备 Markdown 兼容模板复制、跨设备 Markdown 汇总行复制、能力说明页、外部 BT 客户端自检说明、交接失败处理引导，以及外部客户端下载完成后跳转播放页手动选择视频的入口；当前设备检测会展示系统 resolver 返回的候选客户端名称和包名，兼容实测记录可以区分直开、分享、导出后手动导入、magnet 兜底和失败，帮助用户确认手机里哪些应用与路径能接住对应入口。
+`lib/features/torrent_handoff` 负责首期 Torrent 边界内的轻量交接能力：复制 magnet、打开 magnet、保存 `.torrent` 种子文件，以及把种子文件打开、分享或导出给用户手动导入外部 BT 客户端。真实操作入口主要落在 DMHY 结果卡片中；本模块另提供一个独立的“种子工具”页（从“我的”页进入），聚焦最近下载过的种子文件的再次交接。模块内部仍保留通用种子交接模型、种子文件导出结果模型、最近种子记录、本地种子文件清理、仓库、Android 外部客户端能力检测、Android 系统文档创建器导出、本机兼容实测记录、本机兼容清单摘要、兼容报告等领域与数据能力，供资源卡片的主种子按钮按设备能力自适应使用；这些底层模型不再在 UI 上整页罗列，但仍是交接路径选择与按钮文案的依据。
 
 ## 当前包含文件
 
 - `domain/torrent_seed_file.dart`：通用 `.torrent` 种子文件模型，描述本地路径、文件名、大小、来源链接和 MIME 类型。
 - `domain/torrent_handoff_result.dart`：外部客户端交接结果模型，描述直开、分享兜底、无客户端、文件缺失、权限不足和未知错误。
 - `domain/torrent_seed_export_result.dart`：种子文件导出结果模型，描述导出成功、用户取消、文件缺失、权限不足、平台不可用和未知错误。
-- `domain/torrent_client_capabilities.dart`：当前设备外部 BT 客户端能力检测模型，描述 magnet、`.torrent` 直开和 `.torrent` 分享导入三条系统交接路径，以及每条路径对应的 resolver 候选应用名称、包名和 Activity。
+- `domain/torrent_client_capabilities.dart`：当前设备外部 BT 客户端能力检测模型，描述 magnet、`.torrent` 直开和 `.torrent` 分享导入三条系统交接路径，以及每条路径对应的 resolver 候选应用名称、包名和 Activity；DMHY 资源卡片用它决定主种子按钮是“打开/分享/复制”。
 - `domain/torrent_client_compatibility_record.dart`：真实设备兼容实测记录模型，描述用户手动标记的直开成功、分享成功、导出后手动导入成功、magnet 兜底成功或交接失败、记录时的 resolver 摘要，以及用于单条删除的本机样本身份匹配逻辑。
-- `domain/torrent_compatibility_summary.dart`：本机兼容清单摘要模型，把最近实测记录聚合为总样本、可用比例、直开/分享/导出后手动导入/magnet/失败次数和优先观察路径，供页面和报告复用。
-- `domain/torrent_compatibility_report.dart`：外部 BT 客户端兼容报告生成器，把当前设备检测、候选客户端、本机兼容清单摘要和本机实测记录整理为可复制的纯文本；同时可以生成跨设备 Markdown 兼容记录模板和单行汇总表格，便于把不同设备、系统版本和外部 BT 客户端的真实导入结果沉淀到同一张表。
+- `domain/torrent_compatibility_summary.dart`：本机兼容清单摘要模型，把最近实测记录聚合为总样本、可用比例、直开/分享/导出后手动导入/magnet/失败次数和优先观察路径，供后续报告复用。
+- `domain/torrent_compatibility_report.dart`：外部 BT 客户端兼容报告生成器，把当前设备检测、候选客户端、本机兼容清单摘要和本机实测记录整理为可复制的纯文本，并可生成跨设备 Markdown 兼容记录模板与单行汇总表格。
 - `domain/torrent_seed_history_item.dart`：最近下载种子记录模型，保存已下载 `.torrent` 的本地文件信息、来源标题和保存时间。
-- `application/torrent_handoff_providers.dart`：Torrent 交接仓库接口、插件实现、种子文件导出仓库接口、Android 平台导出实现、外部客户端检测 Provider、本机兼容实测记录 Repository 和最近种子记录 Repository，使用 `open_filex` 直开 `.torrent`，使用 `share_plus` 作为分享兜底，通过 Android MethodChannel 查询系统 resolver 和执行系统文档创建器导出，并使用 `SharedPreferences` 保存最近 20 条本机实测记录和最近 20 条种子记录；兼容实测记录支持新增、单条删除和清空；删除、清空最近种子或超过 20 条淘汰旧记录时，会同步尝试删除对应 APP 本地 `.torrent` 文件。
-- `presentation/torrent_handoff_tab.dart`：种子交接首页入口，明确展示 DMHY 内已接入的 magnet 打开、`.torrent` 下载直开、分享兜底和导出手动导入能力、当前设备外部客户端检测结果和候选客户端、最近种子面板、本机兼容清单摘要、本机兼容实测记录面板、单条实测记录删除、兼容报告复制入口、跨设备 Markdown 兼容模板复制入口、跨设备汇总行复制入口、外部 BT 客户端兼容自检步骤和失败时处理路径；最近种子面板支持单条打开、分享、导出、删除、整体清空，并提供跳转播放页手动选择本地视频的入口。
+- `application/torrent_handoff_providers.dart`：Torrent 交接仓库接口、插件实现、种子文件导出仓库接口、Android 平台导出实现、外部客户端检测 Provider、本机兼容实测记录 Repository 和最近种子记录 Repository，使用 `open_filex` 直开 `.torrent`，使用 `share_plus` 作为分享兜底，通过 Android MethodChannel 查询系统 resolver 和执行系统文档创建器导出，并使用 `SharedPreferences` 保存最近 20 条本机实测记录和最近 20 条种子记录；删除、清空最近种子或超过 20 条淘汰旧记录时，会同步尝试删除对应 APP 本地 `.torrent` 文件。
+- `presentation/torrent_page.dart`：种子工具页（独立路由），聚焦“最近种子”列表：每条记录可再次打开（直开失败自动降级分享）、分享、导出和删除，并支持整体清空；页面底部提供跳转播放页手动选择本地视频的入口。页面不再整页罗列能力清单、设备自检步骤、兼容实测记录与失败处理引导。
 
 ## 后续文件规划
 
 - `data/`：可按需承载 `.torrent` 文件缓存管理、文件名清洗和缓存清理策略。
 - `platform/`：必要时把当前暂存在 `MainActivity.kt` 的 Android Intent resolver 检测拆成独立平台桥接类，并继续封装 FileProvider 或更细粒度的 package visibility 查询。
-- `presentation/`：可按需增加交接确认、操作结果反馈详情页，或把当前首页内联的兼容实测记录升级为独立详情页。
+- `presentation/`：可按需增加交接确认、操作结果反馈详情页，或把兼容实测记录做成独立的诊断页。
 
 ## 设计边界
 

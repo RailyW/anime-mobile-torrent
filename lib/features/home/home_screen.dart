@@ -1,20 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
-import '../background/presentation/background_tab.dart';
-import '../bangumi/application/bangumi_auth_providers.dart';
 import '../bangumi/presentation/bangumi_tab.dart';
 import '../dmhy/domain/dmhy_entry_context.dart';
 import '../dmhy/presentation/dmhy_tab.dart';
-import '../playback/presentation/playback_tab.dart';
-import '../torrent_handoff/presentation/torrent_handoff_tab.dart';
+import '../playback/presentation/playback_page.dart';
+import '../profile/presentation/profile_tab.dart';
+import '../torrent_handoff/presentation/torrent_page.dart';
+import '../background/presentation/background_page.dart';
+
+/// “我的”页进入后需要立即打开的子页面。
+///
+/// 后台通知或跨模块跳转会把用户带到“我的”tab，再根据该值自动推入对应子页面，
+/// 让用户从通知直接看到目标功能，而不是停在“我的”首页。
+enum HomeProfileDestination {
+  /// 不自动打开任何子页面。
+  none,
+
+  /// 自动打开后台与订阅页。
+  background,
+
+  /// 自动打开本地播放页。
+  playback,
+
+  /// 自动打开种子工具页。
+  torrent,
+}
 
 /// APP 首页壳。
 ///
-/// 首页承担顶层导航和轻量设置入口职责，不直接调用 Bangumi、DMHY 或
-/// Android 平台能力。每个底部导航项都对应一个独立 feature，后续可以按模块
-/// 逐步替换为真实页面。
+/// 首页只承担三段式底部导航：追番、搜索、我的。每个 tab 对应一个独立 feature
+/// 页面，首页本身不直接调用 Bangumi、DMHY 或 Android 平台能力，只负责在 tab
+/// 之间切换，并把深链参数透传给对应模块。
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({
     this.initialTabIndex = 0,
@@ -22,31 +39,33 @@ class HomeScreen extends ConsumerStatefulWidget {
     this.initialDmhyAnimeOnly = true,
     this.initialDmhyEntryContext = DmhyEntryContext.normal,
     this.initialPlaybackEntryContext = PlaybackEntryContext.normal,
+    this.initialProfileDestination = HomeProfileDestination.none,
     super.key,
   });
 
-  /// 初次打开首页时选中的底部导航项。
-  ///
-  /// 目前用于 Bangumi 条目详情页跳回首页并直接展示 DMHY 搜索结果。
+  /// 初次打开首页时选中的底部导航项（0 追番 / 1 搜索 / 2 我的）。
   final int initialTabIndex;
 
-  /// 初次打开 DMHY 标签页时自动填入并搜索的关键词。
+  /// 初次打开搜索 tab 时自动填入并搜索的关键词。
   final String? initialDmhyKeyword;
 
-  /// 初次打开 DMHY 标签页时使用的搜索范围。
+  /// 初次打开搜索 tab 时使用的搜索范围。
   ///
   /// 订阅检查可以从全站范围跳回 DMHY 搜索，因此这里不能固定为动画分类。
   final bool initialDmhyAnimeOnly;
 
-  /// 初次打开 DMHY 标签页时展示的入口语境。
+  /// 初次打开搜索 tab 时展示的入口语境。
   ///
   /// 首页只透传展示语境，真实搜索、订阅保存和种子交接仍由 DMHY 模块处理。
   final DmhyEntryContext initialDmhyEntryContext;
 
-  /// 初次打开播放标签页时展示的入口语境。
+  /// 自动打开播放页时使用的入口语境。
   ///
-  /// 首页只透传轻量展示参数，播放模块仍自行处理文件选择和播放器交接。
+  /// 该字段只影响播放页提示文案，不会触发文件扫描或外部 BT 客户端读取。
   final PlaybackEntryContext initialPlaybackEntryContext;
+
+  /// 进入“我的”tab 后需要自动打开的子页面。
+  final HomeProfileDestination initialProfileDestination;
 
   @override
   ConsumerState<HomeScreen> createState() => _HomeScreenState();
@@ -59,6 +78,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
     _selectedIndex = _normalizeTabIndex(widget.initialTabIndex);
+    _scheduleProfileDestination(widget.initialProfileDestination);
   }
 
   @override
@@ -75,25 +95,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _selectedIndex = _normalizeTabIndex(widget.initialTabIndex);
       });
     }
+
+    if (oldWidget.initialProfileDestination !=
+        widget.initialProfileDestination) {
+      _scheduleProfileDestination(widget.initialProfileDestination);
+    }
   }
 
-  /// 切换首页模块。
+  /// 切换底部导航 tab。
   ///
-  /// 使用 IndexedStack 保留各模块页面状态，为搜索框输入、分页位置、
-  /// 授权状态和后台服务控制状态预留稳定体验。
+  /// 使用 IndexedStack 保留各 tab 页面状态，为搜索输入、分页位置、授权状态等
+  /// 预留稳定体验。
   void _selectTab(int index) {
     setState(() {
       _selectedIndex = index;
     });
   }
 
-  /// 打开 Bangumi OAuth 设置页，并在返回后刷新 Bangumi 授权运行期状态。
+  /// 在当前帧结束后，根据深链请求自动打开“我的”页下的子页面。
   ///
-  /// 设置页保存的是 SharedPreferences 中的本机配置。这里等 route 返回后再刷新
-  /// active provider，可以让首页所有 Bangumi 卡片在重新可见后统一读取新配置。
-  Future<void> _openBangumiOAuthSettings() async {
-    await context.pushNamed('bangumi-oauth-settings');
-    if (!mounted) {
+  /// 后台通知跳转、DMHY 种子交接“去播放”等场景会带上目标子页面。这里先切到
+  /// “我的”tab，再在下一帧用根导航器推入对应页面，避免在 build 周期内触发导航。
+  void _scheduleProfileDestination(HomeProfileDestination destination) {
+    if (destination == HomeProfileDestination.none) {
       return;
     }
 
@@ -101,24 +125,47 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (!mounted) {
         return;
       }
-      ref.invalidate(bangumiOAuthConfigControllerProvider);
-      ref.invalidate(bangumiCurrentUserProvider);
+
+      setState(() {
+        _selectedIndex = _profileTabIndex;
+      });
+
+      final navigator = Navigator.of(context);
+      switch (destination) {
+        case HomeProfileDestination.background:
+          navigator.push(
+            MaterialPageRoute<void>(builder: (_) => const BackgroundPage()),
+          );
+        case HomeProfileDestination.playback:
+          navigator.push(
+            MaterialPageRoute<void>(
+              builder: (_) =>
+                  PlaybackPage(entryContext: widget.initialPlaybackEntryContext),
+            ),
+          );
+        case HomeProfileDestination.torrent:
+          navigator.push(
+            MaterialPageRoute<void>(builder: (_) => const TorrentPage()),
+          );
+        case HomeProfileDestination.none:
+          break;
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final tabs = [
+    final tabs = <_HomeTab>[
       const _HomeTab(
-        icon: Icons.account_circle_outlined,
-        selectedIcon: Icons.account_circle,
-        label: 'Bangumi',
+        icon: Icons.subscriptions_outlined,
+        selectedIcon: Icons.subscriptions,
+        label: '追番',
         child: BangumiTab(),
       ),
       _HomeTab(
-        icon: Icons.rss_feed_outlined,
-        selectedIcon: Icons.rss_feed,
-        label: 'DMHY',
+        icon: Icons.search_outlined,
+        selectedIcon: Icons.saved_search,
+        label: '搜索',
         child: DmhyTab(
           initialKeyword: widget.initialDmhyKeyword,
           initialAnimeOnly: widget.initialDmhyAnimeOnly,
@@ -126,36 +173,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       ),
       const _HomeTab(
-        icon: Icons.open_in_new_outlined,
-        selectedIcon: Icons.open_in_new,
-        label: '种子',
-        child: TorrentHandoffTab(),
-      ),
-      _HomeTab(
-        icon: Icons.play_circle_outline,
-        selectedIcon: Icons.play_circle,
-        label: '播放',
-        child: PlaybackTab(entryContext: widget.initialPlaybackEntryContext),
-      ),
-      _HomeTab(
-        icon: Icons.notifications_active_outlined,
-        selectedIcon: Icons.notifications_active,
-        label: '后台',
-        child: BackgroundTab(isActive: _selectedIndex == 4),
+        icon: Icons.person_outline,
+        selectedIcon: Icons.person,
+        label: '我的',
+        child: ProfileTab(),
       ),
     ];
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Anime Mobile Torrent'),
-        actions: [
-          IconButton(
-            tooltip: '设置',
-            onPressed: _openBangumiOAuthSettings,
-            icon: const Icon(Icons.settings_outlined),
-          ),
-        ],
-      ),
       body: SafeArea(
         child: IndexedStack(
           index: _selectedIndex,
@@ -177,13 +202,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
+/// “我的”tab 在底部导航中的下标。
+const int _profileTabIndex = 2;
+
+/// 将外部传入的 tab 下标收敛到合法范围（0 追番 / 1 搜索 / 2 我的）。
 int _normalizeTabIndex(int value) {
   if (value < 0) {
     return 0;
   }
 
-  if (value > 4) {
-    return 4;
+  if (value > _profileTabIndex) {
+    return _profileTabIndex;
   }
 
   return value;

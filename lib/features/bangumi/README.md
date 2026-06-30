@@ -17,13 +17,14 @@
 - `application/bangumi_providers.dart`：Bangumi 条目 Repository 抽象、HTTP 实现、公开搜索分页控制器、Riverpod 搜索 Provider 和详情 Provider。
 - `application/bangumi_auth_providers.dart`：Bangumi 授权 Repository、OAuth 编译期配置、本机配置控制器、配置存储、OAuth token Dio、secure storage、当前用户 Provider；保存或清除本机 OAuth 配置时会清理旧 token，过期 token 缺少 refresh token 时会清理本地凭据并回到未登录语义，`/v0/me` 返回 401 时会清理失效 token 并回到未登录语义，设置页可先仅持久化配置，等首页 route 恢复可见后再刷新 active config，避免 offstage 订阅恢复时触发构建期刷新。
 - `application/bangumi_collection_providers.dart`：Bangumi 当前用户收藏 Repository 契约与实现、动画收藏单页 Provider、动画收藏分页列表控制器、支持章节类型切换的条目章节分页加载控制器、条目收藏 Provider 和章节收藏 Provider，组合 token 刷新、`/v0/me` 用户名读取、收藏 API 和章节进度 API；读取类收藏/章节请求遇到 401 时会清理 token 并回到未登录语义，写入类请求遇到 401 时会清理 token 但继续抛出失败，避免用户误以为收藏或进度已保存。
-- `presentation/bangumi_tab.dart`：Bangumi 首页入口，提供 OAuth 登录状态卡、未配置时跳转 OAuth 设置并在返回后刷新运行期配置、WebView 授权页发起和授权 code 提交、我的动画收藏分页列表、收藏状态筛选、加载更多、收藏条目直接跳转 DMHY 搜索、登录/退出/刷新动作、带输入防抖、排序菜单和即时提交的公开动画条目搜索 UI、搜索结果分页加载更多、结果列表、搜索结果直接跳转 DMHY 搜索和详情页跳转。
-- `presentation/bangumi_oauth_authorization_page.dart`：Bangumi OAuth 授权 WebView 页面，打开授权页、截获 `https://bgm.tv/oauth/<redirect_uri>` 代理回调、校验 state，并把授权 code 返回给首页登录入口。
-- `presentation/bangumi_oauth_settings_page.dart`：Bangumi OAuth 设置页，提供 client id、client secret、redirect URI 和 scopes 表单，会回填已保存的本机配置，保存本机配置或恢复编译期配置；页面自身只写入本机存储和清理旧 token，账号卡由打开设置页的入口在 route 返回后刷新。
-- `presentation/bangumi_subject_detail_page.dart`：Bangumi 条目详情页，展示封面、标题、评分、简介、DMHY 资源搜索入口、我的收藏读写、动画章节观看状态同步、章节类型筛选、已加载章节展开/收起、加载更多章节、批量标记到第 N 话看过、当前已加载章节批量设为看过或未收藏、收藏统计、维基信息和标签。
-- `presentation/widgets/bangumi_info_chip.dart`：Bangumi 模块内复用的信息标签组件。
+- `presentation/bangumi_tab.dart`：追番 tab，顶部搜索框加排序 chips，默认展示“我的动画收藏”分页列表（支持收藏状态筛选、加载更多、收藏条目直接跳转 DMHY 搜索、进入详情），输入关键词后切换为公开动画条目搜索结果（输入防抖、即时提交、分页加载更多、结果直接跳转 DMHY 搜索、进入详情）；未登录时只展示一条引导卡片，点击“去登录”跳转“我的”tab。账号登录、退出、OAuth 配置入口已移至“我的”页，本 tab 不再承载账号面板。
+- `presentation/bangumi_oauth_authorization_page.dart`：Bangumi OAuth 授权 WebView 页面，打开授权页、截获 `https://bgm.tv/oauth/<redirect_uri>` 代理回调、校验 state，并把授权 code 返回给登录入口（现由“我的”页账号卡发起）。
+- `presentation/bangumi_oauth_settings_page.dart`：Bangumi OAuth 设置页（从“我的”页进入），提供 client id、client secret、redirect URI 和 scopes 表单，会回填已保存的本机配置，保存本机配置或恢复编译期配置；页面自身只写入本机存储和清理旧 token，账号卡由打开设置页的入口在 route 返回后刷新。
+- `presentation/bangumi_subject_detail_page.dart`：Bangumi 条目详情页，采用沉浸式封面头部，展示标题、评分、DMHY 资源搜索入口、我的收藏读写、动画章节观看状态同步、章节类型筛选、已加载章节展开/收起、加载更多章节、批量标记到第 N 话看过、当前已加载章节批量设为看过或未收藏、收藏统计、维基信息和标签；未登录时引导跳转“我的”tab 登录。
 - `presentation/widgets/bangumi_rating_line.dart`：Bangumi 模块内复用的评分摘要组件。
 - `presentation/widgets/bangumi_subject_cover.dart`：Bangumi 模块内复用的条目封面组件，内置缺图和加载失败占位。
+
+> 信息标签统一改用 `lib/shared/widgets/app_chip.dart` 的 `AppChip`，模块内原 `bangumi_info_chip.dart` 已移除。
 
 ## OAuth 配置
 

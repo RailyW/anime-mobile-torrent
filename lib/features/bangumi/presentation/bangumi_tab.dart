@@ -4,24 +4,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../shared/widgets/app_async_views.dart';
+import '../../../shared/widgets/app_chip.dart';
+import '../../../shared/widgets/app_section.dart';
 import '../application/bangumi_auth_providers.dart';
 import '../application/bangumi_collection_providers.dart';
 import '../application/bangumi_providers.dart';
-import '../domain/bangumi_auth.dart';
 import '../domain/bangumi_collection.dart';
 import '../domain/bangumi_dmhy_keyword.dart';
 import '../domain/bangumi_subject.dart';
-import '../domain/bangumi_user.dart';
-import 'bangumi_oauth_authorization_page.dart';
-import 'widgets/bangumi_info_chip.dart';
 import 'widgets/bangumi_rating_line.dart';
 import 'widgets/bangumi_subject_cover.dart';
 
-/// Bangumi 功能首页入口。
+/// 追番 tab。
 ///
-/// 当前阶段已落地公开动画条目搜索和可配置 OAuth 登录。OAuth 客户端信息
-/// 可以通过 `--dart-define` 注入，也可以在本机设置页填写；未配置时，
-/// 公开搜索仍可正常使用。
+/// 这是用户浏览与发现动画的主入口：顶部是搜索框，下面默认展示“我的收藏”，
+/// 输入关键词后切换为搜索结果。账号登录、OAuth 配置等已移到“我的”页，本页在
+/// 未登录时只给出一条温和的引导，不再堆叠账号面板与能力清单。
 class BangumiTab extends ConsumerStatefulWidget {
   const BangumiTab({super.key});
 
@@ -47,8 +46,8 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
 
   /// 根据输入变化安排一次防抖搜索。
   ///
-  /// Bangumi 公开搜索会真实访问网络；用户输入时先等待一个短暂停顿，可以
-  /// 避免每个字符都触发请求。用户点击搜索按钮或键盘 search 时仍会立即提交。
+  /// Bangumi 公开搜索会真实访问网络；用户输入时先等待一个短暂停顿，可以避免
+  /// 每个字符都触发请求。用户点击搜索或键盘 search 时仍会立即提交。
   void _scheduleDebouncedSearch(String value) {
     _searchDebounceTimer?.cancel();
     final keyword = value.trim();
@@ -69,19 +68,26 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
     });
   }
 
-  /// 提交搜索关键词。
-  ///
-  /// 空关键词不触发网络请求，防止用户误点按钮造成无意义的 API 调用。
+  /// 立即提交搜索关键词。
   void _submitSearch() {
     _searchDebounceTimer?.cancel();
     final keyword = _keywordController.text.trim();
     _applySearchKeyword(keyword);
   }
 
+  /// 清空搜索框并回到收藏浏览。
+  void _clearSearch() {
+    _searchDebounceTimer?.cancel();
+    _keywordController.clear();
+    setState(() {
+      _searchRequest = null;
+    });
+  }
+
   /// 把已经归一化的关键词转换为搜索请求状态。
   ///
-  /// 同一个关键词和排序重复提交时不重建请求，避免搜索按钮、防抖回调或排序
-  /// 菜单在极短时间内造成相同 Provider 请求重复刷新。
+  /// 同一个关键词和排序重复提交时不重建请求，避免在极短时间内造成相同
+  /// Provider 请求重复刷新。
   void _applySearchKeyword(String keyword) {
     if (keyword.isEmpty) {
       setState(() {
@@ -104,10 +110,10 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
     });
   }
 
-  /// 更新 Bangumi 搜索排序。
+  /// 更新搜索排序。
   ///
   /// 排序属于服务端搜索条件，用户切换后如果当前已有关键词，立即按新排序重新
-  /// 拉取第一页；如果输入框为空，则只保存菜单选择，等待下一次搜索提交。
+  /// 拉取第一页；输入框为空时只保存菜单选择，等待下一次搜索。
   void _handleSortChanged(BangumiSubjectSearchSort sort) {
     if (_selectedSort == sort) {
       return;
@@ -128,80 +134,26 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
   Widget build(BuildContext context) {
     final request = _searchRequest;
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-      children: [
-        const _BangumiHeader(),
-        const SizedBox(height: 12),
-        const _BangumiAccountPanel(),
-        const SizedBox(height: 16),
-        _BangumiSearchBar(
-          controller: _keywordController,
-          selectedSort: _selectedSort,
-          onChanged: _scheduleDebouncedSearch,
-          onSubmitted: _submitSearch,
-          onSortChanged: _handleSortChanged,
-        ),
-        const SizedBox(height: 16),
-        if (request == null) ...[
-          const _BangumiMyCollectionsPanel(),
-          const SizedBox(height: 16),
-          const _BangumiEmptyState(),
-        ] else ...[
-          _BangumiSearchResult(request: request),
-          const SizedBox(height: 16),
-          const _BangumiMyCollectionsPanel(),
-        ],
-      ],
-    );
-  }
-}
-
-class _BangumiHeader extends StatelessWidget {
-  const _BangumiHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: scheme.primaryContainer,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Scaffold(
+      appBar: AppBar(title: const Text('追番')),
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
           children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.account_circle_outlined,
-                  color: scheme.onPrimaryContainer,
-                  size: 28,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Bangumi',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      color: scheme.onPrimaryContainer,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                const _BangumiStatusBadge(label: '登录/搜索'),
-              ],
+            _SearchField(
+              controller: _keywordController,
+              selectedSort: _selectedSort,
+              onChanged: _scheduleDebouncedSearch,
+              onSubmitted: _submitSearch,
+              onClear: _clearSearch,
+              onSortChanged: _handleSortChanged,
             ),
-            const SizedBox(height: 12),
-            Text(
-              '搜索公开动画条目；配置 OAuth 后可登录 Bangumi，并读取当前用户信息。',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: scheme.onPrimaryContainer,
-              ),
-            ),
+            const SizedBox(height: 20),
+            if (request == null)
+              const _MyCollectionsSection()
+            else
+              _SearchResultSection(request: request),
           ],
         ),
       ),
@@ -209,436 +161,107 @@ class _BangumiHeader extends StatelessWidget {
   }
 }
 
-class _BangumiAccountPanel extends ConsumerStatefulWidget {
-  const _BangumiAccountPanel();
-
-  @override
-  ConsumerState<_BangumiAccountPanel> createState() =>
-      _BangumiAccountPanelState();
-}
-
-class _BangumiAccountPanelState extends ConsumerState<_BangumiAccountPanel> {
-  bool _isBusy = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final config = ref.watch(bangumiOAuthConfigProvider);
-    final userState = ref.watch(bangumiCurrentUserProvider);
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: userState.when(
-          loading: () => const _BangumiAccountLoading(),
-          error: (error, stackTrace) {
-            return _BangumiAccountError(
-              message: error.toString(),
-              isBusy: _isBusy,
-              canLogin: config.isConfigured,
-              onLogin: () => _login(context),
-              onRefresh: _refresh,
-            );
-          },
-          data: (user) {
-            if (user == null) {
-              return _BangumiLoggedOutAccount(
-                config: config,
-                isBusy: _isBusy,
-                onLogin: () => _login(context),
-                onConfigure: () => _openOAuthSettings(context),
-              );
-            }
-
-            return _BangumiLoggedInAccount(
-              user: user,
-              isBusy: _isBusy,
-              onRefresh: _refresh,
-              onLogout: () => _logout(context),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  /// 打开 Bangumi OAuth 设置页，并在页面返回后刷新运行期配置。
-  ///
-  /// 设置页只负责写入本机配置和清理旧 token。这里等 route 返回且首页重新可见后，
-  /// 再在下一帧刷新 OAuth 配置和账号状态，避免首页处于 offstage 时收到 provider
-  /// 更新，触发 Riverpod 暂停订阅恢复阶段的构建期刷新。
-  Future<void> _openOAuthSettings(BuildContext context) async {
-    await context.pushNamed('bangumi-oauth-settings');
-    if (!mounted) {
-      return;
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) {
-        return;
-      }
-      ref.invalidate(bangumiOAuthConfigControllerProvider);
-      ref.invalidate(bangumiCurrentUserProvider);
-    });
-  }
-
-  /// 发起 Bangumi OAuth 登录。
-  ///
-  /// Bangumi 授权完成后会落到 `https://bgm.tv/oauth/<callback_url>`，因此
-  /// 这里先通过 WebView 授权页截获 code，再交给 Repository 交换并保存
-  /// token。登录成功后只需要刷新当前用户 Provider。
-  Future<void> _login(BuildContext context) async {
-    setState(() {
-      _isBusy = true;
-    });
-
-    try {
-      final config = ref.read(bangumiOAuthConfigProvider);
-      final authorizationResult = await Navigator.of(context)
-          .push<BangumiOAuthAuthorizationPageResult>(
-            MaterialPageRoute(
-              builder: (_) => BangumiOAuthAuthorizationPage(config: config),
-            ),
-          );
-
-      if (!context.mounted) {
-        return;
-      }
-
-      if (authorizationResult == null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('已取消 Bangumi 登录')));
-        return;
-      }
-
-      final authorizationError = authorizationResult.errorMessage;
-      if (authorizationError != null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(authorizationError)));
-        return;
-      }
-
-      final authorizationCode = authorizationResult.authorizationCode;
-      if (authorizationCode == null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Bangumi 授权结果缺少 code')));
-        return;
-      }
-
-      final repository = ref.read(bangumiAuthRepositoryProvider);
-      await repository.loginWithAuthorizationCode(authorizationCode);
-      ref.invalidate(bangumiCurrentUserProvider);
-
-      if (!context.mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Bangumi 登录成功')));
-    } catch (error) {
-      if (!context.mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isBusy = false;
-        });
-      }
-    }
-  }
-
-  /// 清理本地 token 并刷新账号状态。
-  Future<void> _logout(BuildContext context) async {
-    setState(() {
-      _isBusy = true;
-    });
-
-    try {
-      final repository = ref.read(bangumiAuthRepositoryProvider);
-      await repository.logout();
-      ref.invalidate(bangumiCurrentUserProvider);
-
-      if (!context.mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('已退出 Bangumi')));
-    } catch (error) {
-      if (!context.mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isBusy = false;
-        });
-      }
-    }
-  }
-
-  /// 重新读取 `/v0/me`。
-  void _refresh() {
-    ref.invalidate(bangumiCurrentUserProvider);
-  }
-}
-
-class _BangumiAccountLoading extends StatelessWidget {
-  const _BangumiAccountLoading();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Row(
-      children: [
-        SizedBox(
-          width: 18,
-          height: 18,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-        SizedBox(width: 12),
-        Text('正在读取 Bangumi 登录状态...'),
-      ],
-    );
-  }
-}
-
-class _BangumiLoggedOutAccount extends StatelessWidget {
-  const _BangumiLoggedOutAccount({
-    required this.config,
-    required this.isBusy,
-    required this.onLogin,
-    required this.onConfigure,
+/// 搜索输入区。
+///
+/// 一个圆角搜索框加排序菜单。搜索框有内容时显示清除按钮，方便快速回到收藏
+/// 浏览，去掉了原先单独的“搜索”大按钮与“动画分类”开关等次要控件。
+class _SearchField extends StatelessWidget {
+  const _SearchField({
+    required this.controller,
+    required this.selectedSort,
+    required this.onChanged,
+    required this.onSubmitted,
+    required this.onClear,
+    required this.onSortChanged,
   });
 
-  final BangumiOAuthConfig config;
-  final bool isBusy;
-  final VoidCallback onLogin;
-  final VoidCallback onConfigure;
+  final TextEditingController controller;
+  final BangumiSubjectSearchSort selectedSort;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onSubmitted;
+  final VoidCallback onClear;
+  final ValueChanged<BangumiSubjectSearchSort> onSortChanged;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final configured = config.isConfigured;
-
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Icon(
-              configured ? Icons.login_outlined : Icons.key_off_outlined,
-              color: scheme.secondary,
+        TextField(
+          controller: controller,
+          textInputAction: TextInputAction.search,
+          onChanged: onChanged,
+          onSubmitted: (_) => onSubmitted(),
+          decoration: InputDecoration(
+            hintText: '搜索动画，例如：葬送的芙莉莲',
+            prefixIcon: const Icon(Icons.search_outlined),
+            suffixIcon: ValueListenableBuilder<TextEditingValue>(
+              valueListenable: controller,
+              builder: (context, value, _) {
+                if (value.text.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return IconButton(
+                  onPressed: onClear,
+                  tooltip: '清除',
+                  icon: const Icon(Icons.close, size: 18),
+                );
+              },
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                configured ? '未登录 Bangumi' : 'OAuth 客户端未配置',
-                style: theme.textTheme.titleMedium,
-              ),
-            ),
-            _BangumiStatusBadge(label: configured ? '可登录' : '需配置'),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(
-          configured
-              ? '登录后可读取当前用户信息，并为后续收藏同步准备授权 token。'
-              : '公开搜索仍可使用；配置 client id、client secret 和 redirect URI 后可登录。',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: scheme.onSurfaceVariant,
           ),
         ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            FilledButton.icon(
-              onPressed: configured && !isBusy ? onLogin : null,
-              icon: isBusy
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.login_outlined),
-              label: Text(isBusy ? '登录中' : '登录 Bangumi'),
-            ),
-            if (!configured)
-              OutlinedButton.icon(
-                onPressed: isBusy ? null : onConfigure,
-                icon: const Icon(Icons.settings_outlined),
-                label: const Text('配置 OAuth'),
-              ),
-          ],
+        const SizedBox(height: 10),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: _SortChips(selected: selectedSort, onChanged: onSortChanged),
         ),
       ],
     );
   }
 }
 
-class _BangumiLoggedInAccount extends StatelessWidget {
-  const _BangumiLoggedInAccount({
-    required this.user,
-    required this.isBusy,
-    required this.onRefresh,
-    required this.onLogout,
-  });
+/// 搜索排序选择。
+///
+/// 用一排 ChoiceChip 替代下拉菜单，让排序方式一眼可见、一键切换，更符合移动端
+/// 触控习惯。
+class _SortChips extends StatelessWidget {
+  const _SortChips({required this.selected, required this.onChanged});
 
-  final BangumiUser user;
-  final bool isBusy;
-  final VoidCallback onRefresh;
-  final VoidCallback onLogout;
+  final BangumiSubjectSearchSort selected;
+  final ValueChanged<BangumiSubjectSearchSort> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final avatarUrl = user.avatar.preferredUrl;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Wrap(
+      spacing: 8,
       children: [
-        Row(
-          children: [
-            CircleAvatar(
-              radius: 24,
-              backgroundImage: avatarUrl == null
-                  ? null
-                  : NetworkImage(avatarUrl),
-              child: avatarUrl == null
-                  ? const Icon(Icons.account_circle_outlined)
-                  : null,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(user.displayName, style: theme.textTheme.titleMedium),
-                  Text(
-                    user.usernameLabel,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const _BangumiStatusBadge(label: '已登录'),
-          ],
-        ),
-        if (user.sign.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          Text(
-            user.sign,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.bodyMedium,
+        for (final sort in BangumiSubjectSearchSort.values)
+          ChoiceChip(
+            label: Text(sort.label),
+            selected: selected == sort,
+            onSelected: (_) => onChanged(sort),
           ),
-        ],
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            OutlinedButton.icon(
-              onPressed: isBusy ? null : onRefresh,
-              icon: const Icon(Icons.refresh_outlined),
-              label: const Text('刷新'),
-            ),
-            OutlinedButton.icon(
-              onPressed: isBusy ? null : onLogout,
-              icon: const Icon(Icons.logout_outlined),
-              label: const Text('退出'),
-            ),
-          ],
-        ),
       ],
     );
   }
 }
 
-class _BangumiAccountError extends StatelessWidget {
-  const _BangumiAccountError({
-    required this.message,
-    required this.isBusy,
-    required this.canLogin,
-    required this.onLogin,
-    required this.onRefresh,
-  });
-
-  final String message;
-  final bool isBusy;
-  final bool canLogin;
-  final VoidCallback onLogin;
-  final VoidCallback onRefresh;
+/// 我的收藏区。
+///
+/// 根据登录状态展示三种形态：加载中、未登录（引导去“我的”登录）、已登录
+/// （筛选 chips + 收藏列表 + 加载更多）。收藏读取、分页与筛选逻辑完全复用既有
+/// 控制器，仅重做视觉与登录引导。
+class _MyCollectionsSection extends ConsumerStatefulWidget {
+  const _MyCollectionsSection();
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.error_outline, color: scheme.error),
-            const SizedBox(width: 8),
-            Text('登录状态读取失败', style: theme.textTheme.titleMedium),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(message),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            OutlinedButton.icon(
-              onPressed: isBusy ? null : onRefresh,
-              icon: const Icon(Icons.refresh_outlined),
-              label: const Text('重试'),
-            ),
-            FilledButton.icon(
-              onPressed: canLogin && !isBusy ? onLogin : null,
-              icon: const Icon(Icons.login_outlined),
-              label: const Text('重新登录'),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
+  ConsumerState<_MyCollectionsSection> createState() =>
+      _MyCollectionsSectionState();
 }
 
-class _BangumiMyCollectionsPanel extends ConsumerStatefulWidget {
-  const _BangumiMyCollectionsPanel();
-
-  @override
-  ConsumerState<_BangumiMyCollectionsPanel> createState() =>
-      _BangumiMyCollectionsPanelState();
-}
-
-class _BangumiMyCollectionsPanelState
-    extends ConsumerState<_BangumiMyCollectionsPanel> {
+class _MyCollectionsSectionState extends ConsumerState<_MyCollectionsSection> {
   bool _scheduledInitialLoad = false;
 
+  /// 在当前帧之后启动收藏首屏加载，避免在 build 周期内修改 Notifier 状态。
   void _scheduleInitialLoad() {
     if (_scheduledInitialLoad) {
       return;
@@ -669,78 +292,89 @@ class _BangumiMyCollectionsPanelState
       bangumiMyAnimeCollectionListControllerProvider.notifier,
     );
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: userState.when(
-          loading: () => const _BangumiCollectionLoading(label: '正在读取登录状态...'),
-          error: (error, stackTrace) => _BangumiCollectionError(
-            title: '登录状态读取失败',
-            message: error.toString(),
-            onRetry: () => ref.invalidate(bangumiCurrentUserProvider),
-          ),
-          data: (user) {
-            if (user == null) {
-              if (listState.hasLoadedOnce || listState.collections.isNotEmpty) {
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  if (mounted) {
-                    listController.reset();
-                  }
-                });
-              }
-              return const _BangumiCollectionsLoggedOut();
-            }
-
-            if (!listState.hasLoadedOnce && !listState.isLoading) {
-              _scheduleInitialLoad();
-            }
-
-            return _BangumiCollectionsContent(
-              state: listState,
-              onRefresh: listController.refresh,
-              onLoadMore: listController.loadNextPage,
-              onTypeChanged: listController.selectType,
-            );
-          },
-        ),
+    return userState.when(
+      loading: () => const AppInlineLoading(label: '正在读取登录状态…'),
+      error: (error, _) => AppErrorView(
+        compact: true,
+        title: '登录状态读取失败',
+        message: error.toString(),
+        onRetry: () => ref.invalidate(bangumiCurrentUserProvider),
       ),
+      data: (user) {
+        if (user == null) {
+          if (listState.hasLoadedOnce || listState.collections.isNotEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                listController.reset();
+              }
+            });
+          }
+          return const _CollectionsLoggedOut();
+        }
+
+        if (!listState.hasLoadedOnce && !listState.isLoading) {
+          _scheduleInitialLoad();
+        }
+
+        return _CollectionsContent(
+          state: listState,
+          onRefresh: listController.refresh,
+          onLoadMore: listController.loadNextPage,
+          onTypeChanged: listController.selectType,
+        );
+      },
     );
   }
 }
 
-class _BangumiCollectionsLoggedOut extends StatelessWidget {
-  const _BangumiCollectionsLoggedOut();
+/// 未登录时的收藏引导。
+///
+/// 用一张友好的卡片告诉用户登录后能做什么，并提供一个直接跳到“我的”tab 的
+/// 按钮，把登录动作收敛到账号所在的页面。
+class _CollectionsLoggedOut extends StatelessWidget {
+  const _CollectionsLoggedOut();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
           children: [
-            Icon(Icons.collections_bookmark_outlined, color: scheme.secondary),
-            const SizedBox(width: 12),
-            Expanded(child: Text('我的动画收藏', style: theme.textTheme.titleMedium)),
-            const _BangumiStatusBadge(label: '需登录'),
+            Icon(
+              Icons.favorite_outline,
+              size: 40,
+              color: scheme.primary.withValues(alpha: 0.8),
+            ),
+            const SizedBox(height: 14),
+            Text('登录后追番更方便', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 6),
+            Text(
+              '登录 Bangumi，同步你的收藏列表与观看进度',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 18),
+            FilledButton.icon(
+              onPressed: () => context.go('/?tab=me'),
+              icon: const Icon(Icons.person_outline),
+              label: const Text('去登录'),
+            ),
           ],
         ),
-        const SizedBox(height: 8),
-        Text(
-          '登录 Bangumi 后，可以在这里预览自己的动画收藏列表，并快速进入条目详情或继续搜索资源。',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: scheme.onSurfaceVariant,
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
 
-class _BangumiCollectionsContent extends StatelessWidget {
-  const _BangumiCollectionsContent({
+/// 已登录时的收藏内容。
+class _CollectionsContent extends StatelessWidget {
+  const _CollectionsContent({
     required this.state,
     required this.onRefresh,
     required this.onLoadMore,
@@ -754,109 +388,84 @@ class _BangumiCollectionsContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final collections = state.collections;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Icon(Icons.collections_bookmark_outlined, color: scheme.secondary),
-            const SizedBox(width: 12),
-            Expanded(child: Text('我的动画收藏', style: theme.textTheme.titleMedium)),
-            _BangumiStatusBadge(
-              label: state.hasLoadedOnce ? '共 ${state.total} 条' : '读取中',
-            ),
-          ],
+        AppSectionHeader(
+          title: '我的收藏',
+          trailing: state.hasLoadedOnce
+              ? Text(
+                  '${state.total} 部',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                )
+              : null,
         ),
-        const SizedBox(height: 10),
-        _BangumiCollectionFilterChips(
+        _CollectionFilterChips(
           selectedType: state.type,
           isBusy: state.isLoading,
           onTypeChanged: onTypeChanged,
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 12),
         if (state.isInitialLoading)
-          const _BangumiCollectionLoading(label: '正在读取我的动画收藏...')
+          const AppInlineLoading(label: '正在读取收藏…')
         else if (state.errorMessage != null && collections.isEmpty)
-          _BangumiCollectionError(
-            title: '收藏列表读取失败',
+          AppErrorView(
+            compact: true,
+            title: '收藏读取失败',
             message: state.errorMessage!,
-            onRetry: () {
-              onRefresh();
-            },
+            onRetry: onRefresh,
           )
         else if (state.isEmpty)
-          Text(
-            state.type == null ? '还没有动画收藏，可以先搜索条目并添加收藏。' : '当前筛选下没有动画收藏。',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
+          AppEmptyView(
+            compact: true,
+            icon: Icons.bookmark_border_outlined,
+            title: state.type == null ? '还没有收藏' : '该分类下没有收藏',
+            message: state.type == null ? '搜索动画并收藏后会显示在这里' : null,
           )
         else
-          Column(
-            children: [
-              for (final collection in collections)
-                _BangumiCollectionListItem(collection: collection),
-            ],
+          ...collections.map(
+            (collection) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _CollectionCard(collection: collection),
+            ),
           ),
         if (state.errorMessage != null && collections.isNotEmpty) ...[
           const SizedBox(height: 8),
           Text(
             '继续加载失败：${state.errorMessage}',
-            style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.error),
           ),
         ],
-        const SizedBox(height: 10),
-        Text(
-          state.hasLoadedOnce
-              ? '已加载 ${state.loadedCount}/${state.total} 条 · ${state.typeLabel}'
-              : '正在准备收藏列表',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: scheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            OutlinedButton.icon(
-              onPressed: state.isLoading
-                  ? null
-                  : () {
-                      onRefresh();
-                    },
-              icon: const Icon(Icons.refresh_outlined),
-              label: const Text('刷新收藏'),
+        if (state.hasMore) ...[
+          const SizedBox(height: 4),
+          Center(
+            child: OutlinedButton.icon(
+              onPressed: state.isLoading ? null : () => onLoadMore(),
+              icon: state.isLoading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.expand_more_outlined),
+              label: Text(state.isLoading ? '加载中…' : '加载更多'),
             ),
-            if (state.hasMore)
-              FilledButton.icon(
-                onPressed: state.isLoading
-                    ? null
-                    : () {
-                        onLoadMore();
-                      },
-                icon: state.isLoading
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.expand_more_outlined),
-                label: Text(state.isLoading ? '加载中' : '加载更多'),
-              ),
-          ],
-        ),
+          ),
+        ],
       ],
     );
   }
 }
 
-class _BangumiCollectionFilterChips extends StatelessWidget {
-  const _BangumiCollectionFilterChips({
+/// 收藏状态筛选 chips。
+class _CollectionFilterChips extends StatelessWidget {
+  const _CollectionFilterChips({
     required this.selectedType,
     required this.isBusy,
     required this.onTypeChanged,
@@ -868,40 +477,32 @@ class _BangumiCollectionFilterChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final options = <_BangumiCollectionTypeOption>[
-      const _BangumiCollectionTypeOption(type: null, label: '全部'),
-      for (final type in BangumiCollectionType.values)
-        _BangumiCollectionTypeOption(type: type, label: type.label),
-    ];
-
     return Wrap(
       spacing: 8,
       runSpacing: 8,
       children: [
-        for (final option in options)
+        ChoiceChip(
+          label: const Text('全部'),
+          selected: selectedType == null,
+          onSelected: isBusy ? null : (_) => onTypeChanged(null),
+        ),
+        for (final type in BangumiCollectionType.values)
           ChoiceChip(
-            label: Text(option.label),
-            selected: selectedType == option.type,
-            onSelected: isBusy
-                ? null
-                : (_) {
-                    onTypeChanged(option.type);
-                  },
+            label: Text(type.label),
+            selected: selectedType == type,
+            onSelected: isBusy ? null : (_) => onTypeChanged(type),
           ),
       ],
     );
   }
 }
 
-class _BangumiCollectionTypeOption {
-  const _BangumiCollectionTypeOption({required this.type, required this.label});
-
-  final BangumiCollectionType? type;
-  final String label;
-}
-
-class _BangumiCollectionListItem extends StatelessWidget {
-  const _BangumiCollectionListItem({required this.collection});
+/// 单条收藏卡片。
+///
+/// 封面加标题、关键信息 chips 与“搜资源”入口，点击整卡进入条目详情。跳转
+/// DMHY 只传递关键词，真实搜索与种子交接仍由搜索页处理。
+class _CollectionCard extends StatelessWidget {
+  const _CollectionCard({required this.collection});
 
   final BangumiSubjectCollection collection;
 
@@ -916,314 +517,116 @@ class _BangumiCollectionListItem extends StatelessWidget {
         ? ''
         : normalizeBangumiDmhyKeyword(subject.displayName);
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(8),
-      onTap: () {
-        context.pushNamed(
-          'bangumi-subject-detail',
-          pathParameters: {'subjectId': collection.subjectId.toString()},
-        );
-      },
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            SizedBox(
-              width: 48,
-              height: 68,
-              child: BangumiSubjectCover(
-                imageUrl: subject?.images.preferredListUrl,
-                width: 48,
-                height: 68,
-                borderRadius: 6,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (subtitle != null) ...[
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      BangumiInfoChip(
-                        label: collection.type.label,
-                        icon: Icons.bookmark_outlined,
-                        emphasized: true,
-                      ),
-                      if (collection.rate > 0)
-                        BangumiInfoChip(label: '${collection.rate} 分'),
-                      if (collection.epStatus > 0)
-                        BangumiInfoChip(label: '进度 ${collection.epStatus} 话'),
-                      if (subject != null && subject.score > 0)
-                        BangumiInfoChip(
-                          label: subject.rank > 0
-                              ? '${subject.score.toStringAsFixed(1)} · Rank ${subject.rank}'
-                              : subject.score.toStringAsFixed(1),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      TextButton.icon(
-                        onPressed: dmhyKeyword.isEmpty
-                            ? null
-                            : () {
-                                // 直接从收藏列表进入 DMHY 搜索，只传递轻量关键词。
-                                // 真实 RSS 请求、种子解析和外部客户端交接仍由
-                                // DMHY 模块在目标页接管，Bangumi 不跨边界下载资源。
-                                context.goNamed(
-                                  'home',
-                                  queryParameters: {
-                                    'tab': 'dmhy',
-                                    'keyword': dmhyKeyword,
-                                  },
-                                );
-                              },
-                        icon: const Icon(Icons.manage_search_outlined),
-                        label: const Text('搜资源'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            Icon(Icons.chevron_right, color: scheme.onSurfaceVariant, size: 20),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _BangumiCollectionLoading extends StatelessWidget {
-  const _BangumiCollectionLoading({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const SizedBox(
-          width: 18,
-          height: 18,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-        const SizedBox(width: 12),
-        Expanded(child: Text(label)),
-      ],
-    );
-  }
-}
-
-class _BangumiCollectionError extends StatelessWidget {
-  const _BangumiCollectionError({
-    required this.title,
-    required this.message,
-    required this.onRetry,
-  });
-
-  final String title;
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.error_outline, color: scheme.error),
-            const SizedBox(width: 8),
-            Expanded(child: Text(title, style: theme.textTheme.titleMedium)),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(message),
-        const SizedBox(height: 10),
-        OutlinedButton.icon(
-          onPressed: onRetry,
-          icon: const Icon(Icons.refresh_outlined),
-          label: const Text('重试'),
-        ),
-      ],
-    );
-  }
-}
-
-class _BangumiSearchBar extends StatelessWidget {
-  const _BangumiSearchBar({
-    required this.controller,
-    required this.selectedSort,
-    required this.onChanged,
-    required this.onSubmitted,
-    required this.onSortChanged,
-  });
-
-  final TextEditingController controller;
-  final BangumiSubjectSearchSort selectedSort;
-  final ValueChanged<String> onChanged;
-  final VoidCallback onSubmitted;
-  final ValueChanged<BangumiSubjectSearchSort> onSortChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final keywordField = TextField(
-      controller: controller,
-      decoration: const InputDecoration(
-        border: OutlineInputBorder(),
-        labelText: '动画关键词',
-        hintText: '例如：葬送的芙莉莲',
-        prefixIcon: Icon(Icons.search_outlined),
-      ),
-      textInputAction: TextInputAction.search,
-      onChanged: onChanged,
-      onSubmitted: (_) => onSubmitted(),
-    );
-    final sortDropdown = DropdownButtonFormField<BangumiSubjectSearchSort>(
-      initialValue: selectedSort,
-      decoration: const InputDecoration(
-        border: OutlineInputBorder(),
-        labelText: '排序',
-        prefixIcon: Icon(Icons.sort_outlined),
-      ),
-      items: [
-        for (final sort in BangumiSubjectSearchSort.values)
-          DropdownMenuItem(value: sort, child: Text(sort.label)),
-      ],
-      onChanged: (sort) {
-        if (sort == null) {
-          return;
-        }
-
-        onSortChanged(sort);
-      },
-    );
-    final searchButton = SizedBox(
-      height: 56,
-      child: FilledButton.icon(
-        onPressed: onSubmitted,
-        icon: const Icon(Icons.search_outlined),
-        label: const Text('搜索'),
-      ),
-    );
-
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        // 搜索区在平板/桌面测试视口保持单行，减少结果列表被挤压；窄屏手机上
-        // 排序菜单换到下一行，保证输入框和按钮不会互相压缩。
-        if (constraints.maxWidth >= 560) {
-          return Row(
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          context.pushNamed(
+            'bangumi-subject-detail',
+            pathParameters: {'subjectId': collection.subjectId.toString()},
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: keywordField),
-              const SizedBox(width: 8),
-              SizedBox(width: 148, child: sortDropdown),
-              const SizedBox(width: 8),
-              searchButton,
+              BangumiSubjectCover(
+                imageUrl: subject?.images.preferredListUrl,
+                width: 60,
+                height: 84,
+                borderRadius: 10,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        AppChip(
+                          label: collection.type.label,
+                          icon: Icons.bookmark_outline,
+                          tone: AppChipTone.brand,
+                        ),
+                        if (collection.rate > 0)
+                          AppChip(
+                            label: '${collection.rate} 分',
+                            icon: Icons.star_outline,
+                          ),
+                        if (collection.epStatus > 0)
+                          AppChip(label: '看到 ${collection.epStatus} 话'),
+                      ],
+                    ),
+                    if (dmhyKeyword.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton.icon(
+                          style: TextButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            minimumSize: const Size(0, 36),
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          onPressed: () {
+                            context.goNamed(
+                              'home',
+                              queryParameters: {
+                                'tab': 'dmhy',
+                                'keyword': dmhyKeyword,
+                              },
+                            );
+                          },
+                          icon: const Icon(Icons.search_outlined, size: 18),
+                          label: const Text('搜资源'),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
             ],
-          );
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(child: keywordField),
-                const SizedBox(width: 8),
-                searchButton,
-              ],
-            ),
-            const SizedBox(height: 8),
-            sortDropdown,
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _BangumiEmptyState extends ConsumerWidget {
-  const _BangumiEmptyState();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
-    final config = ref.watch(bangumiOAuthConfigProvider);
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('下一步能力', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 12),
-            _CapabilityLine(
-              icon: Icons.login_outlined,
-              title: 'OAuth 授权',
-              status: config.isConfigured ? '已接入' : '需配置',
-            ),
-            const _CapabilityLine(
-              icon: Icons.search_outlined,
-              title: '动画条目搜索',
-              status: '已接入',
-            ),
-            const _CapabilityLine(
-              icon: Icons.bookmark_border_outlined,
-              title: '收藏读写与列表',
-              status: '已接入',
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _BangumiSearchResult extends ConsumerStatefulWidget {
-  const _BangumiSearchResult({required this.request});
+/// 搜索结果区。
+///
+/// 复用既有搜索分页控制器，处理加载、错误、空结果与分页加载更多。
+class _SearchResultSection extends ConsumerStatefulWidget {
+  const _SearchResultSection({required this.request});
 
   final BangumiSubjectSearchRequest request;
 
   @override
-  ConsumerState<_BangumiSearchResult> createState() =>
-      _BangumiSearchResultState();
+  ConsumerState<_SearchResultSection> createState() =>
+      _SearchResultSectionState();
 }
 
-class _BangumiSearchResultState extends ConsumerState<_BangumiSearchResult> {
+class _SearchResultSectionState extends ConsumerState<_SearchResultSection> {
   bool _scheduledInitialLoad = false;
 
   @override
@@ -1233,7 +636,7 @@ class _BangumiSearchResultState extends ConsumerState<_BangumiSearchResult> {
   }
 
   @override
-  void didUpdateWidget(covariant _BangumiSearchResult oldWidget) {
+  void didUpdateWidget(covariant _SearchResultSection oldWidget) {
     super.didUpdateWidget(oldWidget);
 
     if (oldWidget.request != widget.request) {
@@ -1242,11 +645,10 @@ class _BangumiSearchResultState extends ConsumerState<_BangumiSearchResult> {
     }
   }
 
-  /// 在当前构建帧结束后启动首屏搜索。
+  /// 在当前帧之后启动搜索首屏加载。
   ///
-  /// Riverpod Notifier 的状态修改不能发生在 build 同步过程里，因此用
-  /// post-frame callback 安排第一次读取。防抖输入或手动搜索切换关键词时，
-  /// family 参数会换成新的请求对象，这里会为新关键词重新加载第一页。
+  /// Notifier 状态修改不能发生在 build 同步过程里，因此用 post-frame 回调安排
+  /// 第一次读取；切换关键词时 family 参数变化，会为新关键词重新加载第一页。
   void _scheduleInitialLoad() {
     if (_scheduledInitialLoad) {
       return;
@@ -1281,99 +683,77 @@ class _BangumiSearchResultState extends ConsumerState<_BangumiSearchResult> {
     }
 
     if (state.isInitialLoading || (!state.hasLoadedOnce && state.isLoading)) {
-      return const _BangumiLoadingState();
+      return const AppInlineLoading(label: '正在搜索…');
     }
 
     if (state.errorMessage != null && state.subjects.isEmpty) {
-      return _BangumiErrorState(
+      return AppErrorView(
+        compact: true,
+        title: '搜索失败',
         message: state.errorMessage!,
         onRetry: controller.loadFirstPage,
       );
     }
 
     if (state.isEmpty) {
-      return const _BangumiNoResultState();
+      return const AppEmptyView(
+        compact: true,
+        icon: Icons.search_off_outlined,
+        title: '没有找到结果',
+        message: '换一个关键词试试',
+      );
     }
-
-    return _BangumiSearchResultList(
-      state: state,
-      onRefresh: controller.refresh,
-      onLoadMore: controller.loadNextPage,
-    );
-  }
-}
-
-class _BangumiSearchResultList extends StatelessWidget {
-  const _BangumiSearchResultList({
-    required this.state,
-    required this.onRefresh,
-    required this.onLoadMore,
-  });
-
-  final BangumiSubjectSearchListState state;
-  final Future<void> Function() onRefresh;
-  final Future<void> Function() onLoadMore;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _ResultSummary(keyword: state.keyword, total: state.total),
-        const SizedBox(height: 8),
+        AppSectionHeader(
+          title: '搜索结果',
+          trailing: Text(
+            '${state.total} 部',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
         for (final subject in state.subjects)
           Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _BangumiSubjectCard(subject: subject),
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _SubjectCard(subject: subject),
           ),
         if (state.errorMessage != null) ...[
-          const SizedBox(height: 2),
+          const SizedBox(height: 4),
           Text(
             '继续加载失败：${state.errorMessage}',
-            style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.error),
           ),
         ],
-        const SizedBox(height: 8),
-        Text(
-          '已加载 ${state.loadedCount}/${state.total} 个条目',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: scheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            OutlinedButton.icon(
-              onPressed: state.isLoading ? null : onRefresh,
-              icon: const Icon(Icons.refresh_outlined),
-              label: const Text('刷新搜索'),
+        if (state.hasMore) ...[
+          const SizedBox(height: 4),
+          Center(
+            child: OutlinedButton.icon(
+              onPressed: state.isLoading ? null : controller.loadNextPage,
+              icon: state.isLoading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.expand_more_outlined),
+              label: Text(state.isLoading ? '加载中…' : '加载更多'),
             ),
-            if (state.hasMore)
-              FilledButton.icon(
-                onPressed: state.isLoading ? null : onLoadMore,
-                icon: state.isLoading
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.expand_more_outlined),
-                label: Text(state.isLoading ? '加载中' : '加载更多搜索结果'),
-              ),
-          ],
-        ),
+          ),
+        ],
       ],
     );
   }
 }
 
-class _BangumiSubjectCard extends StatelessWidget {
-  const _BangumiSubjectCard({required this.subject});
+/// 单个搜索结果卡片。
+class _SubjectCard extends StatelessWidget {
+  const _SubjectCard({required this.subject});
 
   final BangumiSubject subject;
 
@@ -1381,11 +761,10 @@ class _BangumiSubjectCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final dmhyKeyword = normalizeBangumiDmhyKeyword(subject.displayName);
 
     return Card(
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         onTap: () {
           context.pushNamed(
             'bangumi-subject-detail',
@@ -1397,7 +776,12 @@ class _BangumiSubjectCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              BangumiSubjectCover(imageUrl: subject.images.preferredListUrl),
+              BangumiSubjectCover(
+                imageUrl: subject.images.preferredListUrl,
+                width: 60,
+                height: 84,
+                borderRadius: 10,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1405,239 +789,38 @@ class _BangumiSubjectCard extends StatelessWidget {
                   children: [
                     Text(
                       subject.displayName,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall,
                     ),
                     if (subject.subtitleName != null) ...[
                       const SizedBox(height: 2),
                       Text(
                         subject.subtitleName!,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: scheme.onSurfaceVariant,
                         ),
                       ),
                     ],
                     const SizedBox(height: 8),
+                    BangumiRatingLine(rating: subject.rating),
+                    const SizedBox(height: 8),
                     Wrap(
                       spacing: 6,
                       runSpacing: 6,
                       children: [
-                        BangumiInfoChip(label: subject.type.label),
-                        BangumiInfoChip(
-                          label: subject.platform.isEmpty
-                              ? '平台未知'
-                              : subject.platform,
-                        ),
-                        BangumiInfoChip(label: subject.episodeLabel),
+                        AppChip(label: subject.type.label),
+                        AppChip(label: subject.episodeLabel),
                         if (subject.airDate != null)
-                          BangumiInfoChip(label: subject.airDate!),
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    BangumiRatingLine(rating: subject.rating),
-                    if (subject.summary.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        subject.summary,
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ],
-                    const SizedBox(height: 8),
-                    Wrap(
-                      alignment: WrapAlignment.end,
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        TextButton.icon(
-                          onPressed: dmhyKeyword.isEmpty
-                              ? null
-                              : () {
-                                  // 搜索结果页只负责生成 DMHY 关键词并跳转；真实 RSS
-                                  // 搜索、种子下载和外部客户端交接仍由 DMHY 模块执行。
-                                  context.goNamed(
-                                    'home',
-                                    queryParameters: {
-                                      'tab': 'dmhy',
-                                      'keyword': dmhyKeyword,
-                                    },
-                                  );
-                                },
-                          icon: const Icon(Icons.manage_search_outlined),
-                          label: const Text('搜资源'),
-                        ),
-                        Icon(
-                          Icons.chevron_right,
-                          color: scheme.onSurfaceVariant,
-                          size: 20,
-                        ),
+                          AppChip(label: subject.airDate!),
                       ],
                     ),
                   ],
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ResultSummary extends StatelessWidget {
-  const _ResultSummary({required this.keyword, required this.total});
-
-  final String keyword;
-  final int total;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Text(
-      '“$keyword” 找到 $total 个动画条目',
-      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-    );
-  }
-}
-
-class _BangumiLoadingState extends StatelessWidget {
-  const _BangumiLoadingState();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Card(
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            SizedBox(width: 12),
-            Text('正在搜索 Bangumi...'),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _BangumiErrorState extends StatelessWidget {
-  const _BangumiErrorState({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.error_outline, color: scheme.error),
-                const SizedBox(width: 8),
-                Text('搜索失败', style: theme.textTheme.titleMedium),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(message),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_outlined),
-              label: const Text('重试'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _BangumiNoResultState extends StatelessWidget {
-  const _BangumiNoResultState();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Card(
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Text('没有找到匹配的动画条目，可以换一个关键词。'),
-      ),
-    );
-  }
-}
-
-class _CapabilityLine extends StatelessWidget {
-  const _CapabilityLine({
-    required this.icon,
-    required this.title,
-    required this.status,
-  });
-
-  final IconData icon;
-  final String title;
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Icon(icon, color: scheme.secondary),
-          const SizedBox(width: 12),
-          Expanded(child: Text(title, style: theme.textTheme.bodyLarge)),
-          Text(
-            status,
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: scheme.tertiary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BangumiStatusBadge extends StatelessWidget {
-  const _BangumiStatusBadge({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: scheme.primary,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
           ),
         ),
       ),

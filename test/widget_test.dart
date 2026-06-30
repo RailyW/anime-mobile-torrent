@@ -57,137 +57,80 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
   });
 
-  testWidgets('首页可以展示并切换主要模块', (tester) async {
+  testWidgets('首页可以在追番、搜索、我的三个 tab 之间切换', (tester) async {
     await tester.pumpWidget(_buildTestApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('Anime Mobile Torrent'), findsOneWidget);
-    expect(find.text('Bangumi'), findsWidgets);
-    expect(find.text('登录/搜索'), findsOneWidget);
-    expect(find.text('OAuth 客户端未配置'), findsOneWidget);
+    // 默认进入追番 tab。
+    expect(find.widgetWithText(AppBar, '追番'), findsOneWidget);
+    expect(find.text('登录后追番更方便'), findsOneWidget);
 
-    await tester.tap(find.text('DMHY').last);
+    await tester.tap(find.text('搜索').last);
     await tester.pumpAndSettle();
-    expect(find.text('RSS 可用'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, '搜索'), findsOneWidget);
+    expect(find.text('搜索动画资源'), findsOneWidget);
 
-    await tester.tap(find.text('种子').last);
+    await tester.tap(find.text('我的').last);
     await tester.pumpAndSettle();
-    expect(find.text('MVP'), findsOneWidget);
-    expect(find.text('分享面板兜底'), findsOneWidget);
-    expect(find.text('当前设备检测'), findsOneWidget);
-    expect(find.text('magnet 打开'), findsOneWidget);
-    expect(find.text('检测不可用'), findsWidgets);
+    expect(find.widgetWithText(AppBar, '我的'), findsOneWidget);
+    expect(find.text('未登录'), findsOneWidget);
+    expect(find.text('后台与订阅'), findsOneWidget);
+    expect(find.text('种子工具'), findsOneWidget);
+    expect(find.text('本地播放'), findsOneWidget);
+  });
 
-    await tester.scrollUntilVisible(
-      find.text('最近种子'),
-      220,
-      scrollable: find.byType(Scrollable).last,
-    );
+  testWidgets('我的页种子工具入口可以打开种子工具页', (tester) async {
+    await tester.pumpWidget(_buildTestApp());
     await tester.pumpAndSettle();
 
+    await tester.tap(find.text('我的').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('种子工具'));
+    await tester.pumpAndSettle();
+
+    expect(find.widgetWithText(AppBar, '种子工具'), findsOneWidget);
     expect(find.text('最近种子'), findsOneWidget);
-    expect(find.text('暂无最近种子'), findsOneWidget);
-
-    await tester.scrollUntilVisible(
-      find.text('真实设备兼容记录'),
-      220,
-      scrollable: find.byType(Scrollable).last,
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('真实设备兼容记录'), findsOneWidget);
-    expect(find.text('本机兼容清单'), findsOneWidget);
-    expect(find.textContaining('暂无实测样本'), findsOneWidget);
-    expect(find.text('暂无本机实测记录'), findsOneWidget);
-    expect(find.widgetWithText(OutlinedButton, '记直开成功'), findsOneWidget);
-    expect(find.widgetWithText(OutlinedButton, '记导入成功'), findsOneWidget);
-
-    await tester.tap(find.widgetWithText(OutlinedButton, '记直开成功'));
-    await tester.pumpAndSettle();
-
-    expect(find.textContaining('已记录 1 次实测'), findsOneWidget);
-    expect(find.text('优先观察：.torrent 直开'), findsOneWidget);
-    expect(find.text('.torrent 直开 1'), findsOneWidget);
-    expect(find.text('最近记录'), findsOneWidget);
-    expect(find.textContaining('直开成功'), findsWidgets);
-
-    await tester.scrollUntilVisible(
-      find.text('外部 BT 客户端自检'),
-      260,
-      scrollable: find.byType(Scrollable).last,
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('外部 BT 客户端自检'), findsOneWidget);
-    expect(find.text('magnet 支持'), findsOneWidget);
-    expect(find.text('.torrent 直开'), findsOneWidget);
-    expect(find.text('视频播放交接'), findsOneWidget);
-
-    await tester.scrollUntilVisible(
-      find.text('失败时处理'),
-      220,
-      scrollable: find.byType(Scrollable).last,
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('失败时处理'), findsOneWidget);
-
-    await tester.tap(find.text('播放').last);
-    await tester.pumpAndSettle();
-    expect(find.text('手动选择'), findsOneWidget);
-    expect(find.text('选择视频'), findsOneWidget);
-    expect(find.text('最近视频'), findsOneWidget);
-    expect(find.text('暂无最近视频'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, '播放'), findsOneWidget);
-
-    await tester.tap(find.text('后台').last);
-    await tester.pumpAndSettle();
-    expect(find.text('后台常驻'), findsOneWidget);
-    expect(find.text('服务控制'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, '启动后台'), findsOneWidget);
-    expect(find.text('通知权限'), findsOneWidget);
-    expect(find.text('启动前检查'), findsOneWidget);
-    expect(find.text('后台常驻服务未启动'), findsWidgets);
-    expect(find.text('DMHY 订阅检查'), findsOneWidget);
-    expect(find.text('后台自动检查'), findsOneWidget);
-    expect(find.text('暂无后台自动检查记录'), findsOneWidget);
-    expect(find.text('暂无订阅关键词'), findsOneWidget);
+    expect(find.text('还没有下载过种子'), findsOneWidget);
   });
 
-  testWidgets('种子交接页可以跳转到播放页手动选择视频', (tester) async {
+  testWidgets('种子工具页可以跳转到播放页手动选择视频', (tester) async {
     await tester.pumpWidget(_buildTestApp());
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('种子').last);
+    await tester.tap(find.text('我的').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('种子工具'));
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
-      find.widgetWithText(FilledButton, '去播放页选择视频'),
+      find.widgetWithText(FilledButton, '去播放'),
       220,
       scrollable: find.byType(Scrollable).last,
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, '去播放页选择视频'));
+    await tester.tap(find.widgetWithText(FilledButton, '去播放'));
     await tester.pumpAndSettle();
 
-    expect(find.text('手动选择'), findsOneWidget);
-    expect(find.text('选择视频'), findsOneWidget);
-    expect(find.text('最近视频'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, '本地播放'), findsOneWidget);
+    expect(find.text('选择本地视频'), findsOneWidget);
   });
 
-  testWidgets('可以在设置页保存 Bangumi OAuth 本机配置', (tester) async {
+  testWidgets('我的页可以保存 Bangumi OAuth 本机配置并回到可登录状态', (tester) async {
     await tester.pumpWidget(_buildTestApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('OAuth 客户端未配置'), findsOneWidget);
+    await tester.tap(find.text('我的').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('未登录'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, '配置 OAuth'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(OutlinedButton, '配置 OAuth'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Bangumi OAuth 设置'), findsOneWidget);
-    expect(find.text('本机 OAuth 配置'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, 'Bangumi OAuth 设置'), findsOneWidget);
 
     await tester.enterText(find.byType(TextFormField).at(0), 'client-id');
     await tester.enterText(find.byType(TextFormField).at(1), 'client-secret');
@@ -213,14 +156,14 @@ void main() {
     expect(storedConfig?.clientSecret, 'client-secret');
     expect(storedConfig?.isConfigured, isTrue);
 
-    Navigator.of(tester.element(find.text('Bangumi OAuth 设置'))).pop();
+    Navigator.of(tester.element(find.widgetWithText(AppBar, 'Bangumi OAuth 设置')))
+        .pop();
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 250));
     await tester.pumpAndSettle();
 
-    expect(find.text('未登录 Bangumi'), findsOneWidget);
-    expect(find.text('可登录'), findsOneWidget);
-    expect(find.text('OAuth 客户端未配置'), findsNothing);
+    expect(find.widgetWithText(FilledButton, '登录 Bangumi'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, '配置 OAuth'), findsNothing);
   });
 
   testWidgets('设置页会回填已保存的 Bangumi OAuth 本机配置', (tester) async {
@@ -237,8 +180,10 @@ void main() {
     await tester.pumpWidget(_buildTestApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('未登录 Bangumi'), findsOneWidget);
-    await tester.tap(find.byTooltip('设置'));
+    await tester.tap(find.text('我的').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Bangumi OAuth 设置'));
     await tester.pumpAndSettle();
 
     final fields = find.byType(TextFormField);
@@ -260,7 +205,7 @@ void main() {
     );
   });
 
-  testWidgets('通知初始路由可以直接打开后台标签页', (tester) async {
+  testWidgets('通知初始路由可以直接打开后台与订阅页', (tester) async {
     tester.binding.platformDispatcher.defaultRouteNameTestValue =
         '/?tab=background';
     addTearDown(
@@ -270,13 +215,13 @@ void main() {
     await tester.pumpWidget(_buildTestApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('后台常驻'), findsOneWidget);
-    expect(find.text('服务控制'), findsOneWidget);
-    expect(find.text('后台常驻服务未启动'), findsWidgets);
-    expect(find.text('后台自动检查'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, '后台与订阅'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '启动后台'), findsOneWidget);
+    expect(find.text('未启动'), findsWidgets);
+    expect(find.text('DMHY 订阅'), findsOneWidget);
   });
 
-  testWidgets('后台订阅通知初始路由可以打开 DMHY 并展示来源提示', (tester) async {
+  testWidgets('后台订阅通知初始路由可以打开搜索并展示来源提示', (tester) async {
     final dmhyRepository = _FakeDmhyRepository();
     tester.binding.platformDispatcher.defaultRouteNameTestValue =
         buildDmhySearchHomeRoute(
@@ -304,21 +249,19 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('RSS 可用'), findsOneWidget);
-    expect(find.text('来自后台订阅命中'), findsOneWidget);
-    expect(find.textContaining('后台常驻服务发现新资源'), findsOneWidget);
-    expect(find.widgetWithText(TextButton, '后台摘要'), findsOneWidget);
-    expect(find.text('“测试动画 1080” 在全站找到 1 条 RSS 资源'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, '搜索'), findsOneWidget);
+    expect(find.text('来自后台订阅'), findsOneWidget);
+    expect(find.widgetWithText(TextButton, '查看后台摘要'), findsOneWidget);
+    expect(find.text('“测试动画 1080”'), findsOneWidget);
     expect(dmhyRepository.requests.single.animeOnly, isFalse);
 
-    await tester.tap(find.widgetWithText(TextButton, '后台摘要'));
+    await tester.tap(find.widgetWithText(TextButton, '查看后台摘要'));
     await tester.pumpAndSettle();
 
-    expect(find.text('后台常驻'), findsOneWidget);
-    expect(find.text('后台自动检查'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, '后台与订阅'), findsOneWidget);
   });
 
-  testWidgets('前台服务查看后台消息可以导航到后台标签页', (tester) async {
+  testWidgets('前台服务查看后台消息可以导航到后台与订阅页', (tester) async {
     FlutterForegroundTask.resetStatic();
     FlutterForegroundTask.initCommunicationPort();
     addTearDown(FlutterForegroundTask.resetStatic);
@@ -326,13 +269,11 @@ void main() {
     await tester.pumpWidget(_buildTestApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('登录/搜索'), findsOneWidget);
-
     final callbacks = List.of(FlutterForegroundTask.dataCallbacks);
     expect(callbacks, isNotEmpty);
 
     // 插件自己的端口投递属于 flutter_foreground_task 的实现边界；这里聚焦
-    // 验证 APP 根组件注册的消息回调是否能把通知按钮请求转换成首页路由。
+    // 验证 APP 根组件注册的消息回调是否能把通知按钮请求转换成路由。
     callbacks.last(
       buildBackgroundNotificationOpenRouteRequest(
         timestamp: DateTime.utc(2026, 6, 27, 15, 30),
@@ -341,13 +282,11 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
 
-    expect(find.text('后台常驻'), findsOneWidget);
-    expect(find.text('服务控制'), findsOneWidget);
-    expect(find.text('后台常驻服务未启动'), findsWidgets);
-    expect(find.text('后台自动检查'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, '后台与订阅'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '启动后台'), findsOneWidget);
   });
 
-  testWidgets('后台页可以复制 DMHY 自动检查摘要', (tester) async {
+  testWidgets('后台与订阅页可以复制 DMHY 自动检查摘要', (tester) async {
     String? copiedText;
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
@@ -395,8 +334,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('后台').last);
+    await tester.tap(find.text('我的').last);
     await tester.pumpAndSettle();
+    await tester.tap(find.text('后台与订阅'));
+    await tester.pumpAndSettle();
+
     await tester.scrollUntilVisible(
       find.widgetWithText(TextButton, '复制摘要'),
       220,
@@ -416,7 +358,7 @@ void main() {
     expect(find.text('已复制自动检查摘要'), findsOneWidget);
   });
 
-  testWidgets('后台页可以立即执行 DMHY 自动检查规则', (tester) async {
+  testWidgets('后台与订阅页可以立即执行 DMHY 自动检查规则', (tester) async {
     final dmhyRepository = _FakeDmhyRepository();
     final autoCheckStorage = _FakeWidgetDmhySubscriptionAutoCheckStorage(null);
 
@@ -439,8 +381,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('后台').last);
+    await tester.tap(find.text('我的').last);
     await tester.pumpAndSettle();
+    await tester.tap(find.text('后台与订阅'));
+    await tester.pumpAndSettle();
+
     await tester.scrollUntilVisible(
       find.byType(TextField),
       220,
@@ -478,184 +423,7 @@ void main() {
     expect(find.textContaining('发现 1 条资源'), findsOneWidget);
   });
 
-  testWidgets('种子交接页可以展示外部客户端候选应用', (tester) async {
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          torrentClientCapabilityRepositoryProvider.overrideWithValue(
-            const _FakeTorrentClientCapabilityRepository(
-              capabilities: TorrentClientCapabilities(
-                isPlatformBridgeAvailable: true,
-                canOpenMagnet: true,
-                canOpenTorrentFile: true,
-                canShareTorrentFile: true,
-                magnetHandlerCount: 1,
-                torrentViewHandlerCount: 1,
-                torrentShareHandlerCount: 1,
-                magnetHandlers: [
-                  TorrentClientAppCandidate(
-                    label: '测试磁力客户端',
-                    packageName: 'com.example.magnet',
-                    activityName: 'MagnetActivity',
-                  ),
-                ],
-                torrentViewHandlers: [
-                  TorrentClientAppCandidate(
-                    label: '测试直开客户端',
-                    packageName: 'com.example.view',
-                    activityName: 'ViewActivity',
-                  ),
-                ],
-                torrentShareHandlers: [
-                  TorrentClientAppCandidate(
-                    label: '测试分享客户端',
-                    packageName: 'com.example.share',
-                    activityName: 'ShareActivity',
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-        child: const AnimeMobileTorrentApp(),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('种子').last);
-    await tester.pumpAndSettle();
-
-    expect(find.text('测试磁力客户端'), findsOneWidget);
-    expect(find.text('测试直开客户端'), findsOneWidget);
-    expect(find.text('测试分享客户端'), findsOneWidget);
-  });
-
-  testWidgets('种子交接页可以复制外部客户端兼容报告', (tester) async {
-    String? copiedText;
-    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-      SystemChannels.platform,
-      (call) async {
-        if (call.method == 'Clipboard.setData') {
-          final arguments = call.arguments as Map<dynamic, dynamic>;
-          copiedText = arguments['text']?.toString();
-        }
-        return null;
-      },
-    );
-    addTearDown(() {
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      );
-    });
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          torrentClientCapabilityRepositoryProvider.overrideWithValue(
-            _FakeTorrentClientCapabilityRepository(
-              capabilities: TorrentClientCapabilities(
-                isPlatformBridgeAvailable: true,
-                canOpenMagnet: true,
-                canOpenTorrentFile: false,
-                canShareTorrentFile: true,
-                magnetHandlerCount: 1,
-                torrentViewHandlerCount: 0,
-                torrentShareHandlerCount: 1,
-                magnetHandlers: const [
-                  TorrentClientAppCandidate(
-                    label: '测试 BT',
-                    packageName: 'com.example.bt',
-                    activityName: 'com.example.bt.MagnetActivity',
-                  ),
-                ],
-                torrentShareHandlers: const [
-                  TorrentClientAppCandidate(
-                    label: '分享导入器',
-                    packageName: 'com.example.share',
-                    activityName: 'com.example.share.ImportActivity',
-                  ),
-                ],
-                androidSdkInt: 35,
-                checkedAt: DateTime(2026, 6, 27, 12, 30),
-              ),
-            ),
-          ),
-        ],
-        child: const AnimeMobileTorrentApp(),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('种子').last);
-    await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('真实设备兼容记录'),
-      220,
-      scrollable: find.byType(Scrollable).last,
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.widgetWithText(OutlinedButton, '复制报告'), findsOneWidget);
-    expect(find.widgetWithText(OutlinedButton, '复制模板'), findsOneWidget);
-    await tester.tap(find.widgetWithText(OutlinedButton, '记导入成功'));
-    await tester.pumpAndSettle();
-    expect(find.text('优先观察：导出手动导入'), findsOneWidget);
-    expect(find.text('导出导入 1'), findsOneWidget);
-
-    await tester.ensureVisible(find.widgetWithText(OutlinedButton, '复制报告'));
-    await tester.tap(find.widgetWithText(OutlinedButton, '复制报告'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 350));
-
-    expect(copiedText, contains('Anime Mobile Torrent 外部 BT 客户端兼容报告'));
-    expect(copiedText, contains('## 本机兼容清单摘要'));
-    expect(copiedText, contains('可用样本: 1/1 条可用'));
-    expect(copiedText, contains('优先观察路径: 导出手动导入'));
-    expect(copiedText, contains('.torrent 导出手动导入成功: 1'));
-    expect(copiedText, contains('测试 BT'));
-    expect(copiedText, contains('分享导入器'));
-    expect(copiedText, contains('导入成功'));
-    expect(copiedText, contains('APP 只下载和交接 .torrent 文件'));
-    expect(find.text('已复制兼容报告'), findsOneWidget);
-
-    expect(find.widgetWithText(OutlinedButton, '复制汇总行'), findsOneWidget);
-    await tester.ensureVisible(find.widgetWithText(OutlinedButton, '复制模板'));
-    await tester.tap(find.widgetWithText(OutlinedButton, '复制模板'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 350));
-
-    expect(copiedText, contains('Anime Mobile Torrent 外部 BT 客户端兼容记录模板'));
-    expect(copiedText, contains('| 路径 | 应用 | 包名 | Activity |'));
-    expect(copiedText, contains('| .torrent 导出手动导入成功 | 1 |'));
-    expect(copiedText, contains('| 推荐观察路径 | 导出手动导入 |'));
-    expect(copiedText, contains('- 导出 `.torrent` 后手动导入是否成功：'));
-    expect(find.text('已复制兼容模板'), findsOneWidget);
-
-    await tester.ensureVisible(find.widgetWithText(OutlinedButton, '复制汇总行'));
-    await tester.tap(find.widgetWithText(OutlinedButton, '复制汇总行'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 350));
-
-    expect(copiedText, contains('| 日期 | 设备/系统 | Android SDK | BT 客户端/包名 |'));
-    expect(copiedText, contains('| 待填写设备型号/Android 版本 | 35 |'));
-    expect(copiedText, contains('| 可用（候选 1 个） | 未发现（候选 0 个） |'));
-    expect(copiedText, contains('| 可用（候选 1 个） | 可用（实测 1 次） |'));
-    expect(copiedText, contains('| 导出手动导入 | 本机样本 1/1 条可用；'));
-    expect(find.text('已复制汇总行'), findsOneWidget);
-
-    await tester.ensureVisible(find.widgetWithText(TextButton, '删除本条'));
-    await tester.tap(find.widgetWithText(TextButton, '删除本条'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 350));
-
-    expect(find.text('已删除本机兼容记录'), findsOneWidget);
-    await tester.pumpAndSettle();
-    expect(find.text('暂无本机实测记录'), findsOneWidget);
-    expect(find.textContaining('暂无实测样本'), findsOneWidget);
-  });
-
-  testWidgets('种子交接页可以删除单条最近种子记录', (tester) async {
+  testWidgets('种子工具页可以删除单条最近种子记录', (tester) async {
     final seedHistoryRepository = _FakeTorrentSeedHistoryRepository([
       TorrentSeedHistoryItem.capture(
         seedFile: const TorrentSeedFile(
@@ -683,21 +451,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('种子').last);
+    await tester.tap(find.text('我的').last);
     await tester.pumpAndSettle();
-    await tester.scrollUntilVisible(
-      find.text('可删除测试种子'),
-      220,
-      scrollable: find.byType(Scrollable).last,
-    );
+    await tester.tap(find.text('种子工具'));
     await tester.pumpAndSettle();
 
     expect(find.text('可删除测试种子'), findsOneWidget);
-    expect(find.widgetWithText(OutlinedButton, '导出'), findsOneWidget);
 
-    await tester.ensureVisible(find.widgetWithText(TextButton, '删除'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(TextButton, '删除'));
+    await tester.tap(find.byTooltip('删除记录'));
     await tester.pumpAndSettle();
 
     expect(seedHistoryRepository.removedItems.single.title, '可删除测试种子');
@@ -732,8 +493,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('播放').last);
+    await tester.tap(find.text('我的').last);
     await tester.pumpAndSettle();
+    await tester.tap(find.text('本地播放'));
+    await tester.pumpAndSettle();
+
     await tester.scrollUntilVisible(
       find.text('delete-me.mkv'),
       220,
@@ -743,9 +507,7 @@ void main() {
 
     expect(find.text('delete-me.mkv'), findsOneWidget);
 
-    await tester.ensureVisible(find.widgetWithText(TextButton, '删除'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(TextButton, '删除'));
+    await tester.tap(find.byTooltip('删除记录'));
     await tester.pumpAndSettle();
 
     expect(
@@ -774,8 +536,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('后台').last);
+    await tester.tap(find.text('我的').last);
     await tester.pumpAndSettle();
+    await tester.tap(find.text('后台与订阅'));
+    await tester.pumpAndSettle();
+
     await tester.enterText(find.byType(TextField), '测试动画 1080');
     await tester.scrollUntilVisible(
       find.text('动画分类'),
@@ -799,8 +564,8 @@ void main() {
     await tester.tap(find.text('测试动画 1080 · 全站'));
     await tester.pumpAndSettle();
 
-    expect(find.text('RSS 可用'), findsOneWidget);
-    expect(find.text('“测试动画 1080” 在全站找到 1 条 RSS 资源'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, '搜索'), findsOneWidget);
+    expect(find.text('“测试动画 1080”'), findsOneWidget);
     expect(dmhyRepository.requests.single.animeOnly, isFalse);
   });
 
@@ -821,10 +586,10 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), '测试动画');
-    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
 
-    expect(find.text('“测试动画” 找到 1 个动画条目'), findsOneWidget);
+    expect(find.text('搜索结果'), findsOneWidget);
     expect(find.text('测试动画 中文名'), findsOneWidget);
     expect(find.text('Test Anime'), findsOneWidget);
     expect(find.textContaining('8.1 · Rank 12 · 345 人评分'), findsOneWidget);
@@ -833,44 +598,6 @@ void main() {
       repository.searchRequests.single.sort,
       BangumiSubjectSearchSort.match,
     );
-  });
-
-  testWidgets('Bangumi 搜索结果可以直接跳转到 DMHY 搜资源', (tester) async {
-    final bangumiRepository = _FakeBangumiRepository();
-    final dmhyRepository = _FakeDmhyRepository();
-
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          torrentClientCapabilityRepositoryProvider.overrideWithValue(
-            const _FakeTorrentClientCapabilityRepository(),
-          ),
-          bangumiRepositoryProvider.overrideWithValue(bangumiRepository),
-          dmhyRepositoryProvider.overrideWithValue(dmhyRepository),
-        ],
-        child: const AnimeMobileTorrentApp(),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    await tester.enterText(find.byType(TextField), '测试动画');
-    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
-    await tester.pumpAndSettle();
-
-    await tester.scrollUntilVisible(
-      find.widgetWithText(TextButton, '搜资源'),
-      180,
-      scrollable: find.byType(Scrollable).last,
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(TextButton, '搜资源'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('RSS 可用'), findsOneWidget);
-    expect(find.text('“测试动画 中文名” 在动画分类找到 1 条 RSS 资源'), findsOneWidget);
-    expect(dmhyRepository.requests, hasLength(1));
-    expect(dmhyRepository.requests.single.normalizedKeyword, '测试动画 中文名');
-    expect(dmhyRepository.requests.single.animeOnly, isTrue);
   });
 
   testWidgets('Bangumi 搜索排序切换会重新加载当前关键词', (tester) async {
@@ -890,7 +617,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), '测试动画');
-    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
 
     expect(repository.searchRequests, hasLength(1));
@@ -900,11 +627,8 @@ void main() {
     );
 
     await tester.tap(
-      find.byType(DropdownButtonFormField<BangumiSubjectSearchSort>),
+      find.widgetWithText(ChoiceChip, BangumiSubjectSearchSort.score.label),
     );
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text(BangumiSubjectSearchSort.score.label).last);
     await tester.pumpAndSettle();
 
     expect(repository.searchRequests, hasLength(2));
@@ -933,14 +657,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(repository.searchRequests, isEmpty);
-    expect(find.text('“测试动画” 找到 1 个动画条目'), findsNothing);
+    expect(find.text('搜索结果'), findsNothing);
 
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
 
     expect(repository.searchRequests, hasLength(1));
     expect(repository.searchRequests.single.normalizedKeyword, '测试动画');
-    expect(find.text('“测试动画” 找到 1 个动画条目'), findsOneWidget);
+    expect(find.text('搜索结果'), findsOneWidget);
   });
 
   testWidgets('Bangumi 搜索结果可以加载更多分页', (tester) async {
@@ -960,26 +684,24 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), '测试动画');
-    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
 
-    expect(find.text('“测试动画” 找到 25 个动画条目'), findsOneWidget);
-    expect(find.text('已加载 20/25 个条目'), findsOneWidget);
+    expect(find.text('搜索结果'), findsOneWidget);
     expect(repository.searchRequests.single.offset, 0);
 
     await tester.scrollUntilVisible(
-      find.widgetWithText(FilledButton, '加载更多搜索结果'),
+      find.widgetWithText(OutlinedButton, '加载更多'),
       280,
       scrollable: find.byType(Scrollable).last,
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, '加载更多搜索结果'));
+    await tester.tap(find.widgetWithText(OutlinedButton, '加载更多'));
     await tester.pumpAndSettle();
 
     expect(repository.searchRequests, hasLength(2));
     expect(repository.searchRequests.last.offset, 20);
-    expect(find.text('已加载 25/25 个条目'), findsOneWidget);
     expect(find.text('测试动画 中文名 25'), findsOneWidget);
   });
 
@@ -998,28 +720,26 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), '测试动画');
-    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('测试动画 中文名'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Bangumi 条目详情'), findsOneWidget);
-    expect(find.text('资源搜索'), findsOneWidget);
-    expect(find.text('搜索 DMHY'), findsOneWidget);
+    expect(find.text('搜资源'), findsOneWidget);
     expect(find.text('我的收藏'), findsOneWidget);
-    expect(find.textContaining('登录 Bangumi 后'), findsOneWidget);
+    expect(find.textContaining('登录 Bangumi'), findsWidgets);
     expect(find.text('收藏统计'), findsOneWidget);
     expect(find.text('合计'), findsOneWidget);
 
     await tester.scrollUntilVisible(
-      find.text('维基信息'),
+      find.text('制作信息'),
       220,
       scrollable: find.byType(Scrollable).last,
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('维基信息'), findsOneWidget);
+    expect(find.text('制作信息'), findsOneWidget);
     expect(find.text('导演'), findsOneWidget);
     expect(find.text('测试监督'), findsOneWidget);
 
@@ -1075,7 +795,7 @@ void main() {
     await tester.tap(find.widgetWithText(TextButton, '搜资源'));
     await tester.pumpAndSettle();
 
-    expect(find.text('RSS 可用'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, '搜索'), findsOneWidget);
     expect(dmhyRepository.requests, hasLength(1));
     expect(dmhyRepository.requests.single.normalizedKeyword, '收藏动画 中文名');
     expect(dmhyRepository.requests.single.animeOnly, isTrue);
@@ -1109,7 +829,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), '测试动画');
-    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('测试动画 中文名'));
@@ -1124,7 +844,6 @@ void main() {
 
     expect(find.text('已看 1 / 10 本篇'), findsOneWidget);
     expect(find.text('章节类型'), findsOneWidget);
-    expect(find.text('本篇'), findsWidgets);
     expect(find.text('展开已加载章节'), findsOneWidget);
     expect(find.text('测试第 10 话'), findsNothing);
 
@@ -1172,7 +891,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), '测试动画');
-    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('测试动画 中文名'));
@@ -1215,17 +934,17 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), '测试动画');
-    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('测试动画 中文名'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, '搜索 DMHY'));
+    await tester.tap(find.widgetWithText(FilledButton, '搜资源'));
     await tester.pumpAndSettle();
 
-    expect(find.text('RSS 可用'), findsOneWidget);
-    expect(find.text('“测试动画 中文名” 在动画分类找到 1 条 RSS 资源'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, '搜索'), findsOneWidget);
+    expect(find.text('“测试动画 中文名”'), findsOneWidget);
     expect(find.text('[字幕组] 测试动画 01 1080p'), findsOneWidget);
   });
 
@@ -1246,40 +965,24 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('DMHY').last);
+    await tester.tap(find.text('搜索').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '测试动画 1080');
-    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.tap(find.byTooltip('搜索'));
     await tester.pumpAndSettle();
 
-    expect(find.text('“测试动画 1080” 在动画分类找到 1 条 RSS 资源'), findsOneWidget);
+    expect(find.text('“测试动画 1080”'), findsOneWidget);
     expect(find.text('[字幕组] 测试动画 01 1080p'), findsOneWidget);
-    expect(find.text('字幕组'), findsOneWidget);
     expect(find.text('1080p'), findsOneWidget);
     expect(find.text('HEVC/H.265'), findsOneWidget);
-    expect(find.text('MP4'), findsOneWidget);
-    expect(find.text('简繁内封'), findsOneWidget);
-    expect(find.text('1.25 GB'), findsOneWidget);
     expect(find.text('种子 12'), findsOneWidget);
-    expect(find.text('下载 34'), findsOneWidget);
-    expect(find.text('完成 56'), findsOneWidget);
-    expect(find.text('動畫'), findsOneWidget);
-    expect(find.text('test_team'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, '订阅'), findsOneWidget);
-    expect(find.text('复制'), findsOneWidget);
-    expect(find.text('打开'), findsOneWidget);
-    expect(find.widgetWithText(FilledButton, '种子'), findsOneWidget);
-    expect(find.text('外部客户端检测不可用，点击后会继续尝试系统交接'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '下载种子'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(OutlinedButton, '订阅'));
     await tester.pumpAndSettle();
 
     expect(find.text('已添加订阅关键词“测试动画 1080”'), findsOneWidget);
-
-    await tester.tap(find.text('后台').last);
-    await tester.pumpAndSettle();
-
-    expect(find.text('测试动画 1080 · 动画分类'), findsOneWidget);
   });
 
   testWidgets('DMHY 搜索排序切换会重新加载当前关键词', (tester) async {
@@ -1298,15 +1001,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('DMHY').last);
+    await tester.tap(find.text('搜索').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '测试动画 1080');
-    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.tap(find.byTooltip('搜索'));
     await tester.pumpAndSettle();
 
     expect(dmhyRepository.requests, hasLength(1));
     expect(dmhyRepository.requests.single.sort, DmhyResourceSort.publishedDesc);
-    expect(find.text('排序：发布时间'), findsOneWidget);
 
     await tester.tap(find.byType(DropdownButtonFormField<DmhyResourceSort>));
     await tester.pumpAndSettle();
@@ -1316,7 +1018,6 @@ void main() {
     expect(dmhyRepository.requests, hasLength(2));
     expect(dmhyRepository.requests.last.normalizedKeyword, '测试动画 1080');
     expect(dmhyRepository.requests.last.sort, DmhyResourceSort.seedDesc);
-    expect(find.text('排序：种子数'), findsOneWidget);
     expect(
       tester.getTopLeft(find.text('[字幕组] 高种子资源 01 1080p')).dy,
       lessThan(tester.getTopLeft(find.text('[字幕组] 低种子资源 01 1080p')).dy),
@@ -1339,10 +1040,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('DMHY').last);
+    await tester.tap(find.text('搜索').last);
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), '测试动画 1080');
-    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.enterText(find.byType(TextField).first, '测试动画 1080');
+    await tester.tap(find.byTooltip('搜索'));
     await tester.pumpAndSettle();
 
     expect(dmhyRepository.requests, hasLength(1));
@@ -1355,7 +1056,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(dmhyRepository.requests, hasLength(1));
-    expect(find.text('筛选后显示 1/2 条'), findsOneWidget);
+    expect(find.textContaining('显示 1/2'), findsOneWidget);
     expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
     expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsNothing);
 
@@ -1373,7 +1074,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(dmhyRepository.requests, hasLength(1));
-    expect(find.text('筛选后显示 1/2 条'), findsOneWidget);
+    expect(find.textContaining('显示 1/2'), findsOneWidget);
     expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsNothing);
     expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsOneWidget);
 
@@ -1389,25 +1090,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(dmhyRepository.requests, hasLength(1));
-    expect(find.text('筛选后显示 1/2 条'), findsOneWidget);
+    expect(find.textContaining('显示 1/2'), findsOneWidget);
     expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
     expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsNothing);
-
-    await _tapDmhyClearFilter(tester);
-
-    await tester.ensureVisible(
-      find.byKey(const Key('dmhy-filter-subtitle-language')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('dmhy-filter-subtitle-language')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('英文').last);
-    await tester.pumpAndSettle();
-
-    expect(dmhyRepository.requests, hasLength(1));
-    expect(find.text('筛选后显示 1/2 条'), findsOneWidget);
-    expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsNothing);
-    expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsOneWidget);
 
     await _tapDmhyClearFilter(tester);
 
@@ -1418,20 +1103,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(dmhyRepository.requests, hasLength(1));
-    expect(find.text('筛选后显示 1/2 条'), findsOneWidget);
-    expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
-    expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsNothing);
-
-    await _tapDmhyClearFilter(tester);
-
-    await tester.enterText(
-      find.byKey(const Key('dmhy-filter-excluded-keywords')),
-      '桜都',
-    );
-    await tester.pumpAndSettle();
-
-    expect(dmhyRepository.requests, hasLength(1));
-    expect(find.text('筛选后显示 1/2 条'), findsOneWidget);
+    expect(find.textContaining('显示 1/2'), findsOneWidget);
     expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
     expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsNothing);
 
@@ -1453,12 +1125,12 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField).first, '测试动画 720');
-    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.tap(find.byTooltip('搜索'));
     await tester.pumpAndSettle();
 
     expect(dmhyRepository.requests, hasLength(2));
     expect(find.text('偏好：猫耳字幕'), findsOneWidget);
-    expect(find.text('筛选后显示 1/2 条'), findsOneWidget);
+    expect(find.textContaining('显示 1/2'), findsOneWidget);
     expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
     expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsNothing);
   });
@@ -1492,13 +1164,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('DMHY').last);
+    await tester.tap(find.text('搜索').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '测试动画 1080');
-    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.tap(find.byTooltip('搜索'));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('将依赖分享面板导入'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '分享种子'), findsOneWidget);
 
     await _bringFilledButtonAboveNavigation(tester, '分享种子');
@@ -1514,25 +1185,24 @@ void main() {
     await tester.tap(find.text('去播放'));
     await tester.pumpAndSettle();
 
-    expect(find.text('从 DMHY 种子交接继续'), findsOneWidget);
-    expect(find.textContaining('外部 BT 客户端完成真实视频下载后'), findsOneWidget);
-    expect(find.text('手动选择'), findsOneWidget);
-    expect(find.text('选择视频'), findsOneWidget);
-    expect(find.text('最近视频'), findsOneWidget);
+    expect(find.text('从种子交接继续'), findsOneWidget);
+    expect(find.text('选择本地视频'), findsOneWidget);
 
-    await tester.tap(find.text('种子').last);
+    await tester.tap(find.text('搜索').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('我的').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('种子工具'));
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
-      find.text('最近种子'),
+      find.text('[字幕组] 测试动画 01 1080p'),
       220,
       scrollable: find.byType(Scrollable).last,
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('最近种子'), findsOneWidget);
     expect(find.text('[字幕组] 测试动画 01 1080p'), findsOneWidget);
-    expect(find.text('test.torrent'), findsOneWidget);
   });
 
   testWidgets('DMHY 种子交接失败时可以从提示复制磁力', (tester) async {
@@ -1587,10 +1257,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('DMHY').last);
+    await tester.tap(find.text('搜索').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '测试动画 1080');
-    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.tap(find.byTooltip('搜索'));
     await tester.pumpAndSettle();
 
     await _bringFilledButtonAboveNavigation(tester, '分享种子');
@@ -1650,13 +1320,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('DMHY').last);
+    await tester.tap(find.text('搜索').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '测试动画 1080');
-    await tester.tap(find.widgetWithText(FilledButton, '搜索'));
+    await tester.tap(find.byTooltip('搜索'));
     await tester.pumpAndSettle();
 
-    expect(find.text('未发现外部 BT 客户端，主按钮已切换为复制 magnet'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '复制磁力'), findsOneWidget);
 
     await _bringFilledButtonAboveNavigation(tester, '复制磁力');

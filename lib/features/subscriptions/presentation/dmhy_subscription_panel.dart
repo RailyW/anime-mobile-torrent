@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../shared/utils/app_format.dart';
 import '../../dmhy/domain/dmhy_resource.dart';
 import '../application/dmhy_subscription_providers.dart';
 import '../data/dmhy_subscription_auto_check_storage.dart';
@@ -117,14 +118,21 @@ class _DmhySubscriptionPanelState extends ConsumerState<DmhySubscriptionPanel> {
           children: [
             Row(
               children: [
-                Icon(Icons.rss_feed_outlined, color: scheme.secondary),
-                const SizedBox(width: 12),
+                Icon(Icons.rss_feed_outlined, color: scheme.primary),
+                const SizedBox(width: 10),
                 Expanded(
-                  child: Text('DMHY 订阅检查', style: theme.textTheme.titleMedium),
+                  child: Text('DMHY 订阅', style: theme.textTheme.titleMedium),
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 4),
+            Text(
+              '保存关键词，后台会定期检查新资源',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 14),
             asyncState.when(
               data: (state) => _SubscriptionLoadedView(
                 state: state,
@@ -364,7 +372,7 @@ class _SubscriptionAutoCheckRecordView extends StatelessWidget {
             else ...[
               Text(
                 '${currentRecord.status.label} · '
-                '${_formatDateTime(currentRecord.checkedAt)}',
+                '${formatDateTime(currentRecord.checkedAt)}',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),
@@ -509,7 +517,7 @@ class _SubscriptionCheckSummaryView extends StatelessWidget {
             ),
             if (summary.checkedAt != null)
               Text(
-                _formatDateTime(summary.checkedAt),
+                formatDateTime(summary.checkedAt),
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),
@@ -634,7 +642,7 @@ class _SubscriptionResourceLine extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   '${resource.sourceHost} · '
-                  '${_formatDateTime(resource.publishedAt)}',
+                  '${formatDateTime(resource.publishedAt)}',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: scheme.onSurfaceVariant,
                   ),
@@ -690,19 +698,6 @@ class _SubscriptionErrorView extends StatelessWidget {
     );
   }
 }
-
-String _formatDateTime(DateTime? value) {
-  if (value == null) {
-    return '时间未知';
-  }
-
-  final localValue = value.toLocal();
-  return '${localValue.year}-${_twoDigits(localValue.month)}-'
-      '${_twoDigits(localValue.day)} ${_twoDigits(localValue.hour)}:'
-      '${_twoDigits(localValue.minute)}';
-}
-
-String _twoDigits(int value) => value.toString().padLeft(2, '0');
 
 String _formatAutoCheckRecordSummary(DmhySubscriptionAutoCheckRecord record) {
   if (record.isFailed) {

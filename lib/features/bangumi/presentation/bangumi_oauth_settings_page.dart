@@ -40,7 +40,6 @@ class _BangumiOAuthSettingsPageState
   @override
   Widget build(BuildContext context) {
     final configState = ref.watch(bangumiOAuthConfigControllerProvider);
-    final environmentConfig = ref.watch(bangumiEnvironmentOAuthConfigProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Bangumi OAuth 设置')),
@@ -48,8 +47,8 @@ class _BangumiOAuthSettingsPageState
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
           children: [
-            _SettingsIntro(environmentConfig: environmentConfig),
-            const SizedBox(height: 12),
+            _SettingsIntro(),
+            const SizedBox(height: 16),
             configState.when(
               data: (config) {
                 _seedControllers(config);
@@ -202,10 +201,11 @@ class _BangumiOAuthSettingsPageState
 }
 
 /// 设置页说明卡。
+///
+/// 用一段简短说明加上可复制的回调地址，告诉用户去 Bangumi 开发者后台注册应用
+/// 并把回调地址填回这里，不再堆叠大段免责声明。
 class _SettingsIntro extends StatelessWidget {
-  const _SettingsIntro({required this.environmentConfig});
-
-  final BangumiOAuthConfig environmentConfig;
+  const _SettingsIntro();
 
   @override
   Widget build(BuildContext context) {
@@ -214,45 +214,36 @@ class _SettingsIntro extends StatelessWidget {
 
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: scheme.primaryContainer,
-        borderRadius: BorderRadius.circular(8),
+        color: scheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(Icons.key_outlined, color: scheme.onPrimaryContainer),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    '本机 OAuth 配置',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: scheme.onPrimaryContainer,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-                _ConfigSourceBadge(
-                  label: environmentConfig.isConfigured ? '有编译期配置' : '需填写',
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
             Text(
-              '在 Bangumi 开发者后台注册应用后，把 client id、client secret 和 redirect URI 填到这里。保存后会清理旧登录 token，并使用新配置重新授权。',
+              '在 Bangumi 开发者后台注册应用，把下面这个回调地址填进去，再把拿到的 '
+              'client id 与 secret 填到本页。',
               style: theme.textTheme.bodyMedium?.copyWith(
-                color: scheme.onPrimaryContainer,
+                color: scheme.onSurfaceVariant,
               ),
             ),
-            const SizedBox(height: 8),
-            SelectableText(
-              BangumiOAuthConfig.defaultRedirectUri,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: scheme.onPrimaryContainer,
-                fontWeight: FontWeight.w700,
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: scheme.surface,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: scheme.outlineVariant),
+              ),
+              child: SelectableText(
+                BangumiOAuthConfig.defaultRedirectUri,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  fontFeatures: const [],
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
@@ -349,7 +340,7 @@ class _SettingsForm extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                '配置只保存在本机，用于发起 OAuth 授权。Bangumi 当前不接受请求 URL 中的 scope 参数，权限请在开发者后台勾选；发布版本仍建议评估后端 token broker，避免在移动端分发共享 client secret。',
+                '配置只保存在本机。保存后会清理旧登录 token，下次用新配置重新授权。',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),
@@ -404,35 +395,5 @@ class _SettingsForm extends StatelessWidget {
     }
 
     return null;
-  }
-}
-
-/// 配置来源状态标签。
-class _ConfigSourceBadge extends StatelessWidget {
-  const _ConfigSourceBadge({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: scheme.onSurfaceVariant,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-    );
   }
 }

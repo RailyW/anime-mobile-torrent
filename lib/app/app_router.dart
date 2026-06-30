@@ -1,17 +1,20 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../features/background/presentation/background_page.dart';
 import '../features/bangumi/presentation/bangumi_oauth_settings_page.dart';
 import '../features/bangumi/presentation/bangumi_subject_detail_page.dart';
 import '../features/dmhy/domain/dmhy_entry_context.dart';
 import '../features/home/home_screen.dart';
-import '../features/playback/presentation/playback_tab.dart';
+import '../features/playback/presentation/playback_page.dart';
+import '../features/torrent_handoff/presentation/torrent_page.dart';
 
 /// GoRouter 路由表 Provider。
 ///
-/// 首期只有一个首页壳，功能模块通过首页底部导航切换。后续当 Bangumi
-/// 条目详情、DMHY 资源详情、种子文件预览等页面增加时，应继续在这里注册
-/// 命名路由，并让功能模块只暴露页面入口而不直接创建全局路由器。
+/// 应用采用“追番 / 搜索 / 我的”三段式底部导航：前两个 tab 是高频的浏览与
+/// 搜索入口，第三个 tab“我的”聚合账号、后台订阅、种子工具与本地播放等低频
+/// 功能，并以独立页面的形式打开。后台通知、Bangumi 详情页等深链仍复用首页
+/// 路由，通过 `tab` 查询参数定位到正确的 tab 或子页面。
 final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     routes: [
@@ -19,9 +22,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/',
         name: 'home',
         builder: (context, state) {
-          final initialTabIndex = _initialTabIndexFromQuery(
-            state.uri.queryParameters['tab'],
-          );
+          final tab = state.uri.queryParameters['tab'];
+          final initialTabIndex = _initialTabIndexFromQuery(tab);
           final dmhyKeyword = state.uri.queryParameters['keyword'];
           final dmhyAnimeOnly = _initialDmhyAnimeOnlyFromQuery(
             state.uri.queryParameters['animeOnly'],
@@ -32,6 +34,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           final playbackEntryContext = _initialPlaybackEntryContextFromQuery(
             state.uri.queryParameters['source'],
           );
+          final profileDestination = _initialProfileDestinationFromQuery(tab);
 
           return HomeScreen(
             initialTabIndex: initialTabIndex,
@@ -39,8 +42,29 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             initialDmhyAnimeOnly: dmhyAnimeOnly,
             initialDmhyEntryContext: dmhyEntryContext,
             initialPlaybackEntryContext: playbackEntryContext,
+            initialProfileDestination: profileDestination,
           );
         },
+      ),
+      GoRoute(
+        path: '/playback',
+        name: 'playback',
+        builder: (context, state) {
+          final playbackEntryContext = _initialPlaybackEntryContextFromQuery(
+            state.uri.queryParameters['source'],
+          );
+          return PlaybackPage(entryContext: playbackEntryContext);
+        },
+      ),
+      GoRoute(
+        path: '/torrent',
+        name: 'torrent',
+        builder: (context, state) => const TorrentPage(),
+      ),
+      GoRoute(
+        path: '/background',
+        name: 'background',
+        builder: (context, state) => const BackgroundPage(),
       ),
       GoRoute(
         path: '/settings/bangumi-oauth',
@@ -65,17 +89,34 @@ final appRouterProvider = Provider<GoRouter>((ref) {
 
 /// 将首页 `tab` 查询参数转换为底部导航下标。
 ///
-/// 通知点击、Bangumi 详情页资源搜索跳转和未来外部深链都会复用首页路由。
-/// 这里集中维护字符串到 tab 下标的映射，避免各模块直接依赖
-/// `HomeScreen` 内部的导航顺序。
+/// 三个 tab 的下标为：追番 0、搜索 1、我的 2。历史深链中的 `torrent`、
+/// `playback`、`background` 都属于“我的”页下的子功能，因此统一落到“我的”
+/// tab（下标 2），再由 [_initialProfileDestinationFromQuery] 决定要不要自动
+/// 打开对应子页面。
 int _initialTabIndexFromQuery(String? tab) {
   return switch (tab) {
     'bangumi' => 0,
     'dmhy' => 1,
     'torrent' => 2,
-    'playback' => 3,
-    'background' => 4,
+    'playback' => 2,
+    'background' => 2,
+    'me' => 2,
+    'profile' => 2,
     _ => 0,
+  };
+}
+
+/// 将首页 `tab` 查询参数映射为进入“我的”页后要自动打开的子页面。
+///
+/// 后台常驻通知会跳到 `tab=background`，DMHY 种子交接“去播放”会跳到
+/// `tab=playback`。这里把它们翻译成“我的”页要立即推入的子页面，保证从通知
+/// 或跨模块跳转进来时，用户直接看到目标功能，而不是停在“我的”首页。
+HomeProfileDestination _initialProfileDestinationFromQuery(String? tab) {
+  return switch (tab) {
+    'background' => HomeProfileDestination.background,
+    'playback' => HomeProfileDestination.playback,
+    'torrent' => HomeProfileDestination.torrent,
+    _ => HomeProfileDestination.none,
   };
 }
 
@@ -92,7 +133,7 @@ bool _initialDmhyAnimeOnlyFromQuery(String? value) {
   };
 }
 
-/// 将首页 `source` 查询参数转换为播放页入口语境。
+/// 将 `source` 查询参数转换为播放页入口语境。
 ///
 /// 该参数只用于展示提示文案，不代表 APP 已经获取外部 BT 客户端的下载状态。
 PlaybackEntryContext _initialPlaybackEntryContextFromQuery(String? value) {

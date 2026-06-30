@@ -4,6 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../shared/utils/app_format.dart';
+import '../../../shared/widgets/app_async_views.dart';
+import '../../../shared/widgets/app_chip.dart';
+import '../../../shared/widgets/app_section.dart';
 import '../../subscriptions/application/dmhy_subscription_providers.dart';
 import '../../torrent_handoff/application/torrent_handoff_providers.dart';
 import '../../torrent_handoff/domain/torrent_client_capabilities.dart';
@@ -17,11 +21,12 @@ import '../domain/dmhy_filter_preference.dart';
 import '../domain/dmhy_resource.dart';
 import '../domain/dmhy_resource_metadata.dart';
 
-/// DMHY 资源搜索首页入口。
+/// 搜索（DMHY）tab。
 ///
-/// 该模块首期接入 RSS 搜索，并把 RSS 中的 magnet 和详情页中的 `.torrent`
-/// 种子文件显式交给用户操作。模块不下载 BT 视频内容，也不管理外部客户端
-/// 的下载进度。
+/// 用户在这里搜索动画资源、按字幕组/分辨率等条件筛选，并把 magnet 或
+/// `.torrent` 交给外部 BT 客户端。模块只做资源获取与交接，不下载视频内容，也
+/// 不管理外部客户端任务。本次重构去掉了顶部品牌横幅、能力清单与逐卡的客户端
+/// 自检说明，保留全部搜索、筛选、订阅与交接逻辑。
 class DmhyTab extends ConsumerStatefulWidget {
   const DmhyTab({
     this.initialKeyword,
@@ -121,8 +126,8 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
 
   /// 提交 RSS 搜索关键词。
   ///
-  /// 空关键词不访问 DMHY，避免用户误触导致无意义请求。搜索默认限制在
-  /// 动画分类，用户可以通过开关切到全站 RSS。
+  /// 空关键词不访问 DMHY，避免用户误触导致无意义请求。搜索默认限制在动画
+  /// 分类，用户可以通过开关切到全站 RSS。
   void _submitSearch() {
     final keyword = _keywordController.text.trim();
     if (keyword.isEmpty) {
@@ -164,8 +169,8 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
 
   /// 切换 DMHY 资源排序方式。
   ///
-  /// 排序是搜索请求的一部分。如果用户已经输入并提交过关键词，切换后立即
-  /// 用当前关键词重新请求；如果输入框为空，则只更新菜单选择，等待下一次搜索。
+  /// 排序是搜索请求的一部分。如果用户已经输入并提交过关键词，切换后立即用当前
+  /// 关键词重新请求；如果输入框为空，则只更新菜单选择，等待下一次搜索。
   void _setSort(DmhyResourceSort value) {
     if (_sort == value) {
       return;
@@ -215,8 +220,8 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
 
   /// 当前结果集加载完成后，按本机字幕组偏好自动套用筛选。
   ///
-  /// 自动套用只在用户没有手动清空当前结果筛选时发生；一旦用户清除筛选，
-  /// 本轮结果不会再次自动恢复偏好，避免“清了又回来”的割裂体验。
+  /// 自动套用只在用户没有手动清空当前结果筛选时发生；一旦用户清除筛选，本轮
+  /// 结果不会再次自动恢复偏好，避免“清了又回来”的割裂体验。
   void _autoApplyPreferredReleaseGroup(String releaseGroup) {
     if (_preferredReleaseGroupAutoApplied ||
         _preferredReleaseGroupSuppressed ||
@@ -234,48 +239,51 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
   Widget build(BuildContext context) {
     final request = _searchRequest;
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
-      children: [
-        const _DmhyHeader(),
-        const SizedBox(height: 16),
-        _DmhySearchBar(
-          controller: _keywordController,
-          animeOnly: _animeOnly,
-          selectedSort: _sort,
-          onAnimeOnlyChanged: _setAnimeOnly,
-          onSortChanged: _setSort,
-          onSubmitted: _submitSearch,
+    return Scaffold(
+      appBar: AppBar(title: const Text('搜索')),
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+          children: [
+            _DmhySearchBar(
+              controller: _keywordController,
+              animeOnly: _animeOnly,
+              selectedSort: _sort,
+              onAnimeOnlyChanged: _setAnimeOnly,
+              onSortChanged: _setSort,
+              onSubmitted: _submitSearch,
+            ),
+            const SizedBox(height: 16),
+            if (request != null && _entryContext.isBackgroundSubscription) ...[
+              _DmhyEntryContextBanner(entryContext: _entryContext),
+              const SizedBox(height: 16),
+            ],
+            if (request == null)
+              const _DmhyEmptyState()
+            else
+              _DmhySearchResult(
+                request: request,
+                filter: _filter,
+                preferenceAutoApplySuppressed: _preferredReleaseGroupSuppressed,
+                preferenceAlreadyAutoApplied: _preferredReleaseGroupAutoApplied,
+                onFilterChanged: _setFilter,
+                onFilterCleared: _clearFilter,
+                onPreferredReleaseGroupAutoApply: _autoApplyPreferredReleaseGroup,
+              ),
+          ],
         ),
-        const SizedBox(height: 16),
-        if (request != null && _entryContext.isBackgroundSubscription) ...[
-          _DmhyEntryContextBanner(entryContext: _entryContext),
-          const SizedBox(height: 16),
-        ],
-        if (request == null)
-          const _DmhyEmptyState()
-        else
-          _DmhySearchResult(
-            request: request,
-            filter: _filter,
-            preferenceAutoApplySuppressed: _preferredReleaseGroupSuppressed,
-            preferenceAlreadyAutoApplied: _preferredReleaseGroupAutoApplied,
-            onFilterChanged: _setFilter,
-            onFilterCleared: _clearFilter,
-            onPreferredReleaseGroupAutoApply: _autoApplyPreferredReleaseGroup,
-          ),
-      ],
+      ),
     );
   }
 }
 
+/// 后台订阅命中回流时的入口提示。
+///
+/// 告诉用户这批结果来自后台常驻服务的订阅命中，并提供一个回到后台摘要的入口。
 class _DmhyEntryContextBanner extends StatelessWidget {
   const _DmhyEntryContextBanner({required this.entryContext});
 
-  /// 当前 DMHY 页面入口语境。
-  ///
-  /// 目前只有后台订阅命中会展示横幅。保留字段而不是写死文案，是为了后续
-  /// 增加 Bangumi 收藏回流、外部深链等入口提示时可以沿用同一个组件边界。
   final DmhyEntryContext entryContext;
 
   @override
@@ -287,109 +295,59 @@ class _DmhyEntryContextBanner extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: scheme.tertiaryContainer,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              Icons.notifications_active_outlined,
-              color: scheme.onTertiaryContainer,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '来自后台订阅命中',
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      color: scheme.onTertiaryContainer,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '这是后台常驻服务发现新资源后打开的搜索结果。请选择合适资源，再手动把 magnet 或 .torrent 交给外部 BT 客户端。',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: scheme.onTertiaryContainer,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            TextButton.icon(
-              onPressed: () {
-                context.go('/?tab=background');
-              },
-              icon: const Icon(Icons.fact_check_outlined),
-              label: const Text('后台摘要'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DmhyHeader extends StatelessWidget {
-  const _DmhyHeader();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: scheme.primaryContainer,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return AppPanel(
+      tone: AppPanelTone.brand,
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            Icons.notifications_active_outlined,
+            color: scheme.onPrimaryContainer,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.rss_feed_outlined,
-                  color: scheme.onPrimaryContainer,
-                  size: 28,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'DMHY',
-                    style: theme.textTheme.headlineSmall?.copyWith(
-                      color: scheme.onPrimaryContainer,
-                      fontWeight: FontWeight.w700,
-                    ),
+                Text(
+                  '来自后台订阅',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: scheme.onPrimaryContainer,
                   ),
                 ),
-                const _DmhyStatusBadge(label: 'RSS 可用'),
+                const SizedBox(height: 4),
+                Text(
+                  '这是后台发现新资源后打开的结果，挑一个交给 BT 客户端即可。',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onPrimaryContainer,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  style: TextButton.styleFrom(
+                    foregroundColor: scheme.onPrimaryContainer,
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(0, 32),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: () => context.go('/?tab=background'),
+                  icon: const Icon(Icons.fact_check_outlined, size: 18),
+                  label: const Text('查看后台摘要'),
+                ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(
-              '使用 DMHY RSS 搜索动画资源，并把 magnet 或 .torrent 种子文件交给外部 BT 客户端。',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: scheme.onPrimaryContainer,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
+/// 搜索输入区。
+///
+/// 圆角搜索框承载关键词，下面一行放排序菜单与“仅动画”开关。回车或点击键盘
+/// 搜索键即可提交，去掉了独立的大号搜索按钮。
 class _DmhySearchBar extends StatelessWidget {
   const _DmhySearchBar({
     required this.controller,
@@ -409,133 +367,89 @@ class _DmhySearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final keywordField = TextField(
-      controller: controller,
-      decoration: const InputDecoration(
-        border: OutlineInputBorder(),
-        labelText: '资源关键词',
-        hintText: '例如：葬送的芙莉莲 1080',
-        prefixIcon: Icon(Icons.manage_search_outlined),
-      ),
-      textInputAction: TextInputAction.search,
-      onSubmitted: (_) => onSubmitted(),
-    );
-    final sortDropdown = DropdownButtonFormField<DmhyResourceSort>(
-      initialValue: selectedSort,
-      isExpanded: true,
-      decoration: const InputDecoration(
-        border: OutlineInputBorder(),
-        labelText: '排序',
-        prefixIcon: Icon(Icons.sort_outlined),
-      ),
-      items: [
-        for (final sort in DmhyResourceSort.values)
-          DropdownMenuItem(value: sort, child: Text(sort.label)),
-      ],
-      onChanged: (sort) {
-        if (sort == null) {
-          return;
-        }
-
-        onSortChanged(sort);
-      },
-    );
-    final searchButton = SizedBox(
-      height: 56,
-      child: FilledButton.icon(
-        onPressed: onSubmitted,
-        icon: const Icon(Icons.search_outlined),
-        label: const Text('搜索'),
-      ),
-    );
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        LayoutBuilder(
-          builder: (context, constraints) {
-            // 宽屏测试视口把输入、排序和按钮放在一行；窄屏手机让排序菜单换行，
-            // 避免关键词输入框和搜索按钮被压缩到难以点击。
-            if (constraints.maxWidth >= 560) {
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(child: keywordField),
-                  const SizedBox(width: 8),
-                  SizedBox(width: 168, child: sortDropdown),
-                  const SizedBox(width: 8),
-                  searchButton,
-                ],
-              );
-            }
-
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(child: keywordField),
-                    const SizedBox(width: 8),
-                    searchButton,
-                  ],
-                ),
-                const SizedBox(height: 8),
-                sortDropdown,
-              ],
-            );
-          },
+        TextField(
+          controller: controller,
+          textInputAction: TextInputAction.search,
+          onSubmitted: (_) => onSubmitted(),
+          decoration: InputDecoration(
+            hintText: '搜索资源，例如：葬送的芙莉莲 1080',
+            prefixIcon: const Icon(Icons.search_outlined),
+            suffixIcon: IconButton(
+              onPressed: onSubmitted,
+              tooltip: '搜索',
+              icon: const Icon(Icons.arrow_forward),
+            ),
+          ),
         ),
-        const SizedBox(height: 8),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('只搜索动画分类'),
-          value: animeOnly,
-          onChanged: onAnimeOnlyChanged,
-          secondary: const Icon(Icons.category_outlined),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 44,
+                child: DropdownButtonFormField<DmhyResourceSort>(
+                  initialValue: selectedSort,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                    prefixIcon: Icon(Icons.sort_outlined, size: 20),
+                  ),
+                  items: [
+                    for (final sort in DmhyResourceSort.values)
+                      DropdownMenuItem(value: sort, child: Text(sort.label)),
+                  ],
+                  onChanged: (sort) {
+                    if (sort == null) {
+                      return;
+                    }
+                    onSortChanged(sort);
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            FilterChip(
+              label: const Text('仅动画'),
+              selected: animeOnly,
+              onSelected: onAnimeOnlyChanged,
+              avatar: Icon(
+                animeOnly ? Icons.check : Icons.category_outlined,
+                size: 18,
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 }
 
+/// 搜索前的空态。
+///
+/// 不再罗列“当前能力”，而是给一个轻量引导，告诉用户输入关键词即可开始。
 class _DmhyEmptyState extends StatelessWidget {
   const _DmhyEmptyState();
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('当前能力', style: theme.textTheme.titleMedium),
-            const SizedBox(height: 12),
-            const _CapabilityLine(
-              icon: Icons.rss_feed_outlined,
-              title: '关键词 RSS 搜索',
-              status: '已接入',
-            ),
-            const _CapabilityLine(
-              icon: Icons.link_outlined,
-              title: 'magnet 复制和打开',
-              status: '已接入',
-            ),
-            const _CapabilityLine(
-              icon: Icons.description_outlined,
-              title: '详情页种子解析与下载',
-              status: '已接入',
-            ),
-          ],
-        ),
+    return const Padding(
+      padding: EdgeInsets.only(top: 48),
+      child: AppEmptyView(
+        icon: Icons.travel_explore_outlined,
+        title: '搜索动画资源',
+        message: '输入番剧名称或关键词，查找字幕组发布的资源',
       ),
     );
   }
 }
 
+/// 搜索结果区。
+///
+/// 监听搜索 Provider，处理加载 / 错误 / 空结果，并在有结果时展示摘要、筛选栏与
+/// 资源卡片。所有筛选、字幕组偏好自动套用、订阅逻辑与重构前保持一致。
 class _DmhySearchResult extends ConsumerWidget {
   const _DmhySearchResult({
     required this.request,
@@ -567,14 +481,21 @@ class _DmhySearchResult extends ConsumerWidget {
         subscriptionAsync.isLoading || (subscriptionState?.isBusy ?? false);
 
     return result.when(
-      loading: () => const _DmhyLoadingState(),
-      error: (error, stackTrace) => _DmhyErrorState(
+      loading: () => const AppInlineLoading(label: '正在读取 DMHY…'),
+      error: (error, stackTrace) => AppErrorView(
+        compact: true,
+        title: '搜索失败',
         message: error.toString(),
         onRetry: () => ref.invalidate(dmhySearchProvider(request)),
       ),
       data: (resources) {
         if (resources.isEmpty) {
-          return const _DmhyNoResultState();
+          return const AppEmptyView(
+            compact: true,
+            icon: Icons.search_off_outlined,
+            title: '没有找到资源',
+            message: '换一个关键词，或关闭“仅动画”试试',
+          );
         }
 
         final filterOptions = DmhyResourceFilterOptions.fromResources(
@@ -600,7 +521,7 @@ class _DmhySearchResult extends ConsumerWidget {
               onSubscribe: () => _subscribeCurrentKeyword(context, ref),
             ),
             if (filterOptions.isNotEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               _DmhyFilterBar(
                 filter: filter,
                 options: filterOptions,
@@ -616,13 +537,13 @@ class _DmhySearchResult extends ConsumerWidget {
                 },
               ),
             ],
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             if (filteredResources.isEmpty)
               _DmhyNoFilteredResultState(onClear: onFilterCleared)
             else
               for (final resource in filteredResources)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.only(bottom: 10),
                   child: _DmhyResourceCard(resource: resource),
                 ),
           ],
@@ -633,8 +554,8 @@ class _DmhySearchResult extends ConsumerWidget {
 
   /// 在当前资源集合中存在本机字幕组偏好时，安排一次自动筛选。
   ///
-  /// 这里使用 post-frame 回调，是为了避免在 `build` 过程中直接修改父组件
-  /// 状态。父级会记录本轮结果是否已经自动套用过，避免重复调度。
+  /// 使用 post-frame 回调，避免在 `build` 过程中直接修改父组件状态。父级会记录
+  /// 本轮结果是否已经自动套用过，避免重复调度。
   void _schedulePreferredReleaseGroupAutoApply({
     required DmhyFilterPreference preference,
     required DmhyResourceFilterOptions options,
@@ -724,15 +645,83 @@ class _DmhySearchResult extends ConsumerWidget {
   }
 }
 
-class _DmhyResourceCard extends ConsumerStatefulWidget {
-  const _DmhyResourceCard({required this.resource});
+/// 结果摘要行。
+///
+/// 一行展示命中数量与关键词，并提供“订阅”入口；筛选生效时补充展示可见数量。
+class _ResultSummary extends StatelessWidget {
+  const _ResultSummary({
+    required this.keyword,
+    required this.count,
+    required this.visibleCount,
+    required this.animeOnly,
+    required this.sort,
+    required this.hasActiveFilter,
+    required this.isSubscriptionBusy,
+    required this.onSubscribe,
+  });
 
-  final DmhyResource resource;
+  final String keyword;
+  final int count;
+  final int visibleCount;
+  final bool animeOnly;
+  final DmhyResourceSort sort;
+  final bool hasActiveFilter;
+  final bool isSubscriptionBusy;
+  final VoidCallback onSubscribe;
 
   @override
-  ConsumerState<_DmhyResourceCard> createState() => _DmhyResourceCardState();
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final scope = animeOnly ? '动画' : '全站';
+    final detail = hasActiveFilter
+        ? '$scope · ${sort.label} · 显示 $visibleCount/$count'
+        : '$scope · ${sort.label} · 共 $count 条';
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '“$keyword”',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.titleMedium,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                detail,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton.icon(
+          onPressed: isSubscriptionBusy ? null : onSubscribe,
+          icon: isSubscriptionBusy
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.notifications_none_outlined, size: 18),
+          label: const Text('订阅'),
+        ),
+      ],
+    );
+  }
 }
 
+/// 资源筛选栏。
+///
+/// 折叠在一个浅色面板里，包含清除入口、字幕组偏好操作和按结果动态生成的多个
+/// 筛选下拉。所有筛选项的可用性、取值与回调逻辑与重构前一致。
 class _DmhyFilterBar extends StatelessWidget {
   const _DmhyFilterBar({
     required this.filter,
@@ -759,195 +748,190 @@ class _DmhyFilterBar extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.filter_alt_outlined, color: scheme.secondary),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text('筛选资源', style: theme.textTheme.titleSmall),
-                ),
-                if (filter.isNotEmpty)
-                  TextButton.icon(
-                    onPressed: onClear,
-                    icon: const Icon(Icons.filter_alt_off_outlined),
-                    label: const Text('清除筛选'),
-                  ),
-              ],
-            ),
-            if (preferredReleaseGroup != null ||
-                filter.releaseGroup != null) ...[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  if (preferredReleaseGroup != null)
-                    Chip(
-                      avatar: const Icon(Icons.bookmark_added_outlined),
-                      label: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 220),
-                        child: Text(
-                          '偏好：$preferredReleaseGroup',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ),
-                  if (filter.releaseGroup != null)
-                    OutlinedButton.icon(
-                      key: const Key('dmhy-save-release-group-preference'),
-                      onPressed: isPreferenceBusy
-                          ? null
-                          : () => onPreferredReleaseGroupSaved(
-                              filter.releaseGroup!,
-                            ),
-                      icon: const Icon(Icons.bookmark_add_outlined),
-                      label: const Text('记住字幕组'),
-                    ),
-                  if (preferredReleaseGroup != null)
-                    OutlinedButton.icon(
-                      key: const Key('dmhy-clear-release-group-preference'),
-                      onPressed: isPreferenceBusy
-                          ? null
-                          : onPreferredReleaseGroupCleared,
-                      icon: const Icon(Icons.bookmark_remove_outlined),
-                      label: const Text('清除偏好'),
-                    ),
-                ],
+    return AppPanel(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.filter_alt_outlined, color: scheme.primary, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text('筛选', style: theme.textTheme.titleSmall),
               ),
+              if (filter.isNotEmpty)
+                TextButton.icon(
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(0, 32),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  onPressed: onClear,
+                  icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+                  label: const Text('清除'),
+                ),
             ],
+          ),
+          if (preferredReleaseGroup != null ||
+              filter.releaseGroup != null) ...[
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
               children: [
-                if (options.releaseGroups.isNotEmpty)
-                  _DmhyStringFilterDropdown(
-                    key: const Key('dmhy-filter-release-group'),
-                    label: '字幕组筛选',
-                    value: filter.releaseGroup,
-                    options: options.releaseGroups,
-                    onChanged: (value) {
-                      onChanged(
-                        filter.copyWith(releaseGroup: DmhyFilterValue(value)),
-                      );
-                    },
+                if (preferredReleaseGroup != null)
+                  AppChip(
+                    label: '偏好：$preferredReleaseGroup',
+                    icon: Icons.bookmark_added_outlined,
+                    tone: AppChipTone.positive,
                   ),
-                if (options.resolutions.isNotEmpty)
-                  _DmhyStringFilterDropdown(
-                    key: const Key('dmhy-filter-resolution'),
-                    label: '分辨率筛选',
-                    value: filter.resolution,
-                    options: options.resolutions,
-                    onChanged: (value) {
-                      onChanged(
-                        filter.copyWith(resolution: DmhyFilterValue(value)),
-                      );
-                    },
+                if (filter.releaseGroup != null)
+                  OutlinedButton.icon(
+                    key: const Key('dmhy-save-release-group-preference'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      minimumSize: const Size(0, 36),
+                    ),
+                    onPressed: isPreferenceBusy
+                        ? null
+                        : () =>
+                              onPreferredReleaseGroupSaved(filter.releaseGroup!),
+                    icon: const Icon(Icons.bookmark_add_outlined, size: 18),
+                    label: const Text('记住字幕组'),
                   ),
-                if (options.sources.isNotEmpty)
-                  _DmhyStringFilterDropdown(
-                    key: const Key('dmhy-filter-source'),
-                    label: '片源筛选',
-                    value: filter.source,
-                    options: options.sources,
-                    onChanged: (value) {
-                      onChanged(
-                        filter.copyWith(source: DmhyFilterValue(value)),
-                      );
-                    },
-                  ),
-                if (options.mediaFormats.isNotEmpty)
-                  _DmhyStringFilterDropdown(
-                    key: const Key('dmhy-filter-media-format'),
-                    label: '封装筛选',
-                    value: filter.mediaFormat,
-                    options: options.mediaFormats,
-                    onChanged: (value) {
-                      onChanged(
-                        filter.copyWith(mediaFormat: DmhyFilterValue(value)),
-                      );
-                    },
-                  ),
-                if (options.videoCodecs.isNotEmpty)
-                  _DmhyStringFilterDropdown(
-                    key: const Key('dmhy-filter-video-codec'),
-                    label: '编码筛选',
-                    value: filter.videoCodec,
-                    options: options.videoCodecs,
-                    onChanged: (value) {
-                      onChanged(
-                        filter.copyWith(videoCodec: DmhyFilterValue(value)),
-                      );
-                    },
-                  ),
-                if (options.subtitleLabels.isNotEmpty)
-                  _DmhyStringFilterDropdown(
-                    key: const Key('dmhy-filter-subtitle-label'),
-                    label: '字幕说明筛选',
-                    value: filter.subtitleLabel,
-                    options: options.subtitleLabels,
-                    onChanged: (value) {
-                      onChanged(
-                        filter.copyWith(subtitleLabel: DmhyFilterValue(value)),
-                      );
-                    },
-                  ),
-                if (options.subtitleLanguages.isNotEmpty)
-                  _DmhySubtitleLanguageFilterDropdown(
-                    value: filter.subtitleLanguage,
-                    options: options.subtitleLanguages,
-                    onChanged: (value) {
-                      onChanged(
-                        filter.copyWith(
-                          subtitleLanguage: DmhyFilterValue(value),
-                        ),
-                      );
-                    },
-                  ),
-                if (options.hasSize)
-                  _DmhySizeRangeFilterDropdown(
-                    value: filter.sizeRange,
-                    onChanged: (value) {
-                      onChanged(
-                        filter.copyWith(sizeRange: DmhyFilterValue(value)),
-                      );
-                    },
-                  ),
-                if (options.hasSeedCount)
-                  _DmhyMinSeedCountFilterInput(
-                    value: filter.minSeedCount,
-                    onChanged: (value) {
-                      onChanged(
-                        filter.copyWith(minSeedCount: DmhyFilterValue(value)),
-                      );
-                    },
-                  ),
-                if (options.hasKeywordContent)
-                  _DmhyExcludeKeywordFilterInput(
-                    value: filter.excludedKeywords,
-                    onChanged: (value) {
-                      onChanged(
-                        filter.copyWith(
-                          excludedKeywords: DmhyFilterValue(value),
-                        ),
-                      );
-                    },
+                if (preferredReleaseGroup != null)
+                  OutlinedButton.icon(
+                    key: const Key('dmhy-clear-release-group-preference'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      minimumSize: const Size(0, 36),
+                    ),
+                    onPressed: isPreferenceBusy
+                        ? null
+                        : onPreferredReleaseGroupCleared,
+                    icon: const Icon(Icons.bookmark_remove_outlined, size: 18),
+                    label: const Text('清除偏好'),
                   ),
               ],
             ),
           ],
-        ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (options.releaseGroups.isNotEmpty)
+                _DmhyStringFilterDropdown(
+                  key: const Key('dmhy-filter-release-group'),
+                  label: '字幕组',
+                  value: filter.releaseGroup,
+                  options: options.releaseGroups,
+                  onChanged: (value) {
+                    onChanged(
+                      filter.copyWith(releaseGroup: DmhyFilterValue(value)),
+                    );
+                  },
+                ),
+              if (options.resolutions.isNotEmpty)
+                _DmhyStringFilterDropdown(
+                  key: const Key('dmhy-filter-resolution'),
+                  label: '分辨率',
+                  value: filter.resolution,
+                  options: options.resolutions,
+                  onChanged: (value) {
+                    onChanged(
+                      filter.copyWith(resolution: DmhyFilterValue(value)),
+                    );
+                  },
+                ),
+              if (options.sources.isNotEmpty)
+                _DmhyStringFilterDropdown(
+                  key: const Key('dmhy-filter-source'),
+                  label: '片源',
+                  value: filter.source,
+                  options: options.sources,
+                  onChanged: (value) {
+                    onChanged(filter.copyWith(source: DmhyFilterValue(value)));
+                  },
+                ),
+              if (options.mediaFormats.isNotEmpty)
+                _DmhyStringFilterDropdown(
+                  key: const Key('dmhy-filter-media-format'),
+                  label: '封装',
+                  value: filter.mediaFormat,
+                  options: options.mediaFormats,
+                  onChanged: (value) {
+                    onChanged(
+                      filter.copyWith(mediaFormat: DmhyFilterValue(value)),
+                    );
+                  },
+                ),
+              if (options.videoCodecs.isNotEmpty)
+                _DmhyStringFilterDropdown(
+                  key: const Key('dmhy-filter-video-codec'),
+                  label: '编码',
+                  value: filter.videoCodec,
+                  options: options.videoCodecs,
+                  onChanged: (value) {
+                    onChanged(
+                      filter.copyWith(videoCodec: DmhyFilterValue(value)),
+                    );
+                  },
+                ),
+              if (options.subtitleLabels.isNotEmpty)
+                _DmhyStringFilterDropdown(
+                  key: const Key('dmhy-filter-subtitle-label'),
+                  label: '字幕说明',
+                  value: filter.subtitleLabel,
+                  options: options.subtitleLabels,
+                  onChanged: (value) {
+                    onChanged(
+                      filter.copyWith(subtitleLabel: DmhyFilterValue(value)),
+                    );
+                  },
+                ),
+              if (options.subtitleLanguages.isNotEmpty)
+                _DmhySubtitleLanguageFilterDropdown(
+                  value: filter.subtitleLanguage,
+                  options: options.subtitleLanguages,
+                  onChanged: (value) {
+                    onChanged(
+                      filter.copyWith(
+                        subtitleLanguage: DmhyFilterValue(value),
+                      ),
+                    );
+                  },
+                ),
+              if (options.hasSize)
+                _DmhySizeRangeFilterDropdown(
+                  value: filter.sizeRange,
+                  onChanged: (value) {
+                    onChanged(filter.copyWith(sizeRange: DmhyFilterValue(value)));
+                  },
+                ),
+              if (options.hasSeedCount)
+                _DmhyMinSeedCountFilterInput(
+                  value: filter.minSeedCount,
+                  onChanged: (value) {
+                    onChanged(
+                      filter.copyWith(minSeedCount: DmhyFilterValue(value)),
+                    );
+                  },
+                ),
+              if (options.hasKeywordContent)
+                _DmhyExcludeKeywordFilterInput(
+                  value: filter.excludedKeywords,
+                  onChanged: (value) {
+                    onChanged(
+                      filter.copyWith(excludedKeywords: DmhyFilterValue(value)),
+                    );
+                  },
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -970,14 +954,13 @@ class _DmhyStringFilterDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 176,
+      width: 168,
       child: DropdownButtonFormField<String>(
         initialValue: value,
         isExpanded: true,
         decoration: InputDecoration(
-          border: const OutlineInputBorder(),
           labelText: label,
-          prefixIcon: const Icon(Icons.tune_outlined),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
         ),
         items: [
           const DropdownMenuItem<String>(value: null, child: Text('全部')),
@@ -993,10 +976,10 @@ class _DmhyStringFilterDropdown extends StatelessWidget {
   }
 }
 
-/// DMHY 前台筛选栏中的归一化字幕语言下拉框。
+/// 归一化字幕语言下拉框。
 ///
-/// 它和“字幕说明筛选”互补：字幕说明保留发布者原文，字幕语言则把
-/// `简繁内封`、`CHS&CHT` 等不同写法归并成稳定语言选项。
+/// 它和“字幕说明”互补：字幕说明保留发布者原文，字幕语言则把 `简繁内封`、
+/// `CHS&CHT` 等不同写法归并成稳定语言选项。
 class _DmhySubtitleLanguageFilterDropdown extends StatelessWidget {
   const _DmhySubtitleLanguageFilterDropdown({
     required this.value,
@@ -1004,27 +987,21 @@ class _DmhySubtitleLanguageFilterDropdown extends StatelessWidget {
     required this.onChanged,
   });
 
-  /// 当前选择的字幕语言；null 表示不过滤。
   final DmhySubtitleLanguage? value;
-
-  /// 当前结果集中可用的归一化字幕语言。
   final List<DmhySubtitleLanguage> options;
-
-  /// 用户切换字幕语言筛选时回传给父级筛选值对象。
   final ValueChanged<DmhySubtitleLanguage?> onChanged;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 176,
+      width: 168,
       child: DropdownButtonFormField<DmhySubtitleLanguage>(
         key: const Key('dmhy-filter-subtitle-language'),
         initialValue: value,
         isExpanded: true,
         decoration: const InputDecoration(
-          border: OutlineInputBorder(),
-          labelText: '字幕语言筛选',
-          prefixIcon: Icon(Icons.translate_outlined),
+          labelText: '字幕语言',
+          contentPadding: EdgeInsets.symmetric(horizontal: 12),
         ),
         items: [
           const DropdownMenuItem<DmhySubtitleLanguage>(
@@ -1043,21 +1020,16 @@ class _DmhySubtitleLanguageFilterDropdown extends StatelessWidget {
   }
 }
 
-/// DMHY 前台筛选栏中的排除关键词输入框。
+/// 排除关键词输入框。
 ///
-/// 该控件只更新当前已加载结果的内存筛选条件，不会触发 RSS 或 HTML 列表请求。
-/// 用户可以用空格、逗号或分号输入多个关键词；具体拆分逻辑位于
-/// `DmhyResourceFilter`，这里负责把空白文本规范化为 null，便于父级清空状态。
+/// 只更新当前已加载结果的内存筛选条件，不会触发 RSS 或 HTML 列表请求。
 class _DmhyExcludeKeywordFilterInput extends StatefulWidget {
   const _DmhyExcludeKeywordFilterInput({
     required this.value,
     required this.onChanged,
   });
 
-  /// 当前启用的排除关键词原始文本；null 表示不启用关键词排除。
   final String? value;
-
-  /// 输入变化时把规范化后的文本回传给父级筛选值对象。
   final ValueChanged<String?> onChanged;
 
   @override
@@ -1075,7 +1047,6 @@ class _DmhyExcludeKeywordFilterInputState
     _controller = TextEditingController(text: widget.value ?? '');
   }
 
-  /// 父级点击“清除筛选”或恢复筛选状态时，同步本地输入框文本。
   @override
   void didUpdateWidget(_DmhyExcludeKeywordFilterInput oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -1108,10 +1079,9 @@ class _DmhyExcludeKeywordFilterInputState
         key: const Key('dmhy-filter-excluded-keywords'),
         controller: _controller,
         decoration: const InputDecoration(
-          border: OutlineInputBorder(),
           labelText: '排除关键词',
           hintText: '字幕组 / 片源 / 标题',
-          prefixIcon: Icon(Icons.block_outlined),
+          contentPadding: EdgeInsets.symmetric(horizontal: 12),
         ),
         onChanged: (value) {
           widget.onChanged(_normalizeExcludedKeywords(value));
@@ -1121,9 +1091,6 @@ class _DmhyExcludeKeywordFilterInputState
   }
 
   /// 将输入框文本规范化为筛选值。
-  ///
-  /// 这里只处理空白与首尾空格，保留用户输入的分隔符和大小写，便于输入框回显；
-  /// 关键词拆分和大小写归一化由筛选值对象集中处理。
   String? _normalizeExcludedKeywords(String value) {
     final normalized = value.trim();
     if (normalized.isEmpty) {
@@ -1134,20 +1101,17 @@ class _DmhyExcludeKeywordFilterInputState
   }
 }
 
-/// DMHY 前台筛选栏中的最小种子数输入框。
+/// 最小种子数输入框。
 ///
-/// 种子数来自前台 HTML 列表页增强统计。输入框只改变当前内存筛选条件，
-/// 不会触发新的 DMHY 网络请求；当父级清除筛选时，控件会同步清空文本。
+/// 种子数来自前台 HTML 列表页增强统计。输入框只改变当前内存筛选条件，不会
+/// 触发新的 DMHY 网络请求。
 class _DmhyMinSeedCountFilterInput extends StatefulWidget {
   const _DmhyMinSeedCountFilterInput({
     required this.value,
     required this.onChanged,
   });
 
-  /// 当前启用的最小种子数；null 表示不按种子数过滤。
   final int? value;
-
-  /// 输入变化时把解析后的阈值回传给父级筛选值对象。
   final ValueChanged<int?> onChanged;
 
   @override
@@ -1165,7 +1129,6 @@ class _DmhyMinSeedCountFilterInputState
     _controller = TextEditingController(text: _formatValue(widget.value));
   }
 
-  /// 父级通过“清除筛选”或恢复筛选状态改变数值时，同步本地输入框文本。
   @override
   void didUpdateWidget(_DmhyMinSeedCountFilterInput oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -1193,17 +1156,16 @@ class _DmhyMinSeedCountFilterInputState
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 176,
+      width: 168,
       child: TextField(
         key: const Key('dmhy-filter-min-seed-count'),
         controller: _controller,
         keyboardType: TextInputType.number,
         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
         decoration: const InputDecoration(
-          border: OutlineInputBorder(),
           labelText: '最小种子数',
           hintText: '全部',
-          prefixIcon: Icon(Icons.trending_up_outlined),
+          contentPadding: EdgeInsets.symmetric(horizontal: 12),
         ),
         onChanged: (value) {
           widget.onChanged(_parseMinSeedCount(value));
@@ -1212,15 +1174,11 @@ class _DmhyMinSeedCountFilterInputState
     );
   }
 
-  /// 把可空阈值格式化为输入框展示文本。
   String _formatValue(int? value) {
     return value == null ? '' : value.toString();
   }
 
   /// 将用户输入解析为正整数阈值。
-  ///
-  /// 空文本或 0 都表示不启用该筛选；负数和小数在输入阶段已被 digits-only
-  /// formatter 拦截，因此这里只需要处理无法解析或无意义的 0。
   int? _parseMinSeedCount(String value) {
     final parsed = int.tryParse(value.trim());
     if (parsed == null || parsed <= 0) {
@@ -1243,15 +1201,14 @@ class _DmhySizeRangeFilterDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 176,
+      width: 168,
       child: DropdownButtonFormField<DmhyResourceSizeRange>(
         key: const Key('dmhy-filter-size-range'),
         initialValue: value,
         isExpanded: true,
         decoration: const InputDecoration(
-          border: OutlineInputBorder(),
-          labelText: '大小筛选',
-          prefixIcon: Icon(Icons.storage_outlined),
+          labelText: '大小',
+          contentPadding: EdgeInsets.symmetric(horizontal: 12),
         ),
         items: [
           const DropdownMenuItem<DmhyResourceSizeRange>(
@@ -1268,6 +1225,20 @@ class _DmhySizeRangeFilterDropdown extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 单个 DMHY 资源卡片。
+///
+/// 顶部是标题与关键信息 chips，底部是三个交接动作：复制 magnet、打开 magnet、
+/// 主种子按钮（按设备能力自适应为打开/分享/复制）。所有复制、打开、下载交接、
+/// 历史记录与播放回流逻辑与重构前保持一致，仅去掉逐卡的客户端自检说明文字。
+class _DmhyResourceCard extends ConsumerStatefulWidget {
+  const _DmhyResourceCard({required this.resource});
+
+  final DmhyResource resource;
+
+  @override
+  ConsumerState<_DmhyResourceCard> createState() => _DmhyResourceCardState();
 }
 
 class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
@@ -1288,7 +1259,7 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1296,98 +1267,66 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
               resource.title,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+              style: theme.textTheme.titleSmall,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 10),
             Wrap(
               spacing: 6,
               runSpacing: 6,
               children: [
-                if (resource.categoryName.isNotEmpty)
-                  _DmhyInfoChip(
-                    icon: Icons.category_outlined,
-                    label: resource.categoryName,
-                  ),
-                if (resource.author.isNotEmpty)
-                  _DmhyInfoChip(
-                    icon: Icons.person_outline,
-                    label: resource.author,
-                  ),
                 if (resource.publishedAt != null)
-                  _DmhyInfoChip(
+                  AppChip(
                     icon: Icons.schedule_outlined,
-                    label: _formatDateTime(resource.publishedAt!),
+                    label: formatDateTime(resource.publishedAt),
                   ),
-                _DmhyInfoChip(
-                  icon: Icons.public_outlined,
-                  label: resource.sourceHost,
-                ),
                 for (final chip in resource.metadata.displayChips)
-                  _DmhyInfoChip(
+                  AppChip(
                     icon: _metadataChipIcon(chip.kind),
                     label: chip.label,
                   ),
                 if (resource.stats.sizeLabel != null &&
                     resource.stats.sizeLabel != resource.metadata.sizeLabel)
-                  _DmhyInfoChip(
+                  AppChip(
                     icon: Icons.storage_outlined,
-                    label: '大小 ${resource.stats.sizeLabel}',
+                    label: resource.stats.sizeLabel!,
                   ),
                 if (resource.stats.seedCount != null)
-                  _DmhyInfoChip(
+                  AppChip(
                     icon: Icons.cloud_upload_outlined,
                     label: '种子 ${resource.stats.seedCount}',
+                    tone: AppChipTone.positive,
                   ),
                 if (resource.stats.downloadCount != null)
-                  _DmhyInfoChip(
+                  AppChip(
                     icon: Icons.cloud_download_outlined,
                     label: '下载 ${resource.stats.downloadCount}',
                   ),
-                if (resource.stats.completedCount != null)
-                  _DmhyInfoChip(
-                    icon: Icons.done_all_outlined,
-                    label: '完成 ${resource.stats.completedCount}',
-                  ),
               ],
             ),
-            if (resource.descriptionText.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                resource.descriptionText,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+            const SizedBox(height: 12),
+            Row(
               children: [
-                OutlinedButton.icon(
-                  onPressed: () => _copyMagnet(context),
-                  icon: const Icon(Icons.content_copy_outlined),
-                  label: const Text('复制'),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: torrentAction.onPressed,
+                    icon: torrentAction.icon,
+                    label: Text(torrentAction.label),
+                  ),
                 ),
                 const SizedBox(width: 8),
-                FilledButton.tonalIcon(
+                IconButton.outlined(
                   onPressed: () => _openMagnet(context),
+                  tooltip: '用客户端打开 magnet',
                   icon: const Icon(Icons.open_in_new_outlined),
-                  label: const Text('打开'),
                 ),
-                FilledButton.icon(
-                  onPressed: torrentAction.onPressed,
-                  icon: torrentAction.icon,
-                  label: Text(torrentAction.label),
+                const SizedBox(width: 4),
+                IconButton.outlined(
+                  onPressed: () => _copyMagnet(context),
+                  tooltip: '复制 magnet',
+                  icon: const Icon(Icons.content_copy_outlined),
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            _TorrentClientReadinessNote(capabilities: clientCapabilities),
           ],
         ),
       ),
@@ -1396,8 +1335,8 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
 
   /// 复制 magnet 到剪贴板。
   ///
-  /// 这是最稳妥的兜底路径：即使 Android 没有可响应 `magnet:` 的外部
-  /// BT 客户端，用户也可以把链接粘贴到自己选择的客户端中。
+  /// 这是最稳妥的兜底路径：即使 Android 没有可响应 `magnet:` 的外部 BT 客户端，
+  /// 用户也可以把链接粘贴到自己选择的客户端中。
   Future<void> _copyMagnet(BuildContext context) async {
     await Clipboard.setData(
       ClipboardData(text: widget.resource.magnetUri.toString()),
@@ -1412,9 +1351,6 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
   }
 
   /// 尝试用系统外部应用打开 magnet。
-  ///
-  /// `url_launcher` 会把 `magnet:` 交给系统 resolver；如果没有外部客户端
-  /// 或系统拒绝打开，则提示用户使用复制兜底。
   Future<void> _openMagnet(BuildContext context) async {
     final messenger = ScaffoldMessenger.of(context);
     final ok = await launchUrl(
@@ -1433,8 +1369,8 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
 
   /// 下载 `.torrent` 种子文件并交给外部 BT 客户端。
   ///
-  /// 这里的“下载”只保存种子文件本身，不下载种子指向的视频文件。交接逻辑
-  /// 会优先尝试直接打开 BT 客户端，直开失败时自动降级到系统分享面板。
+  /// 这里的“下载”只保存种子文件本身，不下载种子指向的视频文件。交接逻辑会优先
+  /// 尝试直接打开 BT 客户端，直开失败时自动降级到系统分享面板。
   Future<void> _downloadAndOpenTorrent(BuildContext context) async {
     setState(() {
       _isHandingOffTorrent = true;
@@ -1470,7 +1406,7 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${result.userMessage}（种子 ${_formatBytes(torrentFile.length)}）',
+            '${result.userMessage}（种子 ${formatBytes(torrentFile.length)}）',
           ),
           action: result.isHandled
               ? SnackBarAction(
@@ -1501,18 +1437,11 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
   }
 
   /// 构建种子交接失败时的一键复制 magnet 兜底动作。
-  ///
-  /// `.torrent` 详情页解析、文件下载或外部客户端交接任一步失败时，RSS 中的
-  /// magnet 通常仍可用。把复制动作放在错误提示里，可以让用户继续在外部
-  /// BT 客户端中手动粘贴，不必回到卡片顶部寻找“复制”按钮。
   SnackBarAction _copyMagnetSnackBarAction(BuildContext context) {
     return SnackBarAction(label: '复制磁力', onPressed: () => _copyMagnet(context));
   }
 
   /// 跳转到播放页，让用户在外部 BT 客户端完成视频下载后手动选择本地文件。
-  ///
-  /// DMHY 页只负责 `.torrent` 种子交接；这里的动作不读取外部客户端下载目录，
-  /// 也不假设视频已经下载完成，只是把用户带到系统文件选择器所在的播放入口。
   void _openPlaybackTab(BuildContext context) {
     context.go(
       Uri(
@@ -1525,8 +1454,8 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
 
 /// DMHY 卡片中主种子按钮的展示和行为配置。
 ///
-/// 检测结果只影响按钮文案和最醒目的兜底入口，不改变已有 `.torrent` 交接函数：
-/// 可交接时仍下载种子并交给外部客户端，不可交接时把主按钮切到复制 magnet。
+/// 检测结果只影响按钮文案和兜底入口：可交接时下载种子并交给外部客户端，不可
+/// 交接时把主按钮切到复制 magnet。
 class _SeedHandoffAction {
   const _SeedHandoffAction({
     required this.label,
@@ -1539,9 +1468,6 @@ class _SeedHandoffAction {
   final VoidCallback? onPressed;
 
   /// 根据当前设备检测结果生成主操作按钮。
-  ///
-  /// 检测不可用或仍在加载时保留原始“种子”动作，避免平台检测失败阻断用户；
-  /// 明确没有 `.torrent` 接收路径时，把主按钮切换为复制 magnet。
   factory _SeedHandoffAction.fromCapabilities({
     required AsyncValue<TorrentClientCapabilities> capabilities,
     required bool isHandingOffTorrent,
@@ -1550,7 +1476,7 @@ class _SeedHandoffAction {
   }) {
     if (isHandingOffTorrent) {
       return const _SeedHandoffAction(
-        label: '交接中',
+        label: '交接中…',
         icon: SizedBox(
           width: 16,
           height: 16,
@@ -1569,7 +1495,7 @@ class _SeedHandoffAction {
         if (value.canOpenTorrentFile) {
           return _SeedHandoffAction(
             label: '打开种子',
-            icon: const Icon(Icons.description_outlined),
+            icon: const Icon(Icons.download_outlined, size: 18),
             onPressed: onDownloadTorrent,
           );
         }
@@ -1577,14 +1503,14 @@ class _SeedHandoffAction {
         if (value.canShareTorrentFile) {
           return _SeedHandoffAction(
             label: '分享种子',
-            icon: const Icon(Icons.ios_share_outlined),
+            icon: const Icon(Icons.ios_share_outlined, size: 18),
             onPressed: onDownloadTorrent,
           );
         }
 
         return _SeedHandoffAction(
           label: '复制磁力',
-          icon: const Icon(Icons.content_copy_outlined),
+          icon: const Icon(Icons.content_copy_outlined, size: 18),
           onPressed: onCopyMagnet,
         );
       },
@@ -1598,306 +1524,14 @@ class _SeedHandoffAction {
     VoidCallback onDownloadTorrent,
   ) {
     return _SeedHandoffAction(
-      label: '种子',
-      icon: const Icon(Icons.description_outlined),
+      label: '下载种子',
+      icon: const Icon(Icons.download_outlined, size: 18),
       onPressed: onDownloadTorrent,
     );
   }
 }
 
-/// DMHY 资源卡片里的外部 BT 客户端交接预提示。
-///
-/// 这个提示只读取当前设备能力检测结果，不阻止用户点击“种子”。即使检测不可用
-/// 或未发现客户端，真实交接仍会按原有直开加分享兜底流程执行。
-class _TorrentClientReadinessNote extends StatelessWidget {
-  const _TorrentClientReadinessNote({required this.capabilities});
-
-  final AsyncValue<TorrentClientCapabilities> capabilities;
-
-  @override
-  Widget build(BuildContext context) {
-    final hint = capabilities.when(
-      data: _SeedHandoffHint.fromCapabilities,
-      error: (error, _) => const _SeedHandoffHint(
-        icon: Icons.info_outline,
-        message: '无法检测外部 BT 客户端，点击后仍会尝试系统交接',
-        isWarning: true,
-      ),
-      loading: () => const _SeedHandoffHint(
-        icon: Icons.sync_outlined,
-        message: '正在检测外部 BT 客户端交接能力',
-        isWarning: false,
-      ),
-    );
-
-    final scheme = Theme.of(context).colorScheme;
-    final color = hint.isWarning
-        ? scheme.errorContainer
-        : scheme.surfaceContainerHighest;
-    final onColor = hint.isWarning
-        ? scheme.onErrorContainer
-        : scheme.onSurfaceVariant;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(hint.icon, color: onColor, size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                hint.message,
-                style: TextStyle(color: onColor, fontSize: 12),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// DMHY 卡片中的种子交接预提示文案。
-///
-/// 该对象把平台检测模型转换为面向用户的一句话提示，避免把判断逻辑散落在
-/// widget 构建代码里。
-class _SeedHandoffHint {
-  const _SeedHandoffHint({
-    required this.icon,
-    required this.message,
-    required this.isWarning,
-  });
-
-  final IconData icon;
-  final String message;
-  final bool isWarning;
-
-  /// 根据当前设备能力生成 `.torrent` 交接提示。
-  factory _SeedHandoffHint.fromCapabilities(
-    TorrentClientCapabilities capabilities,
-  ) {
-    if (!capabilities.isPlatformBridgeAvailable) {
-      return const _SeedHandoffHint(
-        icon: Icons.info_outline,
-        message: '外部客户端检测不可用，点击后会继续尝试系统交接',
-        isWarning: false,
-      );
-    }
-
-    if (capabilities.canOpenTorrentFile) {
-      return _SeedHandoffHint(
-        icon: Icons.check_circle_outline,
-        message:
-            '当前设备支持 .torrent 直开：${_handlerSummary(capabilities.torrentViewHandlers, capabilities.torrentViewHandlerCount)}',
-        isWarning: false,
-      );
-    }
-
-    if (capabilities.canShareTorrentFile) {
-      return _SeedHandoffHint(
-        icon: Icons.ios_share_outlined,
-        message:
-            '未发现 .torrent 直开客户端，将依赖分享面板导入：${_handlerSummary(capabilities.torrentShareHandlers, capabilities.torrentShareHandlerCount)}',
-        isWarning: false,
-      );
-    }
-
-    if (capabilities.canOpenMagnet) {
-      return const _SeedHandoffHint(
-        icon: Icons.link_outlined,
-        message: '未发现 .torrent 接收客户端，主按钮已切换为复制 magnet',
-        isWarning: true,
-      );
-    }
-
-    return const _SeedHandoffHint(
-      icon: Icons.error_outline,
-      message: '未发现外部 BT 客户端，主按钮已切换为复制 magnet',
-      isWarning: true,
-    );
-  }
-
-  /// 生成候选客户端摘要。
-  ///
-  /// Android resolver 可能只返回数量，也可能返回具体候选列表。这里优先展示
-  /// 应用名称；没有列表时保留原先的数量提示。
-  static String _handlerSummary(
-    List<TorrentClientAppCandidate> handlers,
-    int count,
-  ) {
-    if (handlers.isEmpty) {
-      return '$count 个候选';
-    }
-
-    final names = handlers
-        .take(2)
-        .map((handler) => handler.displayName)
-        .join('、');
-    final extraCount = handlers.length - 2;
-    if (extraCount > 0) {
-      return '$names 等 ${handlers.length} 个候选';
-    }
-
-    return names;
-  }
-}
-
-class _ResultSummary extends StatelessWidget {
-  const _ResultSummary({
-    required this.keyword,
-    required this.count,
-    required this.visibleCount,
-    required this.animeOnly,
-    required this.sort,
-    required this.hasActiveFilter,
-    required this.isSubscriptionBusy,
-    required this.onSubscribe,
-  });
-
-  final String keyword;
-  final int count;
-  final int visibleCount;
-  final bool animeOnly;
-  final DmhyResourceSort sort;
-  final bool hasActiveFilter;
-  final bool isSubscriptionBusy;
-  final VoidCallback onSubscribe;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scope = animeOnly ? '动画分类' : '全站';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Text(
-                '“$keyword” 在$scope找到 $count 条 RSS 资源',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              onPressed: isSubscriptionBusy ? null : onSubscribe,
-              icon: isSubscriptionBusy
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.notification_add_outlined),
-              label: const Text('订阅'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 2),
-        Text(
-          '排序：${sort.label}',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        if (hasActiveFilter)
-          Text(
-            '筛选后显示 $visibleCount/$count 条',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _DmhyLoadingState extends StatelessWidget {
-  const _DmhyLoadingState();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Card(
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Row(
-          children: [
-            SizedBox(
-              width: 18,
-              height: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            SizedBox(width: 12),
-            Text('正在读取 DMHY RSS...'),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DmhyErrorState extends StatelessWidget {
-  const _DmhyErrorState({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.error_outline, color: scheme.error),
-                const SizedBox(width: 8),
-                Text('搜索失败', style: theme.textTheme.titleMedium),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(message),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_outlined),
-              label: const Text('重试'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DmhyNoResultState extends StatelessWidget {
-  const _DmhyNoResultState();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Card(
-      child: Padding(
-        padding: EdgeInsets.all(16),
-        child: Text('没有找到匹配的 DMHY RSS 资源，可以换一个关键词。'),
-      ),
-    );
-  }
-}
-
+/// 筛选后无结果时的提示。
 class _DmhyNoFilteredResultState extends StatelessWidget {
   const _DmhyNoFilteredResultState({required this.onClear});
 
@@ -1905,156 +1539,21 @@ class _DmhyNoFilteredResultState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('当前筛选没有匹配资源，可以清除筛选或换一个条件。'),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: onClear,
-              icon: const Icon(Icons.filter_alt_off_outlined),
-              label: const Text('清除筛选'),
-            ),
-          ],
-        ),
+    return AppEmptyView(
+      compact: true,
+      icon: Icons.filter_alt_off_outlined,
+      title: '筛选后没有资源',
+      message: '放宽或清除筛选条件再看看',
+      action: OutlinedButton.icon(
+        onPressed: onClear,
+        icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+        label: const Text('清除筛选'),
       ),
     );
   }
 }
 
-class _CapabilityLine extends StatelessWidget {
-  const _CapabilityLine({
-    required this.icon,
-    required this.title,
-    required this.status,
-  });
-
-  final IconData icon;
-  final String title;
-  final String status;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        children: [
-          Icon(icon, color: scheme.secondary),
-          const SizedBox(width: 12),
-          Expanded(child: Text(title, style: theme.textTheme.bodyLarge)),
-          Text(
-            status,
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: scheme.tertiary,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DmhyInfoChip extends StatelessWidget {
-  const _DmhyInfoChip({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: scheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: scheme.onSecondaryContainer, size: 14),
-            const SizedBox(width: 4),
-            Flexible(
-              child: Text(
-                label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: scheme.onSecondaryContainer,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DmhyStatusBadge extends StatelessWidget {
-  const _DmhyStatusBadge({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: scheme.primary,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-String _formatDateTime(DateTime value) {
-  final local = value.toLocal();
-  final month = local.month.toString().padLeft(2, '0');
-  final day = local.day.toString().padLeft(2, '0');
-  final hour = local.hour.toString().padLeft(2, '0');
-  final minute = local.minute.toString().padLeft(2, '0');
-
-  return '${local.year}-$month-$day $hour:$minute';
-}
-
-String _formatBytes(int bytes) {
-  if (bytes < 1024) {
-    return '$bytes B';
-  }
-
-  final kib = bytes / 1024;
-  if (kib < 1024) {
-    return '${kib.toStringAsFixed(1)} KB';
-  }
-
-  final mib = kib / 1024;
-  return '${mib.toStringAsFixed(1)} MB';
-}
-
+/// 资源元信息 chip 的图标映射。
 IconData _metadataChipIcon(DmhyResourceMetadataKind kind) {
   return switch (kind) {
     DmhyResourceMetadataKind.releaseGroup => Icons.groups_outlined,
