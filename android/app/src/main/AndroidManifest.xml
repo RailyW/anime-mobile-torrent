@@ -49,6 +49,12 @@
             <data android:mimeType="text/plain"/>
         </intent>
 
+        <!-- Bangumi WebView 授权失败时，允许 url_launcher 查询系统浏览器兜底打开 HTTPS 授权页。 -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+
         <!-- magnet 链接交给用户手机自己的 BT 客户端处理。 -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
