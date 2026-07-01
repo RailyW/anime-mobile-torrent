@@ -264,7 +264,7 @@ final bangumiMyAnimeCollectionListControllerProvider =
 /// 当前用户动画收藏分页列表状态。
 class BangumiMyAnimeCollectionListState {
   const BangumiMyAnimeCollectionListState({
-    this.type,
+    this.type = defaultType,
     this.collections = const [],
     this.total = 0,
     this.limit = 12,
@@ -275,6 +275,9 @@ class BangumiMyAnimeCollectionListState {
   });
 
   static const Object _unchanged = Object();
+
+  /// 收藏列表默认展示“在看”，贴近追番页最常用的连续观察场景。
+  static const BangumiCollectionType defaultType = BangumiCollectionType.doing;
 
   /// 当前收藏状态筛选；null 表示查看全部动画收藏。
   final BangumiCollectionType? type;
@@ -377,12 +380,21 @@ class BangumiMyAnimeCollectionListController
   }
 
   /// 加载当前筛选条件的第一页。
-  Future<void> loadFirstPage({BangumiCollectionType? type}) {
+  Future<void> loadFirstPage({
+    Object? type = BangumiMyAnimeCollectionListState._unchanged,
+  }) {
     if (state.isLoading) {
       return Future.value();
     }
 
-    state = BangumiMyAnimeCollectionListState(type: type, limit: state.limit);
+    final nextType =
+        identical(type, BangumiMyAnimeCollectionListState._unchanged)
+        ? state.type
+        : type as BangumiCollectionType?;
+    state = BangumiMyAnimeCollectionListState(
+      type: nextType,
+      limit: state.limit,
+    );
     return _loadPage(offset: 0, replace: true);
   }
 

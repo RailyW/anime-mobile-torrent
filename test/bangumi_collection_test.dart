@@ -140,7 +140,7 @@ void main() {
     });
   });
 
-  test('BangumiMyAnimeCollectionListController 可以分页并切换收藏状态', () async {
+  test('BangumiMyAnimeCollectionListController 默认读取在看并可切换全部分页', () async {
     final repository = _FakeBangumiMyCollectionRepository();
     final container = ProviderContainer(
       overrides: [
@@ -156,11 +156,26 @@ void main() {
     await controller.loadFirstPage();
     var state = container.read(bangumiMyAnimeCollectionListControllerProvider);
 
+    expect(state.type, BangumiCollectionType.doing);
+    expect(state.typeLabel, '在看');
+    expect(state.collections, hasLength(1));
+    expect(state.total, 1);
+    expect(state.nextOffset, 12);
+    expect(state.hasMore, isFalse);
+    expect(repository.requests.last.type, BangumiCollectionType.doing);
+    expect(repository.requests.last.offset, 0);
+
+    await controller.selectType(null);
+    state = container.read(bangumiMyAnimeCollectionListControllerProvider);
+
+    expect(state.type, isNull);
+    expect(state.typeLabel, '全部');
     expect(state.collections, hasLength(12));
     expect(state.total, 25);
     expect(state.nextOffset, 12);
     expect(state.hasMore, isTrue);
-    expect(state.typeLabel, '全部');
+    expect(repository.requests.last.type, isNull);
+    expect(repository.requests.last.offset, 0);
 
     await controller.loadNextPage();
     state = container.read(bangumiMyAnimeCollectionListControllerProvider);
@@ -168,16 +183,6 @@ void main() {
     expect(state.collections, hasLength(24));
     expect(state.nextOffset, 24);
     expect(state.hasMore, isTrue);
-
-    await controller.selectType(BangumiCollectionType.doing);
-    state = container.read(bangumiMyAnimeCollectionListControllerProvider);
-
-    expect(state.type, BangumiCollectionType.doing);
-    expect(state.typeLabel, '在看');
-    expect(state.collections, hasLength(1));
-    expect(state.hasMore, isFalse);
-    expect(repository.requests.last.type, BangumiCollectionType.doing);
-    expect(repository.requests.last.offset, 0);
   });
 
   test(

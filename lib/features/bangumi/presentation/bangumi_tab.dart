@@ -483,9 +483,9 @@ class _CollectionsContent extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             '继续加载失败：${state.errorMessage}',
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.error),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.error,
+            ),
           ),
         ],
         if (state.isLoading && collections.isNotEmpty) ...[
@@ -626,7 +626,7 @@ class _MoreFilterMenu extends StatelessWidget {
 
 /// 单条收藏卡片。
 ///
-/// 封面加标题、关键信息 chips 与“搜资源”入口，点击整卡进入条目详情。跳转
+/// 封面加标题、关键信息 chips 与资源搜索入口，点击整卡进入条目详情。跳转
 /// DMHY 只传递关键词，真实搜索与种子交接仍由搜索页处理。
 class _CollectionCard extends StatelessWidget {
   const _CollectionCard({required this.collection});
@@ -711,25 +711,23 @@ class _CollectionCard extends StatelessWidget {
               ),
               if (dmhyKeyword.isNotEmpty) ...[
                 const SizedBox(width: 8),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    visualDensity: VisualDensity.compact,
+                IconButton.outlined(
+                  tooltip: '搜资源',
+                  style: IconButton.styleFrom(
+                    fixedSize: const Size.square(40),
+                    minimumSize: const Size.square(40),
+                    padding: EdgeInsets.zero,
+                    shape: const CircleBorder(),
+                    side: BorderSide(color: scheme.outlineVariant),
+                    foregroundColor: scheme.primary,
                   ),
                   onPressed: () {
                     context.goNamed(
                       'home',
-                      queryParameters: {
-                        'tab': 'dmhy',
-                        'keyword': dmhyKeyword,
-                      },
+                      queryParameters: {'tab': 'dmhy', 'keyword': dmhyKeyword},
                     );
                   },
-                  icon: const Icon(Icons.search_outlined, size: 18),
-                  label: const Text('搜资源'),
+                  icon: const Icon(Icons.search_outlined, size: 20),
                 ),
               ],
             ],
@@ -852,9 +850,9 @@ class _SearchResultSectionState extends ConsumerState<_SearchResultSection> {
           const SizedBox(height: 4),
           Text(
             '继续加载失败：${state.errorMessage}',
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: Theme.of(context).colorScheme.error),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.error,
+            ),
           ),
         ],
         if (state.hasMore && state.isLoading) ...[
