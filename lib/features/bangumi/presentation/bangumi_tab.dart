@@ -466,12 +466,7 @@ class _CollectionsContent extends StatelessWidget {
             onRetry: onRefresh,
           )
         else if (state.isEmpty)
-          AppEmptyView(
-            compact: true,
-            icon: Icons.bookmark_border_outlined,
-            title: state.type == null ? '还没有收藏' : '该分类下没有收藏',
-            message: state.type == null ? '搜索动画并收藏后会显示在这里' : null,
-          )
+          _CollectionEmptyState(type: state.type)
         else
           ...collections.map(
             (collection) => Padding(
@@ -499,6 +494,36 @@ class _CollectionsContent extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// 收藏列表空态。
+///
+/// 收藏区和搜索区一样属于内容主区域；当当前筛选没有任何收藏时，使用居中的大图标
+/// 和一小段说明，让用户先看到明确状态，再决定切换分类或去条目页更新收藏。
+class _CollectionEmptyState extends StatelessWidget {
+  const _CollectionEmptyState({required this.type});
+
+  /// 当前收藏筛选类型。
+  ///
+  /// `null` 表示「全部」。非空时文案会强调这是当前分类为空，而不是账号没有任何
+  /// 收藏，避免用户误以为数据读取异常。
+  final BangumiCollectionType? type;
+
+  @override
+  Widget build(BuildContext context) {
+    final isAll = type == null;
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 36, bottom: 28),
+        child: AppEmptyView(
+          icon: Icons.bookmark_border_rounded,
+          title: isAll ? '还没有收藏' : '该分类下没有收藏',
+          message: isAll ? '搜索动画并加入收藏后会显示在这里' : '换个分类看看，或在条目详情里更新收藏状态',
+        ),
+      ),
     );
   }
 }
