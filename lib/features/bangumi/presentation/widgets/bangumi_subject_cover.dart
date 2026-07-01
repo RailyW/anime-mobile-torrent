@@ -1,4 +1,7 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+
+import '../../../../shared/image_cache/app_image_cache.dart';
 
 /// Bangumi 条目封面。
 ///
@@ -29,19 +32,16 @@ class BangumiSubjectCover extends StatelessWidget {
         height: height,
         child: imageUrl == null
             ? _CoverPlaceholder(icon: Icons.image_not_supported_outlined)
-            : Image.network(
-                imageUrl!,
+            : CachedNetworkImage(
+                imageUrl: imageUrl!,
+                cacheManager: appImageCacheManager,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
+                errorWidget: (context, url, error) {
                   return const _CoverPlaceholder(
                     icon: Icons.broken_image_outlined,
                   );
                 },
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) {
-                    return child;
-                  }
-
+                placeholder: (context, url) {
                   return ColoredBox(
                     color: scheme.surfaceContainerHighest,
                     child: Center(

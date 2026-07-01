@@ -1,7 +1,9 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../shared/image_cache/app_image_cache.dart';
 import '../../../shared/widgets/app_async_views.dart';
 import '../../../shared/widgets/app_chip.dart';
 import '../../../shared/widgets/app_section.dart';
@@ -110,10 +112,11 @@ class _SubjectHero extends StatelessWidget {
         Positioned.fill(
           child: subject.images.large == null
               ? ColoredBox(color: scheme.primaryContainer)
-              : Image.network(
-                  subject.images.large!,
+              : CachedNetworkImage(
+                  imageUrl: subject.images.large!,
+                  cacheManager: appImageCacheManager,
                   fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) =>
+                  errorWidget: (context, url, error) =>
                       ColoredBox(color: scheme.primaryContainer),
                 ),
         ),
@@ -188,9 +191,7 @@ class _SubjectHero extends StatelessWidget {
                 children: [
                   AppChip(label: subject.type.label, tone: AppChipTone.brand),
                   AppChip(
-                    label: subject.platform.isEmpty
-                        ? '平台未知'
-                        : subject.platform,
+                    label: subject.platform.isEmpty ? '平台未知' : subject.platform,
                   ),
                   AppChip(label: subject.episodeLabel),
                   if (subject.airDate != null) AppChip(label: subject.airDate!),
@@ -519,10 +520,7 @@ class _MyEpisodeProgressContentState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '观看进度',
-          style: Theme.of(context).textTheme.titleSmall,
-        ),
+        Text('观看进度', style: Theme.of(context).textTheme.titleSmall),
         const SizedBox(height: 10),
         if (progressState.isInitialLoading)
           const AppInlineLoading(label: '正在读取章节进度…')
@@ -644,10 +642,7 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  Icons.playlist_add_check_outlined,
-                  color: scheme.primary,
-                ),
+                Icon(Icons.playlist_add_check_outlined, color: scheme.primary),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -1356,9 +1351,7 @@ Future<void> _showCollectionEditor({
                     const SizedBox(height: 14),
                     DropdownButtonFormField<BangumiCollectionType>(
                       initialValue: selectedType,
-                      decoration: const InputDecoration(
-                        labelText: '收藏状态',
-                      ),
+                      decoration: const InputDecoration(labelText: '收藏状态'),
                       items: [
                         for (final type in BangumiCollectionType.values)
                           DropdownMenuItem(

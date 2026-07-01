@@ -457,7 +457,7 @@ class _CollectionsContent extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         if (state.isInitialLoading)
-          const AppInlineLoading(label: '正在读取收藏…')
+          const AppInlineLoading(label: '正在读取收藏…', centered: true)
         else if (state.errorMessage != null && collections.isEmpty)
           AppErrorView(
             compact: true,

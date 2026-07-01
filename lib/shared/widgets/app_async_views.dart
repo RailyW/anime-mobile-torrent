@@ -5,16 +5,27 @@ import 'package:flutter/material.dart';
 /// 一个小号转圈加文字，适合放在卡片或面板内部表示局部加载，替代各页面重复的
 /// `_XxxLoadingState` / `_InlineLoading`。
 class AppInlineLoading extends StatelessWidget {
-  const AppInlineLoading({this.label = '加载中…', super.key});
+  const AppInlineLoading({
+    this.label = '加载中…',
+    this.centered = false,
+    super.key,
+  });
 
   /// 加载文案。
   final String label;
+
+  /// 是否让图标和文案作为整体居中。
+  ///
+  /// 默认保持横向撑满，适合列表或表单内部；收藏页这类空白首屏加载态则可以传
+  /// true，让提示出现在区块中心位置。
+  final bool centered;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
-    return Row(
+    final content = Row(
+      mainAxisSize: centered ? MainAxisSize.min : MainAxisSize.max,
       children: [
         const SizedBox(
           width: 18,
@@ -22,13 +33,27 @@ class AppInlineLoading extends StatelessWidget {
           child: CircularProgressIndicator(strokeWidth: 2),
         ),
         const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            label,
-            style: TextStyle(color: scheme.onSurfaceVariant),
+        if (centered)
+          Text(label, style: TextStyle(color: scheme.onSurfaceVariant))
+        else
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(color: scheme.onSurfaceVariant),
+            ),
           ),
-        ),
       ],
+    );
+
+    if (!centered) {
+      return content;
+    }
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: content,
+      ),
     );
   }
 }

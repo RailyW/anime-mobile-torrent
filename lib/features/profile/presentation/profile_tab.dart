@@ -1,7 +1,10 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../shared/image_cache/app_image_cache.dart';
+import '../../../shared/image_cache/app_image_cache_providers.dart';
 import '../../../shared/widgets/app_section.dart';
 import '../../background/presentation/background_page.dart';
 import '../../bangumi/application/bangumi_auth_providers.dart';
@@ -13,9 +16,9 @@ import '../../torrent_handoff/presentation/torrent_page.dart';
 
 /// “我的”tab。
 ///
-/// 聚合低频但重要的功能：Bangumi 账号登录、后台订阅、种子工具、本地播放以及
-/// OAuth 设置。账号区是页面主角，其余功能以入口行的形式跳转到各自独立页面，
-/// 让首页保持清爽，也把“去哪里做什么”表达得更像普通消费级 App。
+/// 聚合低频但重要的功能：Bangumi 账号登录、图片缓存管理、后台订阅、种子工具、
+/// 本地播放以及 OAuth 设置。账号区是页面主角，其余功能以入口行的形式跳转或
+/// 执行设置动作，让首页保持清爽，也把“去哪里做什么”表达得更像普通消费级 App。
 class ProfileTab extends ConsumerWidget {
   const ProfileTab({super.key});
 
@@ -350,19 +353,7 @@ class _LoggedInAccount extends StatelessWidget {
       children: [
         Row(
           children: [
-            CircleAvatar(
-              radius: 28,
-              backgroundColor: scheme.primaryContainer,
-              backgroundImage: avatarUrl == null
-                  ? null
-                  : NetworkImage(avatarUrl),
-              child: avatarUrl == null
-                  ? Icon(
-                      Icons.person_outline,
-                      color: scheme.onPrimaryContainer,
-                    )
-                  : null,
-            ),
+            _CachedAccountAvatar(avatarUrl: avatarUrl),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -407,6 +398,43 @@ class _LoggedInAccount extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// 已登录账号头像。
+///
+/// 使用共享图片缓存读取 Bangumi 头像；URL 未变化时直接命中本地文件，加载失败或
+/// 用户没有头像时回退到默认人像图标。
+class _CachedAccountAvatar extends StatelessWidget {
+  const _CachedAccountAvatar({required this.avatarUrl});
+
+  final String? avatarUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    Widget placeholder() {
+      return ColoredBox(
+        color: scheme.primaryContainer,
+        child: Icon(Icons.person_outline, color: scheme.onPrimaryContainer),
+      );
+    }
+
+    return ClipOval(
+      child: SizedBox.square(
+        dimension: 56,
+        child: avatarUrl == null
+            ? placeholder()
+            : CachedNetworkImage(
+                imageUrl: avatarUrl!,
+                cacheManager: appImageCacheManager,
+                fit: BoxFit.cover,
+                placeholder: (context, url) => placeholder(),
+                errorWidget: (context, url, error) => placeholder(),
+              ),
+      ),
     );
   }
 }
@@ -474,9 +502,9 @@ class _AccountError extends StatelessWidget {
 
 /// 工具入口区。
 ///
-/// 把后台订阅、种子工具、本地播放、OAuth 设置收纳为统一的入口行，点击后进入
-/// 各自的独立页面。这些功能使用频率低，集中在“我的”页可以让高频的追番与搜索
-/// 保持专注。
+/// 把后台订阅、种子工具、本地播放、图片缓存和 OAuth 设置收纳为统一的入口行。
+/// 其中图片缓存直接在当前页弹窗处理，其余入口点击后进入各自的独立页面。这些
+/// 功能使用频率低，集中在“我的”页可以让高频的追番与搜索保持专注。
 class _ToolsSection extends StatelessWidget {
   const _ToolsSection();
 
@@ -514,6 +542,8 @@ class _ToolsSection extends StatelessWidget {
               ),
             ),
             const Divider(),
+            const _ImageCacheNavRow(),
+            const Divider(),
             AppNavRow(
               icon: Icons.key_outlined,
               title: 'Bangumi OAuth 设置',
@@ -524,5 +554,114 @@ class _ToolsSection extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// 图片缓存入口行。
+///
+/// 该入口展示当前缓存文件大小，并在用户确认后清理封面、详情头图和头像缓存。
+class _ImageCacheNavRow extends ConsumerStatefulWidget {
+  const _ImageCacheNavRow();
+
+  @override
+  ConsumerState<_ImageCacheNavRow> createState() => _ImageCacheNavRowState();
+}
+
+class _ImageCacheNavRowState extends ConsumerState<_ImageCacheNavRow> {
+  bool _isClearing = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final snapshotState = ref.watch(appImageCacheSnapshotProvider);
+    final subtitle = snapshotState.when(
+      data: (snapshot) =>
+          '已缓存 ${snapshot.formattedSize}，${snapshot.fileCount} 个文件',
+      loading: () => '正在计算图片缓存大小…',
+      error: (error, stackTrace) => '缓存大小读取失败，点击查看或清理',
+    );
+
+    return AppNavRow(
+      icon: Icons.image_outlined,
+      title: '图片缓存',
+      subtitle: subtitle,
+      trailing: _isClearing
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : null,
+      onTap: _isClearing
+          ? null
+          : () => _confirmAndClearCache(context, snapshotState),
+    );
+  }
+
+  /// 弹出确认框并在用户确认后清理图片缓存。
+  Future<void> _confirmAndClearCache(
+    BuildContext context,
+    AsyncValue<AppImageCacheSnapshot> snapshotState,
+  ) async {
+    final snapshot = snapshotState.maybeWhen(
+      data: (value) => value,
+      orElse: () => null,
+    );
+    final cacheText = snapshot == null
+        ? '正在计算或暂不可用'
+        : '${snapshot.formattedSize}，${snapshot.fileCount} 个文件';
+
+    final shouldClear = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('图片缓存'),
+          content: Text('当前图片缓存：$cacheText。\n\n清理后，追番封面、详情页头图和头像会在下次展示时重新下载。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.of(context).pop(true),
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('清理缓存'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldClear != true || !mounted) {
+      return;
+    }
+
+    setState(() {
+      _isClearing = true;
+    });
+
+    try {
+      await clearAppImageCache();
+      ref.invalidate(appImageCacheSnapshotProvider);
+
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('图片缓存已清理')));
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('图片缓存清理失败：$error')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isClearing = false;
+        });
+      }
+    }
   }
 }
