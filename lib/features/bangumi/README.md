@@ -1,6 +1,6 @@
 # bangumi 模块说明
 
-`lib/features/bangumi` 负责 Bangumi 相关能力：OAuth 授权、当前用户信息、动画条目搜索、条目详情、收藏和进度同步。当前已接入可配置 OAuth 登录、本机 OAuth client 配置页、WebView 授权页回调截获、授权页加载超时恢复、外部浏览器兜底授权、手动回调/code 粘贴、Dio 表单 token 交换、secure storage token 保存、`/v0/me` 当前用户读取、过期 token 缺少 refresh token 时自动清理本地凭据、服务端 401 授权失效时自动清理本地旧 token、公开动画条目搜索独立页、搜索输入防抖、搜索排序、搜索结果分页加载更多、读取请求 429 退避、公开条目详情读取、Bangumi 封面与详情头图共享文件缓存、搜索结果直接跳转 DMHY 搜索、首页我的动画收藏分页列表、标题栏搜索入口、底部导航 bgm.tv 风格矢量图标、收藏列表默认“在看”筛选、收藏列表加载态居中、收藏空态居中大图标提示、收藏列表圆形图标资源搜索入口、条目详情页中的个人收藏读取/修改、动画章节观看状态同步、章节类型筛选、已加载章节展开查看、章节分页加载更多、批量标记到第 N 话看过、当前已加载章节批量设为看过或未收藏，以及从条目详情页带标题跳转到 DMHY 资源搜索。
+`lib/features/bangumi` 负责 Bangumi 相关能力：OAuth 授权、当前用户信息、动画条目搜索、条目详情、收藏和进度同步。当前已接入可配置 OAuth 登录、本机 OAuth client 配置页、WebView 授权页回调截获、授权页加载超时恢复、外部浏览器兜底授权、手动回调/code 粘贴、Dio 表单 token 交换、secure storage token 保存、`/v0/me` 当前用户读取、过期 token 缺少 refresh token 时自动清理本地凭据、服务端 401 授权失效时自动清理本地旧 token、公开动画条目搜索独立页、搜索输入防抖、搜索排序、搜索结果分页加载更多、读取请求 429 退避、公开条目详情读取、Bangumi 封面与详情头图共享文件缓存、搜索结果直接跳转 DMHY 搜索、首页我的动画收藏分页列表、标题栏搜索入口、底部导航官方 favicon SVG 图标、收藏列表默认“在看”筛选、收藏列表加载态居中、收藏空态居中大图标提示、收藏列表圆形图标资源搜索入口、条目详情页中的个人收藏读取/修改、动画章节观看状态同步、章节类型筛选、已加载章节展开查看、章节分页加载更多、批量标记到第 N 话看过、当前已加载章节批量设为看过或未收藏，以及从条目详情页带标题跳转到 DMHY 资源搜索。
 
 ## 当前包含文件
 
@@ -17,11 +17,11 @@
 - `application/bangumi_providers.dart`：Bangumi 条目 Repository 抽象、HTTP 实现、公开搜索分页控制器、Riverpod 搜索 Provider 和详情 Provider。
 - `application/bangumi_auth_providers.dart`：Bangumi 授权 Repository、OAuth 编译期配置、本机配置控制器、配置存储、OAuth token Dio、secure storage、当前用户 Provider；保存或清除本机 OAuth 配置时会清理旧 token，过期 token 缺少 refresh token 时会清理本地凭据并回到未登录语义，`/v0/me` 返回 401 时会清理失效 token 并回到未登录语义，设置页可先仅持久化配置，等首页 route 恢复可见后再刷新 active config，避免 offstage 订阅恢复时触发构建期刷新。
 - `application/bangumi_collection_providers.dart`：Bangumi 当前用户收藏 Repository 契约与实现、动画收藏单页 Provider、默认“在看”的动画收藏分页列表控制器、支持章节类型切换的条目章节分页加载控制器、条目收藏 Provider 和章节收藏 Provider，组合 token 刷新、`/v0/me` 用户名读取、收藏 API 和章节进度 API；读取类收藏/章节请求遇到 401 时会清理 token 并回到未登录语义，写入类请求遇到 401 时会清理 token 但继续抛出失败，避免用户误以为收藏或进度已保存。
-- `presentation/bangumi_tab.dart`：Bangumi tab 与 Bangumi 搜索页。主 tab 的标题栏使用 bgm.tv 风格矢量图标和 `Bangumi` 文案，右上角搜索按钮进入独立搜索页；主内容默认展示“我的动画收藏”分页列表（默认筛选“在看”，初次读取收藏时居中展示加载态，空收藏分类用居中大图标和短说明提示，支持收藏状态筛选、加载更多、收藏条目右侧圆形搜索图标直接跳转 DMHY 搜索、进入详情）。独立搜索页提供 Bangumi 条目搜索框、排序 chips、输入防抖、即时提交、分页加载更多、结果直接跳转 DMHY 搜索和进入详情；未登录时只展示一条引导卡片，点击“去登录”跳转“我的”tab。账号登录、退出、OAuth 配置入口已移至“我的”页，本 tab 不再承载账号面板。
+- `presentation/bangumi_tab.dart`：Bangumi tab 与 Bangumi 搜索页。主 tab 的标题栏使用官方 favicon SVG 图标和 `Bangumi` 文案，右上角搜索按钮进入独立搜索页；主内容默认展示“我的动画收藏”分页列表（默认筛选“在看”，初次读取收藏时居中展示加载态，空收藏分类用居中大图标和短说明提示，支持收藏状态筛选、加载更多、收藏条目右侧圆形搜索图标直接跳转 DMHY 搜索、进入详情）。独立搜索页提供 Bangumi 条目搜索框、排序 chips、输入防抖、即时提交、分页加载更多、结果直接跳转 DMHY 搜索和进入详情；未登录时只展示一条引导卡片，点击“去登录”跳转“我的”tab。账号登录、退出、OAuth 配置入口已移至“我的”页，本 tab 不再承载账号面板。
 - `presentation/bangumi_oauth_authorization_page.dart`：Bangumi OAuth 授权 WebView 页面，打开授权页、截获 `https://bgm.tv/oauth/<redirect_uri>` 代理回调、校验 state，并把授权 code 返回给登录入口（现由“我的”页账号卡发起）；当 Android WebView renderer 崩溃或页面加载超时时，会展示重建 WebView 重试、外部浏览器打开、复制授权地址和手动粘贴回调/code 的恢复入口。
 - `presentation/bangumi_oauth_settings_page.dart`：Bangumi OAuth 设置页（从“我的”页进入），提供 client id、client secret、redirect URI 和 scopes 表单，会回填已保存的本机配置，保存本机配置或恢复编译期配置；页面自身只写入本机存储和清理旧 token，账号卡由打开设置页的入口在 route 返回后刷新。
 - `presentation/bangumi_subject_detail_page.dart`：Bangumi 条目详情页，采用沉浸式封面头部，头图走共享图片文件缓存，展示标题、评分、DMHY 资源搜索入口、我的收藏读写、动画章节观看状态同步、章节类型筛选、已加载章节展开/收起、加载更多章节、批量标记到第 N 话看过、当前已加载章节批量设为看过或未收藏、收藏统计、维基信息和标签；未登录时引导跳转“我的”tab 登录。
-- `presentation/widgets/bangumi_logo_icon.dart`：bgm.tv 风格透明矢量图标组件，使用 Canvas 重绘电视气泡、天线和表情轮廓，供底部导航和 Bangumi 标题栏复用。
+- `presentation/widgets/bangumi_logo_icon.dart`：Bangumi 官方 favicon SVG 图标组件，封装 `assets/branding/bangumi_favicon_full_size.svg` 的尺寸、语义标签、官方渐变保留和可选单色染色，供底部导航和 Bangumi 标题栏复用。
 - `presentation/widgets/bangumi_rating_line.dart`：Bangumi 模块内复用的评分摘要组件。
 - `presentation/widgets/bangumi_subject_cover.dart`：Bangumi 模块内复用的条目封面组件，使用共享图片文件缓存读取封面，并内置缺图和加载失败占位。
 

@@ -160,7 +160,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final tabs = <_HomeTab>[
       const _HomeTab(
         icon: BangumiLogoIcon(),
-        selectedIcon: BangumiLogoIcon(strokeWidth: 2.5),
+        selectedIcon: BangumiLogoIcon(emphasis: 1.08),
         label: 'Bangumi',
         child: BangumiTab(),
       ),

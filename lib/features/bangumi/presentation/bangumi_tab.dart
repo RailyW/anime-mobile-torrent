@@ -100,7 +100,7 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
 
 /// Bangumi 标题。
 ///
-/// 使用透明背景的矢量重绘图标和文字标题一起展示，强化这个 tab 已经从泛化
+/// 使用官方 favicon SVG 图标和文字标题一起展示，强化这个 tab 已经从泛化
 /// “追番”收敛为 Bangumi 服务入口。
 class _BangumiTitle extends StatelessWidget {
   const _BangumiTitle();
