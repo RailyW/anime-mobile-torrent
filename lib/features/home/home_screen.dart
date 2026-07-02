@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../bangumi/presentation/bangumi_tab.dart';
+import '../bangumi/presentation/widgets/bangumi_logo_icon.dart';
 import '../dmhy/domain/dmhy_entry_context.dart';
 import '../dmhy/presentation/dmhy_tab.dart';
 import '../playback/presentation/playback_page.dart';
@@ -29,7 +30,7 @@ enum HomeProfileDestination {
 
 /// APP 首页壳。
 ///
-/// 首页只承担三段式底部导航：追番、搜索、我的。每个 tab 对应一个独立 feature
+/// 首页只承担三段式底部导航：Bangumi、搜索、我的。每个 tab 对应一个独立 feature
 /// 页面，首页本身不直接调用 Bangumi、DMHY 或 Android 平台能力，只负责在 tab
 /// 之间切换，并把深链参数透传给对应模块。
 class HomeScreen extends ConsumerStatefulWidget {
@@ -43,7 +44,7 @@ class HomeScreen extends ConsumerStatefulWidget {
     super.key,
   });
 
-  /// 初次打开首页时选中的底部导航项（0 追番 / 1 搜索 / 2 我的）。
+  /// 初次打开首页时选中的底部导航项（0 Bangumi / 1 搜索 / 2 我的）。
   final int initialTabIndex;
 
   /// 初次打开搜索 tab 时自动填入并搜索的关键词。
@@ -139,8 +140,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         case HomeProfileDestination.playback:
           navigator.push(
             MaterialPageRoute<void>(
-              builder: (_) =>
-                  PlaybackPage(entryContext: widget.initialPlaybackEntryContext),
+              builder: (_) => PlaybackPage(
+                entryContext: widget.initialPlaybackEntryContext,
+              ),
             ),
           );
         case HomeProfileDestination.torrent:
@@ -157,14 +159,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final tabs = <_HomeTab>[
       const _HomeTab(
-        icon: Icons.subscriptions_outlined,
-        selectedIcon: Icons.subscriptions,
-        label: '追番',
+        icon: BangumiLogoIcon(),
+        selectedIcon: BangumiLogoIcon(strokeWidth: 2.5),
+        label: 'Bangumi',
         child: BangumiTab(),
       ),
       _HomeTab(
-        icon: Icons.search_outlined,
-        selectedIcon: Icons.saved_search,
+        icon: const Icon(Icons.search_outlined),
+        selectedIcon: const Icon(Icons.saved_search),
         label: '搜索',
         child: DmhyTab(
           initialKeyword: widget.initialDmhyKeyword,
@@ -173,8 +175,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         ),
       ),
       const _HomeTab(
-        icon: Icons.person_outline,
-        selectedIcon: Icons.person,
+        icon: Icon(Icons.person_outline),
+        selectedIcon: Icon(Icons.person),
         label: '我的',
         child: ProfileTab(),
       ),
@@ -192,8 +194,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         onDestinationSelected: _selectTab,
         destinations: tabs.map((tab) {
           return NavigationDestination(
-            icon: Icon(tab.icon),
-            selectedIcon: Icon(tab.selectedIcon),
+            icon: tab.icon,
+            selectedIcon: tab.selectedIcon,
             label: tab.label,
           );
         }).toList(),
@@ -205,7 +207,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 /// “我的”tab 在底部导航中的下标。
 const int _profileTabIndex = 2;
 
-/// 将外部传入的 tab 下标收敛到合法范围（0 追番 / 1 搜索 / 2 我的）。
+/// 将外部传入的 tab 下标收敛到合法范围（0 Bangumi / 1 搜索 / 2 我的）。
 int _normalizeTabIndex(int value) {
   if (value < 0) {
     return 0;
@@ -226,8 +228,8 @@ class _HomeTab {
     required this.child,
   });
 
-  final IconData icon;
-  final IconData selectedIcon;
+  final Widget icon;
+  final Widget selectedIcon;
   final String label;
   final Widget child;
 }

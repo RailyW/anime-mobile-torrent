@@ -13,14 +13,15 @@ import '../application/bangumi_providers.dart';
 import '../domain/bangumi_collection.dart';
 import '../domain/bangumi_dmhy_keyword.dart';
 import '../domain/bangumi_subject.dart';
+import 'widgets/bangumi_logo_icon.dart';
 import 'widgets/bangumi_rating_line.dart';
 import 'widgets/bangumi_subject_cover.dart';
 
-/// 追番 tab。
+/// Bangumi tab。
 ///
-/// 这是用户浏览与发现动画的主入口：顶部是搜索框，下面默认展示“我的收藏”，
-/// 输入关键词后切换为搜索结果。账号登录、OAuth 配置等已移到“我的”页，本页在
-/// 未登录时只给出一条温和的引导，不再堆叠账号面板与能力清单。
+/// 这是用户连续观察收藏和追番进度的主入口。搜索已经收进标题栏右上角，点击后
+/// 进入独立的 [BangumiSearchPage]；这样主页面首屏会直接落在“我的收藏”，不会
+/// 让搜索框挤占收藏内容的扫描空间。账号登录、OAuth 配置等已移到“我的”页。
 class BangumiTab extends ConsumerStatefulWidget {
   const BangumiTab({super.key});
 
@@ -29,9 +30,109 @@ class BangumiTab extends ConsumerStatefulWidget {
 }
 
 class _BangumiTabState extends ConsumerState<BangumiTab> {
+  /// 距列表底部多少像素时触发自动加载下一页。
+  static const double _infiniteScrollThreshold = 400;
+
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_handleScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController
+      ..removeListener(_handleScroll)
+      ..dispose();
+    super.dispose();
+  }
+
+  /// 滚动到接近底部时自动加载下一页。
+  ///
+  /// 主 Bangumi 页只承载收藏浏览，所以这里始终推进收藏分页控制器。具体的
+  /// hasMore / isLoading 判断仍交给控制器自身，避免高频滚动重复发起请求。
+  void _handleScroll() {
+    if (!_scrollController.hasClients) {
+      return;
+    }
+
+    final position = _scrollController.position;
+    if (position.pixels < position.maxScrollExtent - _infiniteScrollThreshold) {
+      return;
+    }
+
+    final collectionState = ref.read(
+      bangumiMyAnimeCollectionListControllerProvider,
+    );
+    if (collectionState.hasMore && !collectionState.isLoading) {
+      ref
+          .read(bangumiMyAnimeCollectionListControllerProvider.notifier)
+          .loadNextPage();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const _BangumiTitle(),
+        actions: [
+          IconButton(
+            tooltip: '搜索 Bangumi',
+            onPressed: () => context.pushNamed('bangumi-search'),
+            icon: const Icon(Icons.search_outlined),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          controller: _scrollController,
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+          children: const [_MyCollectionsSection()],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bangumi 标题。
+///
+/// 使用透明背景的矢量重绘图标和文字标题一起展示，强化这个 tab 已经从泛化
+/// “追番”收敛为 Bangumi 服务入口。
+class _BangumiTitle extends StatelessWidget {
+  const _BangumiTitle();
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const BangumiLogoIcon(size: 24),
+        const SizedBox(width: 10),
+        const Text('Bangumi'),
+      ],
+    );
+  }
+}
+
+/// Bangumi 条目搜索页。
+///
+/// 搜索从主 tab 拆到独立页面后，输入框、排序和结果分页仍复用原来的 provider
+/// 与结果卡片。页面自己的滚动控制器只负责搜索分页，不再和收藏分页混在一起。
+class BangumiSearchPage extends ConsumerStatefulWidget {
+  const BangumiSearchPage({super.key});
+
+  @override
+  ConsumerState<BangumiSearchPage> createState() => _BangumiSearchPageState();
+}
+
+class _BangumiSearchPageState extends ConsumerState<BangumiSearchPage> {
   static const Duration _searchDebounceDuration = Duration(milliseconds: 650);
 
-  /// 距列表底部多少像素时触发自动加载下一页。
+  /// 距列表底部多少像素时触发搜索结果下一页加载。
   static const double _infiniteScrollThreshold = 400;
 
   final TextEditingController _keywordController = TextEditingController();
@@ -57,11 +158,9 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
     super.dispose();
   }
 
-  /// 滚动到接近底部时自动加载下一页。
+  /// 搜索结果滚动接近底部时加载下一页。
   ///
-  /// 收藏浏览和搜索结果共用同一个滚动视图，这里按当前是否有搜索请求决定推进
-  /// 哪一个分页控制器；具体的 hasMore / isLoading 判断仍交给控制器自身，因此
-  /// 高频滚动回调即使重复触发也不会发起重复请求。
+  /// 没有搜索请求时页面只展示空态，不需要触发任何网络调用。
   void _handleScroll() {
     if (!_scrollController.hasClients) {
       return;
@@ -73,22 +172,14 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
     }
 
     final request = _searchRequest;
-    if (request != null) {
-      final provider = bangumiSubjectSearchListControllerProvider(request);
-      final state = ref.read(provider);
-      if (state.hasMore && !state.isLoading) {
-        ref.read(provider.notifier).loadNextPage();
-      }
+    if (request == null) {
       return;
     }
 
-    final collectionState = ref.read(
-      bangumiMyAnimeCollectionListControllerProvider,
-    );
-    if (collectionState.hasMore && !collectionState.isLoading) {
-      ref
-          .read(bangumiMyAnimeCollectionListControllerProvider.notifier)
-          .loadNextPage();
+    final provider = bangumiSubjectSearchListControllerProvider(request);
+    final state = ref.read(provider);
+    if (state.hasMore && !state.isLoading) {
+      ref.read(provider.notifier).loadNextPage();
     }
   }
 
@@ -123,7 +214,7 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
     _applySearchKeyword(keyword);
   }
 
-  /// 清空搜索框并回到收藏浏览。
+  /// 清空搜索框并回到待搜索状态。
   void _clearSearch() {
     _searchDebounceTimer?.cancel();
     _keywordController.clear();
@@ -183,7 +274,7 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
     final request = _searchRequest;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('追番')),
+      appBar: AppBar(title: const Text('搜索 Bangumi')),
       body: SafeArea(
         top: false,
         child: ListView(
@@ -198,9 +289,9 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
               onClear: _clearSearch,
               onSortChanged: _handleSortChanged,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 28),
             if (request == null)
-              const _MyCollectionsSection()
+              const _BangumiSearchEmptyState()
             else
               _SearchResultSection(request: request),
           ],
@@ -210,10 +301,30 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
   }
 }
 
+/// Bangumi 搜索页待输入空态。
+///
+/// 打开搜索页但尚未输入关键词时，用居中图标告诉用户这里专门搜索 Bangumi
+/// 条目，而不是回落展示收藏列表。
+class _BangumiSearchEmptyState extends StatelessWidget {
+  const _BangumiSearchEmptyState();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(top: 44),
+      child: AppEmptyView(
+        icon: Icons.manage_search_outlined,
+        title: '搜索 Bangumi 条目',
+        message: '输入动画名称或关键词，查找 Bangumi 上的条目',
+      ),
+    );
+  }
+}
+
 /// 搜索输入区。
 ///
-/// 一个圆角搜索框加排序菜单。搜索框有内容时显示清除按钮，方便快速回到收藏
-/// 浏览，去掉了原先单独的“搜索”大按钮与“动画分类”开关等次要控件。
+/// 一个圆角搜索框加排序菜单。搜索框有内容时显示清除按钮，方便快速回到待搜索
+/// 状态，去掉了原先单独的“搜索”大按钮与“动画分类”开关等次要控件。
 class _SearchField extends StatelessWidget {
   const _SearchField({
     required this.controller,
