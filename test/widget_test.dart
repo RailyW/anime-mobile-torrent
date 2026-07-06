@@ -890,6 +890,72 @@ void main() {
     expect(find.text('测试第 10 话'), findsOneWidget);
   });
 
+  testWidgets('Bangumi 收藏编辑弹层可以向下拖拽关闭', (tester) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          torrentClientCapabilityRepositoryProvider.overrideWithValue(
+            const _FakeTorrentClientCapabilityRepository(),
+          ),
+          bangumiRepositoryProvider.overrideWithValue(_FakeBangumiRepository()),
+          bangumiCurrentUserProvider.overrideWith(
+            (ref) async => const BangumiUser(
+              id: 1,
+              username: 'tester',
+              nickname: '测试用户',
+              userGroup: 10,
+              avatar: BangumiUserAvatar(),
+              sign: '',
+            ),
+          ),
+          bangumiMyCollectionRepositoryProvider.overrideWithValue(
+            _FakeBangumiDetailCollectionRepository(),
+          ),
+        ],
+        child: const AnimeMobileTorrentApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('搜索 Bangumi'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '测试动画');
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('测试动画 中文名'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('我的收藏'),
+      260,
+      scrollable: find.byType(Scrollable).last,
+    );
+    await tester.pumpAndSettle();
+
+    // 分区标题右侧的“在看”胶囊用于打开收藏编辑底部弹层。
+    await tester.tap(
+      find.ancestor(of: find.text('在看').first, matching: find.byType(InkWell)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('修改收藏'), findsOneWidget);
+
+    // 复现用户手势：从弹层顶部的拖拽手柄区域快速下滑关闭，而不是点击“取消”按钮。
+    final sheetTopLeft = tester.getTopLeft(find.byType(BottomSheet));
+    final sheetSize = tester.getSize(find.byType(BottomSheet));
+    await tester.flingFrom(
+      sheetTopLeft + Offset(sheetSize.width / 2, 24),
+      const Offset(0, 700),
+      1200,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('修改收藏'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Bangumi 条目详情可以批量标记已加载章节看过', (tester) async {
     final detailRepository = _FakeBangumiDetailCollectionRepository();
 
