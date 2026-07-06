@@ -26,6 +26,7 @@ import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_cli
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_handoff_result.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_history_item.dart';
 import 'package:anime_mobile_torrent/features/torrent_handoff/domain/torrent_seed_file.dart';
+import 'package:anime_mobile_torrent/shared/widgets/app_filter_pill.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter/services.dart';
@@ -632,9 +633,13 @@ void main() {
       BangumiSubjectSearchSort.match,
     );
 
-    await tester.tap(
-      find.widgetWithText(ChoiceChip, BangumiSubjectSearchSort.score.label),
+    final scoreSortPill = find.widgetWithText(
+      AppFilterPill,
+      BangumiSubjectSearchSort.score.label,
     );
+    await tester.ensureVisible(scoreSortPill);
+    await tester.pumpAndSettle();
+    await tester.tap(scoreSortPill);
     await tester.pumpAndSettle();
 
     expect(repository.searchRequests, hasLength(2));
@@ -797,6 +802,11 @@ void main() {
         child: const AnimeMobileTorrentApp(),
       ),
     );
+    await tester.pumpAndSettle();
+
+    // 收藏页默认封面网格,网格瓦片不带内联“搜资源”钮;先切到列表视图,列表卡
+    // 才承载“搜资源”快捷入口。
+    await tester.tap(find.byTooltip('列表视图'));
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
@@ -1036,7 +1046,7 @@ void main() {
     expect(dmhyRepository.requests.single.sort, DmhyResourceSort.publishedDesc);
 
     final seedSortChip = find.widgetWithText(
-      ChoiceChip,
+      AppFilterPill,
       DmhyResourceSort.seedDesc.label,
     );
     await tester.ensureVisible(seedSortChip);

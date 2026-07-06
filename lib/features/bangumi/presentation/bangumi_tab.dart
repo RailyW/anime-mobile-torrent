@@ -4,15 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../app/app_colors.dart';
 import '../../../shared/widgets/app_async_views.dart';
 import '../../../shared/widgets/app_chip.dart';
+import '../../../shared/widgets/app_filter_pill.dart';
 import '../../../shared/widgets/app_section.dart';
+import '../../../shared/widgets/app_segmented_toggle.dart';
 import '../application/bangumi_auth_providers.dart';
 import '../application/bangumi_collection_providers.dart';
 import '../application/bangumi_providers.dart';
 import '../domain/bangumi_collection.dart';
 import '../domain/bangumi_dmhy_keyword.dart';
 import '../domain/bangumi_subject.dart';
+import 'widgets/bangumi_cover_tile.dart';
 import 'widgets/bangumi_logo_icon.dart';
 import 'widgets/bangumi_rating_line.dart';
 import 'widgets/bangumi_subject_cover.dart';
@@ -369,11 +373,8 @@ class _SearchField extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 10),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: _SortChips(selected: selectedSort, onChanged: onSortChanged),
-        ),
+        const SizedBox(height: 12),
+        _SortChips(selected: selectedSort, onChanged: onSortChanged),
       ],
     );
   }
@@ -381,8 +382,8 @@ class _SearchField extends StatelessWidget {
 
 /// 搜索排序选择。
 ///
-/// 用一排 ChoiceChip 替代下拉菜单，让排序方式一眼可见、一键切换，更符合移动端
-/// 触控习惯。
+/// 用一排可横向滚动的 [AppFilterPill] 替代下拉菜单,让排序方式一眼可见、一键
+/// 切换,与设计稿的 `.pill` 单选筛选行一致,也更符合移动端触控习惯。
 class _SortChips extends StatelessWidget {
   const _SortChips({required this.selected, required this.onChanged});
 
@@ -391,16 +392,21 @@ class _SortChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      children: [
-        for (final sort in BangumiSubjectSearchSort.values)
-          ChoiceChip(
-            label: Text(sort.label),
-            selected: selected == sort,
-            onSelected: (_) => onChanged(sort),
-          ),
-      ],
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      clipBehavior: Clip.none,
+      child: Row(
+        children: [
+          for (final sort in BangumiSubjectSearchSort.values) ...[
+            AppFilterPill(
+              label: sort.label,
+              selected: selected == sort,
+              onTap: () => onChanged(sort),
+            ),
+            const SizedBox(width: 8),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -420,6 +426,11 @@ class _MyCollectionsSection extends ConsumerStatefulWidget {
 
 class _MyCollectionsSectionState extends ConsumerState<_MyCollectionsSection> {
   bool _scheduledInitialLoad = false;
+
+  /// 收藏列表的展示形态：默认封面主导网格,可切换为信息更全的列表。
+  ///
+  /// 只是本地视图偏好,不入 provider、不持久化,切 tab 或重进后回到默认网格。
+  bool _isGrid = true;
 
   /// 在当前帧之后启动收藏首屏加载，避免在 build 周期内修改 Notifier 状态。
   void _scheduleInitialLoad() {
@@ -478,6 +489,12 @@ class _MyCollectionsSectionState extends ConsumerState<_MyCollectionsSection> {
 
         return _CollectionsContent(
           state: listState,
+          isGrid: _isGrid,
+          onViewChanged: (isGrid) {
+            if (_isGrid != isGrid) {
+              setState(() => _isGrid = isGrid);
+            }
+          },
           onRefresh: listController.refresh,
           onTypeChanged: listController.selectType,
         );
@@ -535,11 +552,15 @@ class _CollectionsLoggedOut extends StatelessWidget {
 class _CollectionsContent extends StatelessWidget {
   const _CollectionsContent({
     required this.state,
+    required this.isGrid,
+    required this.onViewChanged,
     required this.onRefresh,
     required this.onTypeChanged,
   });
 
   final BangumiMyAnimeCollectionListState state;
+  final bool isGrid;
+  final ValueChanged<bool> onViewChanged;
   final Future<void> Function() onRefresh;
   final Future<void> Function(BangumiCollectionType? type) onTypeChanged;
 
@@ -553,12 +574,7 @@ class _CollectionsContent extends StatelessWidget {
         AppSectionHeader(
           title: '我的收藏',
           trailing: state.hasLoadedOnce
-              ? Text(
-                  '${state.total} 部',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                )
+              ? _CollectionViewToggle(isGrid: isGrid, onChanged: onViewChanged)
               : null,
         ),
         _CollectionFilterChips(
@@ -566,7 +582,7 @@ class _CollectionsContent extends StatelessWidget {
           isBusy: state.isLoading,
           onTypeChanged: onTypeChanged,
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 14),
         if (state.isInitialLoading)
           const AppInlineLoading(label: '正在读取收藏…', centered: true)
         else if (state.errorMessage != null && collections.isEmpty)
@@ -578,6 +594,8 @@ class _CollectionsContent extends StatelessWidget {
           )
         else if (state.isEmpty)
           _CollectionEmptyState(type: state.type)
+        else if (isGrid)
+          _CollectionGrid(collections: collections)
         else
           ...collections.map(
             (collection) => Padding(
@@ -606,6 +624,149 @@ class _CollectionsContent extends StatelessWidget {
         ],
       ],
     );
+  }
+}
+
+/// 收藏区标题右侧的网格 / 列表视图切换。
+///
+/// 网格视图忠于设计稿的封面主导版式,一屏能扫更多番;列表视图信息更全,并在
+/// 每张卡片保留“搜资源”快捷入口。
+class _CollectionViewToggle extends StatelessWidget {
+  const _CollectionViewToggle({required this.isGrid, required this.onChanged});
+
+  final bool isGrid;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 96,
+      child: AppSegmentedToggle<bool>(
+        selected: isGrid,
+        onChanged: onChanged,
+        segments: const [
+          AppSegment(value: true, icon: Icons.grid_view_rounded, tooltip: '网格视图'),
+          AppSegment(
+            value: false,
+            icon: Icons.view_agenda_outlined,
+            tooltip: '列表视图',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 封面主导的收藏网格。
+///
+/// 每行三张 3:4 竖版封面,封面下方是标题与星评。外层已是 [_BangumiTabState] 的
+/// 单一 `ListView` + 滚动到底自动翻页,因此这里的 `GridView` 收起自身滚动、按
+/// 内容高度展开,把滚动权完全交给外层,避免嵌套滚动打架、也不破坏无限加载。
+class _CollectionGrid extends StatelessWidget {
+  const _CollectionGrid({required this.collections});
+
+  final List<BangumiSubjectCollection> collections;
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 14,
+        crossAxisSpacing: 12,
+        childAspectRatio: 0.52,
+      ),
+      itemCount: collections.length,
+      itemBuilder: (context, index) =>
+          _CollectionGridCell(collection: collections[index]),
+    );
+  }
+}
+
+/// 收藏网格里的单个单元格：封面瓦片 + 标题 + 星评。
+///
+/// 点击整格进入条目详情。封面上叠加观看进度与“已看过”角标,数据来自收藏摘要的
+/// `eps`(总集数)与 `epStatus`(已看集数);集数未知时降级为“看到 N 话”或不显示。
+class _CollectionGridCell extends StatelessWidget {
+  const _CollectionGridCell({required this.collection});
+
+  final BangumiSubjectCollection collection;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final subject = collection.subject;
+    final title = subject?.displayName ?? '条目 ID ${collection.subjectId}';
+    final score = subject != null && subject.score > 0
+        ? subject.score.toStringAsFixed(1)
+        : null;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () {
+        context.pushNamed(
+          'bangumi-subject-detail',
+          pathParameters: {'subjectId': collection.subjectId.toString()},
+        );
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          BangumiCoverTile(
+            imageUrl: subject?.images.preferredListUrl,
+            watched: collection.type == BangumiCollectionType.done,
+            progressLabel: _progressLabel(subject),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontWeight: FontWeight.w700,
+              height: 1.25,
+            ),
+          ),
+          if (score != null) ...[
+            const SizedBox(height: 3),
+            Row(
+              children: [
+                const Icon(Icons.star_rounded, size: 13, color: AppColors.gold),
+                const SizedBox(width: 2),
+                Text(
+                  score,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 生成封面左下角的观看进度文字。
+  ///
+  /// 有总集数时展示“已看 / 总”;总集数未知但有已看进度时降级为“看到 N 话”;
+  /// 完全没有进度信息则不展示,保持封面干净。
+  String? _progressLabel(BangumiCollectionSubject? subject) {
+    final watched = collection.epStatus;
+    final total = subject?.eps ?? 0;
+
+    if (total > 0) {
+      return '$watched/$total';
+    }
+    if (watched > 0) {
+      return '看到 $watched 话';
+    }
+    return null;
   }
 }
 
@@ -667,24 +828,27 @@ class _CollectionFilterChips extends StatelessWidget {
     final moreSelected = !_inlineTypes.contains(selectedType);
     final moreLabel = moreSelected ? (selectedType?.label ?? '全部') : '更多';
 
-    return Row(
-      children: [
-        for (final type in _inlineTypes) ...[
-          ChoiceChip(
-            label: Text(type.label),
-            selected: selectedType == type,
-            showCheckmark: false,
-            onSelected: isBusy ? null : (_) => onTypeChanged(type),
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      clipBehavior: Clip.none,
+      child: Row(
+        children: [
+          for (final type in _inlineTypes) ...[
+            AppFilterPill(
+              label: type.label,
+              selected: selectedType == type,
+              onTap: isBusy ? null : () => onTypeChanged(type),
+            ),
+            const SizedBox(width: 8),
+          ],
+          _MoreFilterMenu(
+            label: moreLabel,
+            selected: moreSelected,
+            isBusy: isBusy,
+            onTypeChanged: onTypeChanged,
           ),
-          const SizedBox(width: 8),
         ],
-        _MoreFilterMenu(
-          label: moreLabel,
-          selected: moreSelected,
-          isBusy: isBusy,
-          onTypeChanged: onTypeChanged,
-        ),
-      ],
+      ),
     );
   }
 }
@@ -709,10 +873,9 @@ class _MoreFilterMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final foreground = selected
-        ? scheme.onSecondaryContainer
-        : scheme.onSurfaceVariant;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final foreground = selected ? scheme.onPrimary : scheme.onSurfaceVariant;
 
     return PopupMenuButton<BangumiCollectionType?>(
       enabled: !isBusy,
@@ -733,12 +896,13 @@ class _MoreFilterMenu extends StatelessWidget {
         ),
       ],
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-        decoration: BoxDecoration(
-          color: selected ? scheme.secondaryContainer : null,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: selected ? Colors.transparent : scheme.outlineVariant,
+        padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+        decoration: ShapeDecoration(
+          color: selected ? scheme.primary : scheme.surface,
+          shape: StadiumBorder(
+            side: selected
+                ? BorderSide.none
+                : BorderSide(color: scheme.outlineVariant),
           ),
         ),
         child: Row(
@@ -746,10 +910,9 @@ class _MoreFilterMenu extends StatelessWidget {
           children: [
             Text(
               label,
-              style: TextStyle(
+              style: theme.textTheme.labelLarge?.copyWith(
                 color: foreground,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
               ),
             ),
             Icon(Icons.arrow_drop_down, size: 20, color: foreground),

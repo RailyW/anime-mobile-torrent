@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../app/app_colors.dart';
 import '../../../shared/image_cache/app_image_cache.dart';
 import '../../../shared/widgets/app_async_views.dart';
 import '../../../shared/widgets/app_chip.dart';
@@ -18,9 +19,9 @@ import 'widgets/bangumi_subject_cover.dart';
 
 /// 沉浸式头部完全展开时的高度（不含状态栏）。
 ///
-/// 该值需要保证在小视口（如 600 高的测试窗口）下，头部收拢后内容区仍能直接
-/// 露出 DMHY 资源搜索入口。
-const double _heroExpandedHeight = 300;
+/// 贴设计稿 `.hero{height:360px}`。因“搜资源 / 我的收藏 / 收藏统计”等分区都在
+/// `SliverToBoxAdapter` 内一次性全量构建,加高头部不影响这些分区的非滚动可见性。
+const double _heroExpandedHeight = 360;
 
 /// Bangumi 条目详情页。
 ///
@@ -119,9 +120,11 @@ class _SubjectDetailView extends StatelessWidget {
 
 /// 可折叠的沉浸式封面头部。
 ///
-/// 完全展开时用大封面头图叠加品牌粉渐变蒙版托起封面卡、标题与评分（保留
-/// 旧版广受好评的封面/头图融合效果）；上滑折叠时头图与内容渐隐、小标题在
-/// 工具栏位置淡入，返回按钮全程常驻。
+/// 对应设计稿 `.hero`:完全展开时用大封面头图铺满,叠一层由顶部微暗→中段透出→
+/// 底部深墨(`AppColors.ink`)→最终融入页面背景的深色 scrim(还原 `.art::after`),
+/// 托起封面卡、白色标题与金色评分;顶栏(`.d-topbar`)常驻一枚返回圆钮与一枚
+/// ember「搜资源」圆钮。上滑折叠时头图与展开内容渐隐,顶栏浮出不透明底、小标题
+/// 淡入,两枚圆钮全程可点。
 class _SubjectHeroAppBar extends StatelessWidget {
   const _SubjectHeroAppBar({required this.subject});
 
@@ -130,6 +133,7 @@ class _SubjectHeroAppBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final dmhyKeyword = buildBangumiDmhyKeyword(subject);
 
     return SliverAppBar(
       pinned: true,
@@ -137,12 +141,8 @@ class _SubjectHeroAppBar extends StatelessWidget {
       backgroundColor: scheme.surface,
       surfaceTintColor: Colors.transparent,
       automaticallyImplyLeading: false,
-      leading: Center(
-        child: IconButton.filledTonal(
-          onPressed: () => Navigator.of(context).maybePop(),
-          icon: const Icon(Icons.arrow_back),
-        ),
-      ),
+      leading: const SizedBox.shrink(),
+      leadingWidth: 0,
       flexibleSpace: LayoutBuilder(
         builder: (context, constraints) {
           final topPadding = MediaQuery.paddingOf(context).top;
@@ -157,12 +157,14 @@ class _SubjectHeroAppBar extends StatelessWidget {
           final heroOpacity = ((t - 0.35) / 0.65).clamp(0.0, 1.0);
           // 折叠小标题在接近收拢时才淡入。
           final collapsedOpacity = (1 - t / 0.3).clamp(0.0, 1.0);
+          // 顶栏不透明底：折叠时浮现（与小标题反向同步），还原 `.d-topbar.solid`。
+          final barSolid = collapsedOpacity;
 
           return Stack(
             fit: StackFit.expand,
             clipBehavior: Clip.hardEdge,
             children: [
-              // 底层：封面头图 + 渐变融合（与旧版一致的融合效果），随折叠渐隐。
+              // 底层：封面头图 + 深色沉浸式 scrim（还原 `.art::after`），随折叠渐隐。
               Opacity(
                 opacity: heroOpacity,
                 child: Stack(
@@ -183,23 +185,37 @@ class _SubjectHeroAppBar extends StatelessWidget {
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
                           colors: [
-                            scheme.surface.withValues(alpha: 0.2),
-                            scheme.surface.withValues(alpha: 0.85),
+                            Colors.black.withValues(alpha: 0.25),
+                            Colors.transparent,
+                            Colors.transparent,
+                            AppColors.ink.withValues(alpha: 0.55),
                             scheme.surface,
                           ],
-                          stops: const [0.0, 0.7, 1.0],
+                          stops: const [0.0, 0.26, 0.40, 0.74, 1.0],
+                        ),
+                      ),
+                    ),
+                    // `.grain`：左上角一层柔和高光，叠加混合，给深色头图一点层次。
+                    const DecoratedBox(
+                      decoration: BoxDecoration(
+                        backgroundBlendMode: BlendMode.overlay,
+                        gradient: RadialGradient(
+                          center: Alignment(-0.6, -1),
+                          radius: 1.1,
+                          colors: [Color(0x66FFFFFF), Colors.transparent],
+                          stops: [0.0, 0.55],
                         ),
                       ),
                     ),
                   ],
                 ),
               ),
-              // 展开态内容：封面卡 + 标题 + 原名 + 大评分。轻微上移增强折叠时
-              // 的进出方向感。
+              // 展开态内容：封面卡 + 白色标题 + 原名 + 金色大评分。轻微上移增强
+              // 折叠时的进出方向感。
               Positioned(
-                left: 16,
-                right: 16,
-                bottom: 16,
+                left: 22,
+                right: 22,
+                bottom: 20,
                 child: Opacity(
                   opacity: heroOpacity,
                   child: Transform.translate(
@@ -212,9 +228,10 @@ class _SubjectHeroAppBar extends StatelessWidget {
                             borderRadius: BorderRadius.circular(14),
                             boxShadow: [
                               BoxShadow(
-                                color: scheme.shadow.withValues(alpha: 0.28),
-                                blurRadius: 18,
-                                offset: const Offset(0, 8),
+                                color: Colors.black.withValues(alpha: 0.5),
+                                blurRadius: 30,
+                                spreadRadius: -8,
+                                offset: const Offset(0, 12),
                               ),
                             ],
                           ),
@@ -222,8 +239,8 @@ class _SubjectHeroAppBar extends StatelessWidget {
                             imageUrl:
                                 subject.images.large ??
                                 subject.images.preferredListUrl,
-                            width: 110,
-                            height: 156,
+                            width: 112,
+                            height: 158,
                             borderRadius: 14,
                           ),
                         ),
@@ -234,26 +251,74 @@ class _SubjectHeroAppBar extends StatelessWidget {
                   ),
                 ),
               ),
-              // 折叠态小标题：出现在工具栏位置，与返回按钮同排。
+              // 顶栏：折叠时浮现的不透明底 + 底部描边，还原 `.d-topbar.solid .bar-bg`。
               Positioned(
-                top: topPadding,
-                left: 60,
-                right: 16,
-                height: kToolbarHeight,
+                top: 0,
+                left: 0,
+                right: 0,
+                height: topPadding + kToolbarHeight,
                 child: IgnorePointer(
                   child: Opacity(
-                    opacity: collapsedOpacity,
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        subject.displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w800),
+                    opacity: barSolid,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: scheme.surface,
+                        border: Border(
+                          bottom: BorderSide(color: scheme.outlineVariant),
+                        ),
                       ),
                     ),
                   ),
+                ),
+              ),
+              // 顶栏内容：返回圆钮 + 折叠小标题 + ember「搜资源」圆钮。
+              Positioned(
+                top: topPadding,
+                left: 12,
+                right: 12,
+                height: kToolbarHeight,
+                child: Row(
+                  children: [
+                    _HeroRoundButton(
+                      icon: Icons.arrow_back,
+                      tooltip: '返回',
+                      solidProgress: barSolid,
+                      onPressed: () => Navigator.of(context).maybePop(),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: IgnorePointer(
+                        child: Opacity(
+                          opacity: collapsedOpacity,
+                          child: Text(
+                            subject.displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (dmhyKeyword.isNotEmpty) ...[
+                      const SizedBox(width: 6),
+                      _HeroRoundButton(
+                        icon: Icons.search_outlined,
+                        tooltip: '搜资源',
+                        solidProgress: barSolid,
+                        foreground: AppColors.ember,
+                        onPressed: () {
+                          context.goNamed(
+                            'home',
+                            queryParameters: {
+                              'tab': 'dmhy',
+                              'keyword': dmhyKeyword,
+                            },
+                          );
+                        },
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ],
@@ -264,16 +329,86 @@ class _SubjectHeroAppBar extends StatelessWidget {
   }
 }
 
-/// 展开态头部右侧的标题块：主标题、原名与大评分行。
+/// 详情顶栏(`.d-round`)上的一枚 40px 圆钮。
+///
+/// 展开态叠在深色头图上时用高透白底 + 深墨/ember 图标保证清晰;`solidProgress`
+/// 随折叠推进(0→1)把底色过渡到 `surfaceContainerHighest`、并收起阴影,还原
+/// 设计稿 `.d-topbar.solid .d-round`。
+class _HeroRoundButton extends StatelessWidget {
+  const _HeroRoundButton({
+    required this.icon,
+    required this.tooltip,
+    required this.solidProgress,
+    required this.onPressed,
+    this.foreground,
+  });
+
+  final IconData icon;
+  final String tooltip;
+
+  /// 折叠推进度:0 完全展开(浮在头图上),1 完全折叠(融入实心顶栏)。
+  final double solidProgress;
+  final VoidCallback onPressed;
+
+  /// 图标色;为空时用主文本墨色(返回钮),ember 用于「搜资源」钮。
+  final Color? foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final background = Color.lerp(
+      Colors.white.withValues(alpha: 0.9),
+      scheme.surfaceContainerHighest,
+      solidProgress,
+    );
+    final iconColor =
+        foreground ?? Color.lerp(AppColors.ink, scheme.onSurface, solidProgress);
+    final shadowOpacity = (1 - solidProgress) * 0.14;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: background,
+        boxShadow: shadowOpacity > 0
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: shadowOpacity),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : null,
+      ),
+      child: IconButton(
+        onPressed: onPressed,
+        tooltip: tooltip,
+        iconSize: 20,
+        constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+        padding: EdgeInsets.zero,
+        style: IconButton.styleFrom(foregroundColor: iconColor),
+        icon: Icon(icon),
+      ),
+    );
+  }
+}
+
+/// 展开态头部右侧的标题块：白色主标题、原名与金色大评分行。
+///
+/// 该块叠在深色 hero scrim 上,因此固定用亮色 + 投影(不走 `colorScheme`),
+/// 还原设计稿 `.hero-tt`。
 class _HeroTitleBlock extends StatelessWidget {
   const _HeroTitleBlock({required this.subject});
 
   final BangumiSubject subject;
 
+  /// 白色文字在深色头图上的统一投影,还原 `text-shadow`。
+  static const List<Shadow> _titleShadows = [
+    Shadow(color: Color(0x66000000), blurRadius: 12, offset: Offset(0, 2)),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final rating = subject.rating;
 
     return Column(
@@ -284,60 +419,88 @@ class _HeroTitleBlock extends StatelessWidget {
           maxLines: 3,
           overflow: TextOverflow.ellipsis,
           style: theme.textTheme.titleLarge?.copyWith(
+            color: Colors.white,
             fontWeight: FontWeight.w800,
-            height: 1.25,
+            height: 1.22,
+            shadows: _titleShadows,
           ),
         ),
         if (subject.subtitleName != null) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: 5),
           Text(
             subject.subtitleName!,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: theme.textTheme.bodySmall?.copyWith(
-              color: scheme.onSurfaceVariant,
+              color: Colors.white.withValues(alpha: 0.8),
+              shadows: _titleShadows,
             ),
           ),
         ],
         const SizedBox(height: 10),
-        // 大评分行：星标 + 大号分数 + Rank 与评分人数。
+        // 大评分行：金色星标 + 大号白色分数 + Rank / 人数白字 pill。
         Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Icon(Icons.star_rounded, size: 22, color: scheme.secondary),
-            const SizedBox(width: 4),
+            const Icon(Icons.star_rounded, size: 18, color: AppColors.gold),
+            const SizedBox(width: 6),
             if (rating.score > 0)
               Text(
                 rating.score.toStringAsFixed(1),
                 style: theme.textTheme.titleLarge?.copyWith(
+                  fontSize: 22,
                   fontWeight: FontWeight.w800,
-                  color: scheme.primary,
+                  color: Colors.white,
+                  shadows: _titleShadows,
                 ),
               )
             else
               Text(
                 '暂无评分',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: scheme.onSurfaceVariant,
+                  color: Colors.white.withValues(alpha: 0.8),
+                  shadows: _titleShadows,
                 ),
               ),
             const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                [
-                  if (rating.rank > 0) 'Rank ${rating.rank}',
-                  if (rating.total > 0) '${rating.total} 人评分',
-                ].join(' · '),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-            ),
+            if (rating.rank > 0) ...[
+              _HeroRatingPill(label: 'Rank ${rating.rank}'),
+              const SizedBox(width: 6),
+            ],
+            if (rating.total > 0)
+              Flexible(child: _HeroRatingPill(label: '${rating.total} 人评分')),
           ],
         ),
       ],
+    );
+  }
+}
+
+/// hero 评分行里的白字 pill(`.rk`):半透明白底 + 高对比白字。
+class _HeroRatingPill extends StatelessWidget {
+  const _HeroRatingPill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: Colors.white.withValues(alpha: 0.85),
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
     );
   }
 }

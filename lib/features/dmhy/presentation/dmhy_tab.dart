@@ -4,10 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../app/app_colors.dart';
 import '../../../shared/utils/app_format.dart';
 import '../../../shared/widgets/app_async_views.dart';
 import '../../../shared/widgets/app_chip.dart';
+import '../../../shared/widgets/app_filter_pill.dart';
 import '../../../shared/widgets/app_section.dart';
+import '../../../shared/widgets/app_segmented_toggle.dart';
 import '../../subscriptions/application/dmhy_subscription_providers.dart';
 import '../../torrent_handoff/application/torrent_handoff_providers.dart';
 import '../../torrent_handoff/domain/torrent_client_capabilities.dart';
@@ -310,8 +313,9 @@ class _DmhyEntryContextBanner extends StatelessWidget {
 
 /// 搜索输入区。
 ///
-/// 圆角搜索框承载关键词，下面一行是横向滚动的 chip 组：先是搜索范围
-/// （仅动画 / 全站），再是排序方式。回车或点击键盘搜索键即可提交。
+/// 圆角搜索框承载关键词;下面先是一枚 [AppSegmentedToggle] 切换搜索范围
+/// (仅动画 / 全站)——对应设计稿 `.seg` 的“开关感”明确的二选一,再是一排可横向
+/// 滚动的 [AppFilterPill] 排序选项。回车或点击键盘搜索键即可提交。
 class _DmhySearchBar extends StatelessWidget {
   const _DmhySearchBar({
     required this.controller,
@@ -331,12 +335,6 @@ class _DmhySearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final labelStyle = theme.textTheme.labelMedium?.copyWith(
-      color: scheme.onSurfaceVariant,
-    );
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -355,34 +353,25 @@ class _DmhySearchBar extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 12),
+        AppSegmentedToggle<bool>(
+          selected: animeOnly,
+          onChanged: onAnimeOnlyChanged,
+          segments: const [
+            AppSegment(value: true, label: '仅动画'),
+            AppSegment(value: false, label: '全站'),
+          ],
+        ),
+        const SizedBox(height: 12),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
+          clipBehavior: Clip.none,
           child: Row(
-            mainAxisSize: MainAxisSize.min,
             children: [
-              Text('范围', style: labelStyle),
-              const SizedBox(width: 10),
-              ChoiceChip(
-                label: const Text('仅动画'),
-                selected: animeOnly,
-                onSelected: (_) => onAnimeOnlyChanged(true),
-              ),
-              const SizedBox(width: 8),
-              ChoiceChip(
-                label: const Text('全站'),
-                selected: !animeOnly,
-                onSelected: (_) => onAnimeOnlyChanged(false),
-              ),
-              const SizedBox(width: 14),
-              Container(width: 1, height: 22, color: scheme.outlineVariant),
-              const SizedBox(width: 14),
-              Text('排序', style: labelStyle),
-              const SizedBox(width: 10),
               for (final sort in DmhyResourceSort.values) ...[
-                ChoiceChip(
-                  label: Text(sort.label),
+                AppFilterPill(
+                  label: sort.label,
                   selected: selectedSort == sort,
-                  onSelected: (_) => onSortChanged(sort),
+                  onTap: () => onSortChanged(sort),
                 ),
                 const SizedBox(width: 8),
               ],
@@ -1127,6 +1116,7 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final resource = widget.resource;
     final clientCapabilities = ref.watch(torrentClientCapabilitiesProvider);
     final torrentAction = _SeedHandoffAction.fromCapabilities(
@@ -1136,19 +1126,34 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
       onDownloadTorrent: () => _downloadAndOpenTorrent(context),
     );
 
+    // 底部左侧的种子 / 下载统计,对应设计稿 `.r-stats` 的一排轻量指标。
+    final stats = <Widget>[
+      if (resource.stats.seedCount != null)
+        _ResourceStat(
+          icon: Icons.cloud_upload_outlined,
+          label: '种子 ${resource.stats.seedCount}',
+          emphasize: true,
+        ),
+      if (resource.stats.downloadCount != null)
+        _ResourceStat(
+          icon: Icons.cloud_download_outlined,
+          label: '下载 ${resource.stats.downloadCount}',
+        ),
+    ];
+
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.fromLTRB(15, 14, 15, 14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               resource.title,
-              maxLines: 3,
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleSmall,
+              style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 9),
             Wrap(
               spacing: 6,
               runSpacing: 6,
@@ -1169,30 +1174,35 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
                     icon: Icons.storage_outlined,
                     label: resource.stats.sizeLabel!,
                   ),
-                if (resource.stats.seedCount != null)
-                  AppChip(
-                    icon: Icons.cloud_upload_outlined,
-                    label: '种子 ${resource.stats.seedCount}',
-                    tone: AppChipTone.positive,
-                  ),
-                if (resource.stats.downloadCount != null)
-                  AppChip(
-                    icon: Icons.cloud_download_outlined,
-                    label: '下载 ${resource.stats.downloadCount}',
-                  ),
               ],
             ),
+            const SizedBox(height: 12),
+            Divider(height: 1, thickness: 1, color: scheme.outlineVariant),
             const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
-                  child: FilledButton.icon(
-                    onPressed: torrentAction.onPressed,
-                    icon: torrentAction.icon,
-                    label: Text(torrentAction.label),
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 4,
+                    children: stats,
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
+                FilledButton.icon(
+                  onPressed: torrentAction.onPressed,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.ember,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                  ),
+                  icon: torrentAction.icon,
+                  label: Text(torrentAction.label),
+                ),
+                const SizedBox(width: 7),
                 IconButton.outlined(
                   onPressed: () => _openMagnet(context),
                   tooltip: '用客户端打开 magnet',
@@ -1327,6 +1337,44 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
         path: '/',
         queryParameters: {'tab': 'playback', 'source': 'dmhyTorrent'},
       ).toString(),
+    );
+  }
+}
+
+/// DMHY 卡片底栏左侧的一枚统计指标(种子数 / 下载数)。
+///
+/// 对应设计稿 `.rs`:一个描边小图标 + 一段紧凑数字。`emphasize` 让种子数这类
+/// 更关键的指标用主文本色,普通指标走更淡的 `onSurfaceVariant`。
+class _ResourceStat extends StatelessWidget {
+  const _ResourceStat({
+    required this.icon,
+    required this.label,
+    this.emphasize = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final color = emphasize ? scheme.onSurface : scheme.onSurfaceVariant;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: scheme.onSurfaceVariant),
+        const SizedBox(width: 4),
+        Text(
+          label,
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }
