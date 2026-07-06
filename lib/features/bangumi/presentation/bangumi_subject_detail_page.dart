@@ -171,13 +171,13 @@ class _SubjectHeroAppBar extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     subject.images.large == null
-                        ? ColoredBox(color: scheme.primaryContainer)
+                        ? const _HeroArtFallback()
                         : CachedNetworkImage(
                             imageUrl: subject.images.large!,
                             cacheManager: appImageCacheManager,
                             fit: BoxFit.cover,
                             errorWidget: (context, url, error) =>
-                                ColoredBox(color: scheme.primaryContainer),
+                                const _HeroArtFallback(),
                           ),
                     DecoratedBox(
                       decoration: BoxDecoration(
@@ -324,6 +324,29 @@ class _SubjectHeroAppBar extends StatelessWidget {
             ],
           );
         },
+      ),
+    );
+  }
+}
+
+/// 头图缺图时的深色沉浸式兜底。
+///
+/// 设计稿 `.hero` 恒有封面铺底;真实数据里部分条目没有 `images.large`。此时不能
+/// 退回浅色容器色(会让 hero 看起来是“旧的浅色样式”),而是铺一层从樱粉墨
+/// (`--sakura-ink`)到深墨(`--ink`)的竖向渐变,保证白色标题、金色评分在任何
+/// 条目上都稳定落在深色沉浸式底上。
+class _HeroArtFallback extends StatelessWidget {
+  const _HeroArtFallback();
+
+  @override
+  Widget build(BuildContext context) {
+    return const DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [AppColors.sakuraInk, AppColors.ink],
+        ),
       ),
     );
   }

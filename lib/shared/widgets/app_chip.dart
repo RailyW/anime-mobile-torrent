@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../app/app_colors.dart';
+
 /// 通用信息标签。
 ///
 /// 用于展示字幕组、分辨率、条目类型、放送日期等短文本元信息，是全局唯一的
@@ -30,11 +32,10 @@ class AppChip extends StatelessWidget {
         scheme.surfaceContainerHighest,
         scheme.onSurfaceVariant,
       ),
-      AppChipTone.brand => (scheme.primaryContainer, scheme.onPrimaryContainer),
-      AppChipTone.positive => (
-        scheme.tertiaryContainer,
-        scheme.onTertiaryContainer,
-      ),
+      // 品牌 / 正向态用设计稿手挑的柔和软色(`.chip.brand` / `.chip.leaf`),
+      // 而非 sakura 种子派生的 `xxxContainer`(色相偏移、偏粉)。
+      AppChipTone.brand => (AppColors.sakuraSoft, AppColors.sakuraInk),
+      AppChipTone.positive => (AppColors.leafSoft, AppColors.leaf),
     };
 
     return DecoratedBox(

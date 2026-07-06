@@ -40,4 +40,25 @@ abstract final class AppColors {
 
   /// 青绿柔和背景(`--leaf-soft`),用于“已看”类角标底色。
   static const Color leafSoft = Color(0xFFE0F1EE);
+
+  /// 页面底色(`--bg`),比纯白略暖,衬托白色卡片。
+  static const Color bg = Color(0xFFFBFAFB);
+
+  /// 分组浅底(`--surface-2`),用于分段控件容器、输入框底、信息 chip 底。
+  ///
+  /// 这是一支**中性**浅灰,刻意避开由 sakura 种子派生的 `surfaceContainerHighest`
+  /// (带可见粉调),以还原设计稿干净的灰底。
+  static const Color surface2 = Color(0xFFF4F2F5);
+
+  /// 次文字(`--ink-2`),用于副标题、chip 文字等二级信息。
+  static const Color ink2 = Color(0xFF5C545B);
+
+  /// 三级文字(`--muted`),用于弱化说明、未选中态文字。
+  static const Color muted = Color(0xFF958D95);
+
+  /// 发丝分隔线(`--line`)。
+  static const Color line = Color(0xFFECE8EE);
+
+  /// 描边线(`--line-2`),用于卡片 / chip / 分段容器的 1px 描边。
+  static const Color line2 = Color(0xFFE2DDE4);
 }

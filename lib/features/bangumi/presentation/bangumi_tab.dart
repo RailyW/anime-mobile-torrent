@@ -599,7 +599,7 @@ class _CollectionsContent extends StatelessWidget {
         else
           ...collections.map(
             (collection) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.only(bottom: 4),
               child: _CollectionCard(collection: collection),
             ),
           ),
@@ -923,10 +923,12 @@ class _MoreFilterMenu extends StatelessWidget {
   }
 }
 
-/// 单条收藏卡片。
+/// 单条收藏卡片（列表视图，对齐设计稿 `.l-item`）。
 ///
-/// 封面加标题、关键信息 chips 与资源搜索入口，点击整卡进入条目详情。跳转
-/// DMHY 只传递关键词，真实搜索与种子交接仍由搜索页处理。
+/// 扁平的一行：左侧 62 宽竖版封面（带类型角标），中间标题 / 原名 / 信息 chip 行
+/// （金星评分 · 类型话数 · 状态），右侧状态圆点与一枚 ember「搜资源」圆钮。整行
+/// 点击进入条目详情；「搜资源」只把关键词带去资源页，真实搜索与种子交接仍由
+/// 资源页处理。相比网格瓦片，列表视图信息更全，并保留资源检索快捷入口。
 class _CollectionCard extends StatelessWidget {
   const _CollectionCard({required this.collection});
 
@@ -935,102 +937,201 @@ class _CollectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final subject = collection.subject;
     final title = subject?.displayName ?? '条目 ID ${collection.subjectId}';
     final subtitle = subject?.subtitleName;
+    final typeLabel =
+        subject != null && subject.type != BangumiSubjectType.unknown
+        ? subject.type.label
+        : null;
+    final eps = subject?.eps ?? 0;
+    final score = subject != null && subject.score > 0
+        ? subject.score.toStringAsFixed(1)
+        : '—';
     final dmhyKeyword = subject == null
         ? ''
         : normalizeBangumiDmhyKeyword(subject.displayName);
+    final metaLabel = [
+      ?typeLabel,
+      if (eps > 0) '$eps 话',
+    ].join(' · ');
 
-    return Card(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          context.pushNamed(
-            'bangumi-subject-detail',
-            pathParameters: {'subjectId': collection.subjectId.toString()},
-          );
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              BangumiSubjectCover(
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () {
+        context.pushNamed(
+          'bangumi-subject-detail',
+          pathParameters: {'subjectId': collection.subjectId.toString()},
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 62,
+              child: BangumiCoverTile(
                 imageUrl: subject?.images.preferredListUrl,
-                width: 60,
-                height: 84,
+                typeLabel: typeLabel,
                 borderRadius: 10,
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall?.copyWith(height: 1.3),
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 2),
                     Text(
-                      title,
-                      maxLines: 2,
+                      subtitle,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall,
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: AppColors.muted,
                       ),
-                    ],
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        AppChip(
-                          label: collection.type.label,
-                          icon: Icons.bookmark_outline,
-                          tone: AppChipTone.brand,
-                        ),
-                        if (collection.rate > 0)
-                          AppChip(
-                            label: '${collection.rate} 分',
-                            icon: Icons.star_outline,
-                          ),
-                        if (collection.epStatus > 0)
-                          AppChip(label: '看到 ${collection.epStatus} 话'),
-                      ],
                     ),
                   ],
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      _CollectionMiniChip(label: score, tone: _MiniChipTone.star),
+                      if (metaLabel.isNotEmpty)
+                        _CollectionMiniChip(label: metaLabel),
+                      _statusChip(collection, eps),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            Container(
+              width: 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: _statusColor(collection.type),
+                shape: BoxShape.circle,
+              ),
+            ),
+            if (dmhyKeyword.isNotEmpty)
+              IconButton(
+                tooltip: '搜资源',
+                visualDensity: VisualDensity.compact,
+                style: IconButton.styleFrom(
+                  fixedSize: const Size.square(34),
+                  minimumSize: const Size.square(34),
+                  padding: EdgeInsets.zero,
+                  foregroundColor: AppColors.ember,
+                ),
+                onPressed: () {
+                  context.goNamed(
+                    'home',
+                    queryParameters: {'tab': 'dmhy', 'keyword': dmhyKeyword},
+                  );
+                },
+                icon: const Icon(Icons.search_rounded, size: 20),
+              )
+            else
+              const Padding(
+                padding: EdgeInsets.only(left: 4),
+                child: Icon(
+                  Icons.chevron_right_rounded,
+                  size: 22,
+                  color: AppColors.line2,
                 ),
               ),
-              if (dmhyKeyword.isNotEmpty) ...[
-                const SizedBox(width: 8),
-                IconButton.outlined(
-                  tooltip: '搜资源',
-                  style: IconButton.styleFrom(
-                    fixedSize: const Size.square(40),
-                    minimumSize: const Size.square(40),
-                    padding: EdgeInsets.zero,
-                    shape: const CircleBorder(),
-                    side: BorderSide(color: scheme.outlineVariant),
-                    foregroundColor: scheme.primary,
-                  ),
-                  onPressed: () {
-                    context.goNamed(
-                      'home',
-                      queryParameters: {'tab': 'dmhy', 'keyword': dmhyKeyword},
-                    );
-                  },
-                  icon: const Icon(Icons.search_outlined, size: 20),
-                ),
-              ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 状态 chip：在看→品牌软色（含进度）、看过→青绿软色，其余按状态标签用中性色。
+  Widget _statusChip(BangumiSubjectCollection collection, int eps) {
+    switch (collection.type) {
+      case BangumiCollectionType.doing:
+        final label = eps > 0 ? '在看 ${collection.epStatus}/$eps' : '在看';
+        return _CollectionMiniChip(label: label, tone: _MiniChipTone.brand);
+      case BangumiCollectionType.done:
+        return const _CollectionMiniChip(label: '看过', tone: _MiniChipTone.leaf);
+      case BangumiCollectionType.wish:
+      case BangumiCollectionType.onHold:
+      case BangumiCollectionType.dropped:
+        return _CollectionMiniChip(label: collection.type.label);
+    }
+  }
+
+  /// 状态圆点颜色，对齐设计稿 `STATUS[*].color`。
+  Color _statusColor(BangumiCollectionType type) {
+    return switch (type) {
+      BangumiCollectionType.doing => AppColors.sakura,
+      BangumiCollectionType.wish => AppColors.muted,
+      BangumiCollectionType.done => AppColors.leaf,
+      BangumiCollectionType.onHold => AppColors.gold,
+      BangumiCollectionType.dropped => const Color(0xFFB9A7B0),
+    };
+  }
+}
+
+/// 收藏列表行内的小信息 chip（对齐设计稿 `.chip`）。
+///
+/// 比通用的 [AppChip] 更紧凑（11px、圆角 8），并支持“星评分”这种无底透明、
+/// 金色文字带星的特例，用于列表行的评分 / 类型 / 状态一行三枚小标签。
+enum _MiniChipTone { neutral, brand, leaf, star }
+
+class _CollectionMiniChip extends StatelessWidget {
+  const _CollectionMiniChip({
+    required this.label,
+    this.tone = _MiniChipTone.neutral,
+  });
+
+  final String label;
+  final _MiniChipTone tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final (background, foreground) = switch (tone) {
+      _MiniChipTone.neutral => (AppColors.surface2, AppColors.ink2),
+      _MiniChipTone.brand => (AppColors.sakuraSoft, AppColors.sakuraInk),
+      _MiniChipTone.leaf => (AppColors.leafSoft, AppColors.leaf),
+      _MiniChipTone.star => (Colors.transparent, AppColors.gold),
+    };
+    final isStar = tone == _MiniChipTone.star;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(isStar ? 0 : 8, 3, 8, 3),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isStar) ...[
+              const Icon(Icons.star_rounded, size: 13, color: AppColors.gold),
+              const SizedBox(width: 2),
             ],
-          ),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isStar ? FontWeight.w700 : FontWeight.w600,
+                color: foreground,
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'app_colors.dart';
+
 /// Sakura 设计系统的品牌色。
 ///
 /// 选用接近 Bangumi 的樱粉作为种子色，让亮色与暗色主题的中性色都带上
@@ -15,8 +17,11 @@ const _emberAccent = Color(0xFFE8743B);
 /// 表示“完成 / 可用 / 已看”等正向状态的柔和青绿色。
 const _leafAccent = Color(0xFF3FA796);
 
-/// 亮色模式下的页面底色，带极淡的粉调，避免纯白显得生硬。
-const _lightSurface = Color(0xFFFFFBFC);
+/// 亮色模式下的卡片底色：纯白，与略暖的页面底色([_lightScaffold])拉开层次。
+const _lightSurface = Color(0xFFFFFFFF);
+
+/// 亮色模式下的页面底色（`--bg`），比纯白略暖，避免纯白显得生硬，也让白卡浮起。
+const _lightScaffold = AppColors.bg;
 
 /// 暗色模式下的页面底色，是带暖调的近黑色，衬托粉色不刺眼。
 const _darkSurface = Color(0xFF161013);
@@ -35,9 +40,15 @@ ThemeData buildLightTheme() {
         secondary: _emberAccent,
         tertiary: _leafAccent,
         surface: _lightSurface,
+        // 用中性灰覆盖 sakura 种子派生的“带粉调”容器 / 描边 / 次文字色，
+        // 让分段控件容器、卡片描边、分隔线、副文字回到设计稿干净的中性灰。
+        surfaceContainerHighest: AppColors.surface2,
+        onSurface: AppColors.ink,
+        onSurfaceVariant: AppColors.ink2,
+        outlineVariant: AppColors.line2,
       );
 
-  return _composeTheme(scheme);
+  return _composeTheme(scheme, scaffoldBackground: _lightScaffold);
 }
 
 /// 构建暗色主题。
@@ -56,7 +67,7 @@ ThemeData buildDarkTheme() {
         surface: _darkSurface,
       );
 
-  return _composeTheme(scheme);
+  return _composeTheme(scheme, scaffoldBackground: _darkSurface);
 }
 
 /// 组装亮色与暗色共享的组件风格。
@@ -64,11 +75,11 @@ ThemeData buildDarkTheme() {
 /// 这里统一管理圆角、字体比例与各组件外观，让全局视觉只有一个事实来源：
 /// 卡片用 16px 圆角加 1px 描边、零阴影；按钮用 12px 圆角；导航栏使用
 /// 药丸形指示器并始终显示文字标签，整体偏柔和、亲和的消费级 App 气质。
-ThemeData _composeTheme(ColorScheme scheme) {
+ThemeData _composeTheme(ColorScheme scheme, {required Color scaffoldBackground}) {
   final base = ThemeData(
     useMaterial3: true,
     colorScheme: scheme,
-    scaffoldBackgroundColor: scheme.surface,
+    scaffoldBackgroundColor: scaffoldBackground,
     splashFactory: InkSparkle.splashFactory,
   );
 

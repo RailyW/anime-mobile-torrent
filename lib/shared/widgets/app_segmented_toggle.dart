@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../app/app_colors.dart';
+
 /// [AppSegmentedToggle] 的单个分段。
 class AppSegment<T> {
   const AppSegment({required this.value, this.label, this.icon, this.tooltip})
@@ -80,6 +82,8 @@ class AppSegmentedToggle<T> extends StatelessWidget {
               child: Stack(
                 children: [
                   // 滑动指示块:随选中下标平滑对齐到对应分段。
+                  // 对齐设计稿 `.seg .thumb`——白底(`--surface`)+ 轻投影,而非
+                  // 品牌粉填充,让容器整体呈干净的中性灰底 + 白色滑块。
                   AnimatedAlign(
                     duration: const Duration(milliseconds: 220),
                     curve: _slideCurve,
@@ -88,8 +92,15 @@ class AppSegmentedToggle<T> extends StatelessWidget {
                       width: segmentWidth,
                       height: double.infinity,
                       decoration: BoxDecoration(
-                        color: scheme.primary,
+                        color: scheme.surface,
                         borderRadius: BorderRadius.circular(9),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.ink.withValues(alpha: 0.12),
+                            blurRadius: 4,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -131,7 +142,9 @@ class _SegmentButton<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final foreground = selected ? scheme.onPrimary : scheme.onSurfaceVariant;
+    // 选中项浮在白色 thumb 上,用深墨字(`.seg button.on{color:var(--ink)}`);
+    // 未选项用中性灰字(`--muted`)。
+    final foreground = selected ? scheme.onSurface : scheme.onSurfaceVariant;
 
     final content = Row(
       mainAxisSize: MainAxisSize.min,
