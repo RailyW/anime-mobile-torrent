@@ -747,7 +747,7 @@ void main() {
     await tester.tap(find.text('测试动画 中文名'));
     await tester.pumpAndSettle();
 
-    expect(find.text('搜资源'), findsOneWidget);
+    expect(find.byTooltip('搜资源'), findsOneWidget);
     expect(find.text('我的收藏'), findsOneWidget);
     expect(find.textContaining('登录 Bangumi'), findsWidgets);
     expect(find.text('收藏统计'), findsOneWidget);
@@ -975,7 +975,7 @@ void main() {
     await tester.tap(find.text('测试动画 中文名'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(FilledButton, '搜资源'));
+    await tester.tap(find.byTooltip('搜资源'));
     await tester.pumpAndSettle();
 
     expect(find.widgetWithText(AppBar, '资源'), findsOneWidget);

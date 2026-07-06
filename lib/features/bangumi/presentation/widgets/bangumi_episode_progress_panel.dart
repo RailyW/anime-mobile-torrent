@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../../app/app_colors.dart';
 import '../../../../shared/widgets/app_async_views.dart';
 import '../../application/bangumi_collection_providers.dart';
 import '../../application/bangumi_providers.dart';
@@ -615,7 +616,9 @@ final ButtonStyle _compactOutlinedStyle = OutlinedButton.styleFrom(
 
 /// 进度仪表：观看进度区的签名视觉元素。
 ///
-/// 樱粉渐变底上叠加一条会从旧值平滑生长到新值的进度条，右侧展示百分比。
+/// 贴设计稿 `.prog-head + .gauge`:上排是「已看统计 + 百分比」文案，下方是一条
+/// 会从旧值平滑生长到新值的细进度条。仪表本身不再自带浅粉底容器——它落在
+/// 「我的收藏」白卡内，只保留一条中性灰轨 + 樱粉渐变填充,与设计稿一致。
 /// 「已看 X / Y 类型」的统计文案保持为单个普通 Text，供测试精确匹配。
 class _ProgressGauge extends StatelessWidget {
   const _ProgressGauge({
@@ -636,89 +639,73 @@ class _ProgressGauge extends StatelessWidget {
         ? (watchedCount / totalCount).clamp(0.0, 1.0)
         : 0.0;
     final percentLabel = totalCount > 0 ? '${(ratio * 100).round()}%' : '—';
-    // 进度条的填充渐变：从主色樱粉过渡到偏暖的珊瑚色，呼应主题的暖橘辅助色。
-    final fillGradient = LinearGradient(
-      colors: [
-        scheme.primary,
-        Color.lerp(scheme.primary, scheme.secondary, 0.55)!,
-      ],
+    final isLight = theme.brightness == Brightness.light;
+    // 进度条填充：设计稿 `.gauge i` 的 sakura → #F0839F 樱粉渐变。
+    const fillGradient = LinearGradient(
+      colors: [AppColors.sakura, Color(0xFFF0839F)],
     );
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            scheme.primaryContainer.withValues(alpha: 0.55),
-            scheme.secondaryContainer.withValues(alpha: 0.30),
-          ],
-        ),
-        border: Border.all(color: scheme.primary.withValues(alpha: 0.12)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Text(
-                  '已看 $watchedCount / $totalCount $typeLabel',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                percentLabel,
-                style: theme.textTheme.titleMedium?.copyWith(
-                  color: scheme.primary,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: Text(
+                '已看 $watchedCount / $totalCount $typeLabel',
+                style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // 进度条本体：TweenAnimationBuilder 让进度变化时从旧值生长到新值，
-          // 首次入场也会有一段从 0 展开的动画。动画一次性收敛，不会阻塞测试。
-          LayoutBuilder(
-            builder: (context, constraints) {
-              return ClipRRect(
-                borderRadius: BorderRadius.circular(6),
-                child: SizedBox(
-                  height: 10,
-                  width: double.infinity,
-                  child: Stack(
-                    children: [
-                      Positioned.fill(
-                        child: ColoredBox(
-                          color: scheme.surface.withValues(alpha: 0.72),
-                        ),
-                      ),
-                      TweenAnimationBuilder<double>(
-                        tween: Tween(begin: 0, end: ratio),
-                        duration: const Duration(milliseconds: 620),
-                        curve: Curves.easeOutCubic,
-                        builder: (context, value, _) {
-                          return Container(
-                            width: constraints.maxWidth * value,
-                            decoration: BoxDecoration(gradient: fillGradient),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              percentLabel,
+              style: theme.textTheme.titleMedium?.copyWith(
+                // 设计稿 `.prog-head .pn` 用加深樱粉墨；暗色下回退到主色保证对比。
+                color: isLight ? AppColors.sakuraInk : scheme.primary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // 进度条本体：TweenAnimationBuilder 让进度变化时从旧值生长到新值，
+        // 首次入场也会有一段从 0 展开的动画。动画一次性收敛，不会阻塞测试。
+        LayoutBuilder(
+          builder: (context, constraints) {
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: SizedBox(
+                height: 10,
+                width: double.infinity,
+                child: Stack(
+                  children: [
+                    // 轨道：设计稿 `.gauge` 的 `--surface-2` 中性灰底。
+                    Positioned.fill(
+                      child: ColoredBox(color: scheme.surfaceContainerHighest),
+                    ),
+                    TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: ratio),
+                      duration: const Duration(milliseconds: 620),
+                      curve: Curves.easeOutCubic,
+                      builder: (context, value, _) {
+                        return Container(
+                          width: constraints.maxWidth * value,
+                          decoration: const BoxDecoration(
+                            gradient: fillGradient,
+                          ),
+                        );
+                      },
+                    ),
+                  ],
                 ),
-              );
-            },
-          ),
-        ],
-      ),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }

@@ -175,6 +175,20 @@ ThemeData _composeTheme(ColorScheme scheme, {required Color scaffoldBackground})
       behavior: SnackBarBehavior.floating,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),
+    // 底部弹层统一白底(设计稿 `.sheet-panel{background:var(--surface)}`)。
+    //
+    // Material 3 默认给模态弹层用 `surfaceContainderLow` + elevation tint，在
+    // sakura 种子下会透出可见的粉调。这里显式把弹层底改成纯白 surface、去掉
+    // elevation 染色，并套用设计稿 22px 顶部圆角，让抽屉「白色为主」，只有其中
+    // 当前选中的选项才带粉底。
+    bottomSheetTheme: BottomSheetThemeData(
+      backgroundColor: scheme.surface,
+      modalBackgroundColor: scheme.surface,
+      surfaceTintColor: Colors.transparent,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+      ),
+    ),
   );
 }
 

@@ -87,8 +87,6 @@ class _SubjectDetailView extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 reveal(_SubjectMetaChips(subject: subject)),
-                const SizedBox(height: 18),
-                reveal(_DmhyCtaCard(subject: subject)),
                 const SizedBox(height: 26),
                 reveal(_MyCollectionSection(subject: subject)),
                 const SizedBox(height: 26),
@@ -564,74 +562,6 @@ class _SubjectMetaChips extends StatelessWidget {
   }
 }
 
-/// DMHY 资源搜索入口卡片。
-///
-/// 用樱粉渐变底和圆形图标强调这是详情页的核心动作；「搜资源」按钮文案与
-/// 禁用条件保持不变。
-class _DmhyCtaCard extends StatelessWidget {
-  const _DmhyCtaCard({required this.subject});
-
-  final BangumiSubject subject;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final keyword = buildBangumiDmhyKeyword(subject);
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            scheme.primaryContainer.withValues(alpha: 0.6),
-            scheme.secondaryContainer.withValues(alpha: 0.35),
-          ],
-        ),
-        border: Border.all(color: scheme.primary.withValues(alpha: 0.12)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: scheme.surface.withValues(alpha: 0.85),
-            ),
-            child: Icon(Icons.search_outlined, color: scheme.primary),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              keyword.isEmpty ? '当前条目缺少可搜索标题' : '在 DMHY 搜索这部番的资源',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          FilledButton(
-            onPressed: keyword.isEmpty
-                ? null
-                : () {
-                    context.goNamed(
-                      'home',
-                      queryParameters: {'tab': 'dmhy', 'keyword': keyword},
-                    );
-                  },
-            child: const Text('搜资源'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// 「我的收藏」分区：登录状态、单条收藏与观看进度面板的容器。
 class _MyCollectionSection extends ConsumerWidget {
   const _MyCollectionSection({required this.subject});
@@ -645,10 +575,31 @@ class _MyCollectionSection extends ConsumerWidget {
       bangumiMySubjectCollectionProvider(subject.id),
     );
 
+    // 已登录且已加载出收藏时，在分区标题右侧显示可点的状态胶囊(设计稿
+    // `.sec-title .more`「在看 ›」),点按打开收藏编辑抽屉——替代旧版卡内的
+    // chip 行 + 铅笔按钮。
+    final currentUser = userState.asData?.value;
+    final currentCollection = currentUser != null
+        ? collectionState.asData?.value
+        : null;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _DetailSectionHeader(title: '我的收藏'),
+        _DetailSectionHeader(
+          title: '我的收藏',
+          trailing: currentCollection != null
+              ? _CollectionStatusPill(
+                  label: currentCollection.type.label,
+                  onTap: () => showBangumiCollectionEditorSheet(
+                    context: context,
+                    ref: ref,
+                    subject: subject,
+                    collection: currentCollection,
+                  ),
+                )
+              : null,
+        ),
         userState.when(
           loading: () => const AppInlineLoading(label: '正在读取登录状态…'),
           error: (error, stackTrace) => AppErrorView(
@@ -699,12 +650,7 @@ class _MyCollectionLoggedOut extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
-      ),
+    return _CollectionCard(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -729,7 +675,11 @@ class _MyCollectionLoggedOut extends StatelessWidget {
   }
 }
 
-/// 已登录时的收藏卡片：收藏摘要 + 编辑入口 + 观看进度面板。
+/// 已登录时的收藏卡片。
+///
+/// 贴设计稿「我的收藏 · 进度」:一张白色 `.card`,动画条目里主体是观看进度面板
+/// (进度条 + 章节时间线),下方以细分隔线托出「我的评分 / 短评 / 标签」这类次级
+/// 备注。收藏状态与编辑入口移到分区标题右侧的状态胶囊,不再在卡内堆 chip。
 class _MyCollectionContent extends StatelessWidget {
   const _MyCollectionContent({
     required this.subject,
@@ -747,100 +697,204 @@ class _MyCollectionContent extends StatelessWidget {
     final scheme = theme.colorScheme;
     final collection = this.collection;
 
+    if (collection == null) {
+      return _CollectionCard(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Text(
+                '还没有收藏这部番',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            FilledButton.icon(
+              onPressed: onEdit,
+              icon: const Icon(Icons.bookmark_add_outlined, size: 18),
+              label: const Text('添加收藏'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    final isAnime = subject.type == BangumiSubjectType.anime;
+    final hasNote =
+        collection.rate > 0 ||
+        collection.comment.isNotEmpty ||
+        collection.isPrivate ||
+        collection.tags.isNotEmpty;
+
+    return _CollectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (isAnime)
+            BangumiEpisodeProgressPanel(subject: subject)
+          else
+            Text(
+              '已加入「${collection.type.label}」清单，点右上角可修改收藏状态',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          if (hasNote) ...[
+            if (isAnime) ...[
+              const SizedBox(height: 14),
+              Divider(
+                height: 1,
+                color: scheme.outlineVariant.withValues(alpha: 0.7),
+              ),
+              const SizedBox(height: 14),
+            ] else
+              const SizedBox(height: 14),
+            _CollectionNote(collection: collection),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// 「我的收藏」用的白色卡片容器。
+///
+/// 还原设计稿 `.card`:纯白 surface 底 + 1px `--line` 描边 + 18px 圆角 + 极淡
+/// 阴影,与页面略暖底色拉开层次。
+class _CollectionCard extends StatelessWidget {
+  const _CollectionCard({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
+        color: scheme.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: scheme.outlineVariant),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.ink.withValues(alpha: 0.04),
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
       ),
-      child: collection == null
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '还没有收藏这部番',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.bookmark_add_outlined),
-                  label: const Text('添加收藏'),
-                ),
-              ],
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          AppChip(
-                            label: collection.type.label,
-                            icon: Icons.bookmark_outline,
-                            tone: AppChipTone.brand,
-                          ),
-                          AppChip(
-                            label: collection.rate > 0
-                                ? '${collection.rate} 分'
-                                : '未评分',
-                            icon: Icons.star_outline,
-                          ),
-                          if (collection.isPrivate)
-                            const AppChip(
-                              label: '仅自己可见',
-                              icon: Icons.visibility_off_outlined,
-                            ),
-                          if (collection.epStatus > 0)
-                            AppChip(label: '章节 ${collection.epStatus}'),
-                          if (collection.volStatus > 0)
-                            AppChip(label: '卷 ${collection.volStatus}'),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton.filledTonal(
-                      onPressed: onEdit,
-                      tooltip: '修改收藏',
-                      visualDensity: VisualDensity.compact,
-                      icon: const Icon(Icons.edit_outlined, size: 18),
-                    ),
-                  ],
-                ),
-                if (collection.comment.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Text(collection.comment, style: theme.textTheme.bodyMedium),
-                ],
-                if (collection.tags.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final tag in collection.tags.take(12))
-                        AppChip(label: tag, icon: Icons.sell_outlined),
-                    ],
-                  ),
-                ],
-                if (subject.type == BangumiSubjectType.anime) ...[
-                  const SizedBox(height: 16),
-                  Divider(
-                    height: 1,
-                    color: scheme.outlineVariant.withValues(alpha: 0.6),
-                  ),
-                  const SizedBox(height: 16),
-                  BangumiEpisodeProgressPanel(subject: subject),
-                ],
-              ],
+      child: child,
+    );
+  }
+}
+
+/// 收藏卡内的次级备注：我的评分、私密标记、短评与个人标签。
+///
+/// 收藏状态本身已在分区标题右侧的状态胶囊呈现,这里只补充评分/短评这类附加
+/// 信息,以轻量文字呈现,不再抢占进度面板的视觉重心。
+class _CollectionNote extends StatelessWidget {
+  const _CollectionNote({required this.collection});
+
+  final BangumiSubjectCollection collection;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.star_rounded, size: 16, color: AppColors.gold),
+            const SizedBox(width: 5),
+            Text(
+              collection.rate > 0 ? '我的评分 ${collection.rate}' : '未评分',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
             ),
+            if (collection.isPrivate) ...[
+              const SizedBox(width: 12),
+              Icon(
+                Icons.visibility_off_outlined,
+                size: 14,
+                color: scheme.onSurfaceVariant,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '仅自己可见',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+        if (collection.comment.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Text(collection.comment, style: theme.textTheme.bodyMedium),
+        ],
+        if (collection.tags.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final tag in collection.tags.take(12))
+                AppChip(label: tag, icon: Icons.sell_outlined),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// 分区标题右侧的收藏状态胶囊(设计稿 `.sec-title .more`「在看 ›」)。
+///
+/// 点按打开收藏编辑抽屉。文字用状态标签,尾随一个右向箭头暗示可点。
+class _CollectionStatusPill extends StatelessWidget {
+  const _CollectionStatusPill({required this.label, required this.onTap});
+
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(20),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 2),
+            Icon(
+              Icons.chevron_right,
+              size: 16,
+              color: scheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1120,14 +1174,23 @@ class _UserTagsSection extends StatelessWidget {
 /// 与共享的 `AppSectionHeader` 相比多了品牌色 accent，属于详情页局部风格，
 /// 因此不改动共享组件。
 class _DetailSectionHeader extends StatelessWidget {
-  const _DetailSectionHeader({required this.title});
+  const _DetailSectionHeader({required this.title, this.trailing});
 
   final String title;
+
+  /// 标题右侧的可选附件（设计稿 `.sec-title .more`），如「我的收藏」的状态胶囊。
+  /// 为空时标题布局与旧版完全一致，不影响其它分区。
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final trailing = this.trailing;
+    final titleText = Text(
+      title,
+      style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+    );
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -1146,12 +1209,8 @@ class _DetailSectionHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          Text(
-            title,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w800,
-            ),
-          ),
+          if (trailing != null) ...[Expanded(child: titleText), trailing] else
+            titleText,
         ],
       ),
     );
