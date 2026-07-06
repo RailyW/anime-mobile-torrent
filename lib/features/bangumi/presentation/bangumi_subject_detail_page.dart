@@ -132,13 +132,17 @@ class _SubjectHeroAppBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    // hero 底部融入的目标色是页面底色（`--bg` / 暗色近黑），不是纯白卡片色，
+    // 否则 scrim 收尾用纯白会和下方 `--bg` 页面底出现一道浅色接缝。
+    final pageBackground = theme.scaffoldBackgroundColor;
     final dmhyKeyword = buildBangumiDmhyKeyword(subject);
 
     return SliverAppBar(
       pinned: true,
       expandedHeight: _heroExpandedHeight,
-      backgroundColor: scheme.surface,
+      backgroundColor: pageBackground,
       surfaceTintColor: Colors.transparent,
       automaticallyImplyLeading: false,
       leading: const SizedBox.shrink(),
@@ -184,14 +188,17 @@ class _SubjectHeroAppBar extends StatelessWidget {
                         gradient: LinearGradient(
                           begin: Alignment.topCenter,
                           end: Alignment.bottomCenter,
+                          // 顶部一层浅暗托住返回钮，中段透出封面，底部用强深墨
+                          // （`--ink`）压住标题/评分区，保证白字在明亮底图上也稳，
+                          // 最后 ~8% 才快速融入页面底色，避免与 body 出现接缝。
                           colors: [
-                            Colors.black.withValues(alpha: 0.25),
+                            Colors.black.withValues(alpha: 0.30),
                             Colors.transparent,
-                            Colors.transparent,
-                            AppColors.ink.withValues(alpha: 0.55),
-                            scheme.surface,
+                            AppColors.ink.withValues(alpha: 0.72),
+                            AppColors.ink.withValues(alpha: 0.90),
+                            pageBackground,
                           ],
-                          stops: const [0.0, 0.26, 0.40, 0.74, 1.0],
+                          stops: const [0.0, 0.34, 0.64, 0.92, 1.0],
                         ),
                       ),
                     ),
@@ -215,7 +222,7 @@ class _SubjectHeroAppBar extends StatelessWidget {
               Positioned(
                 left: 22,
                 right: 22,
-                bottom: 20,
+                bottom: 28,
                 child: Opacity(
                   opacity: heroOpacity,
                   child: Transform.translate(
@@ -262,7 +269,7 @@ class _SubjectHeroAppBar extends StatelessWidget {
                     opacity: barSolid,
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: scheme.surface,
+                        color: pageBackground,
                         border: Border(
                           bottom: BorderSide(color: scheme.outlineVariant),
                         ),
