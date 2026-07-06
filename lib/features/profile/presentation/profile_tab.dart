@@ -6,7 +6,6 @@ import 'package:go_router/go_router.dart';
 import '../../../shared/image_cache/app_image_cache.dart';
 import '../../../shared/image_cache/app_image_cache_providers.dart';
 import '../../../shared/widgets/app_section.dart';
-import '../../background/presentation/background_page.dart';
 import '../../bangumi/application/bangumi_auth_providers.dart';
 import '../../bangumi/domain/bangumi_auth.dart';
 import '../../bangumi/domain/bangumi_user.dart';
@@ -519,9 +518,7 @@ class _ToolsSection extends StatelessWidget {
               icon: Icons.notifications_active_outlined,
               title: '后台与订阅',
               subtitle: '后台常驻、RSS 订阅关键词与自动检查',
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const BackgroundPage()),
-              ),
+              onTap: () => context.pushNamed('background'),
             ),
             const Divider(),
             AppNavRow(
@@ -550,11 +547,40 @@ class _ToolsSection extends StatelessWidget {
               subtitle: '配置本机 client id 与回调地址',
               onTap: () => context.pushNamed('bangumi-oauth-settings'),
             ),
+            const Divider(),
+            AppNavRow(
+              icon: Icons.dns_outlined,
+              title: '资源来源',
+              subtitle: '当前来源 dmhy.org',
+              onTap: () => _showResourceSourceInfo(context),
+            ),
           ],
         ),
       ),
     );
   }
+}
+
+/// 展示当前资源来源说明。
+///
+/// 目前只接入 dmhy.org 一个真实来源，这里先给出纯展示型说明，为未来接入更多
+/// 来源预留设置入口位置。
+Future<void> _showResourceSourceInfo(BuildContext context) {
+  return showDialog<void>(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: const Text('资源来源'),
+        content: const Text('当前仅支持 dmhy.org，更多来源开发中。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('知道了'),
+          ),
+        ],
+      );
+    },
+  );
 }
 
 /// 图片缓存入口行。

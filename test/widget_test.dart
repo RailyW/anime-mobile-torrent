@@ -57,17 +57,17 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
   });
 
-  testWidgets('首页可以在追番、搜索、我的三个 tab 之间切换', (tester) async {
+  testWidgets('首页可以在追番、资源、我的三个 tab 之间切换', (tester) async {
     await tester.pumpWidget(_buildTestApp());
     await tester.pumpAndSettle();
 
-    // 默认进入追番 tab。
-    expect(find.widgetWithText(AppBar, '追番'), findsOneWidget);
+    // 默认进入 Bangumi tab。
+    expect(find.widgetWithText(AppBar, 'Bangumi'), findsOneWidget);
     expect(find.text('登录后追番更方便'), findsOneWidget);
 
-    await tester.tap(find.text('搜索').last);
+    await tester.tap(find.text('资源').last);
     await tester.pumpAndSettle();
-    expect(find.widgetWithText(AppBar, '搜索'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, '资源'), findsOneWidget);
     expect(find.text('搜索动画资源'), findsOneWidget);
 
     await tester.tap(find.text('我的').last);
@@ -249,7 +249,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.widgetWithText(AppBar, '搜索'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, '资源'), findsOneWidget);
     expect(find.text('来自后台订阅'), findsOneWidget);
     expect(find.widgetWithText(TextButton, '查看后台摘要'), findsOneWidget);
     expect(find.text('“测试动画 1080”'), findsOneWidget);
@@ -564,7 +564,7 @@ void main() {
     await tester.tap(find.text('测试动画 1080 · 全站'));
     await tester.pumpAndSettle();
 
-    expect(find.widgetWithText(AppBar, '搜索'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, '资源'), findsOneWidget);
     expect(find.text('“测试动画 1080”'), findsOneWidget);
     expect(dmhyRepository.requests.single.animeOnly, isFalse);
   });
@@ -583,6 +583,9 @@ void main() {
         child: const AnimeMobileTorrentApp(),
       ),
     );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('搜索 Bangumi'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), '测试动画');
@@ -614,6 +617,9 @@ void main() {
         child: const AnimeMobileTorrentApp(),
       ),
     );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('搜索 Bangumi'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), '测试动画');
@@ -653,6 +659,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byTooltip('搜索 Bangumi'));
+    await tester.pumpAndSettle();
+
     await tester.enterText(find.byType(TextField), '测试动画');
     await tester.pump(const Duration(milliseconds: 400));
 
@@ -681,6 +690,9 @@ void main() {
         child: const AnimeMobileTorrentApp(),
       ),
     );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('搜索 Bangumi'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), '测试动画');
@@ -718,6 +730,9 @@ void main() {
         child: const AnimeMobileTorrentApp(),
       ),
     );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('搜索 Bangumi'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), '测试动画');
@@ -785,7 +800,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(
-      find.widgetWithText(TextButton, '搜资源'),
+      find.byTooltip('搜资源'),
       260,
       scrollable: find.byType(Scrollable).last,
     );
@@ -793,10 +808,10 @@ void main() {
 
     expect(find.text('收藏动画 中文名'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(TextButton, '搜资源'));
+    await tester.tap(find.byTooltip('搜资源'));
     await tester.pumpAndSettle();
 
-    expect(find.widgetWithText(AppBar, '搜索'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, '资源'), findsOneWidget);
     expect(dmhyRepository.requests, hasLength(1));
     expect(dmhyRepository.requests.single.normalizedKeyword, '收藏动画 中文名');
     expect(dmhyRepository.requests.single.animeOnly, isTrue);
@@ -827,6 +842,9 @@ void main() {
         child: const AnimeMobileTorrentApp(),
       ),
     );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('搜索 Bangumi'));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), '测试动画');
@@ -891,6 +909,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byTooltip('搜索 Bangumi'));
+    await tester.pumpAndSettle();
+
     await tester.enterText(find.byType(TextField), '测试动画');
     await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
@@ -934,6 +955,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
+    await tester.tap(find.byTooltip('搜索 Bangumi'));
+    await tester.pumpAndSettle();
+
     await tester.enterText(find.byType(TextField), '测试动画');
     await tester.testTextInput.receiveAction(TextInputAction.search);
     await tester.pumpAndSettle();
@@ -944,7 +968,7 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, '搜资源'));
     await tester.pumpAndSettle();
 
-    expect(find.widgetWithText(AppBar, '搜索'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, '资源'), findsOneWidget);
     expect(find.text('“测试动画 中文名”'), findsOneWidget);
     expect(find.text('[字幕组] 测试动画 01 1080p'), findsOneWidget);
   });
@@ -966,7 +990,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('搜索').last);
+    await tester.tap(find.text('资源').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '测试动画 1080');
     await tester.tap(find.byTooltip('搜索'));
@@ -1002,7 +1026,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('搜索').last);
+    await tester.tap(find.text('资源').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '测试动画 1080');
     await tester.tap(find.byTooltip('搜索'));
@@ -1011,9 +1035,13 @@ void main() {
     expect(dmhyRepository.requests, hasLength(1));
     expect(dmhyRepository.requests.single.sort, DmhyResourceSort.publishedDesc);
 
-    await tester.tap(find.byType(DropdownButtonFormField<DmhyResourceSort>));
+    final seedSortChip = find.widgetWithText(
+      ChoiceChip,
+      DmhyResourceSort.seedDesc.label,
+    );
+    await tester.ensureVisible(seedSortChip);
     await tester.pumpAndSettle();
-    await tester.tap(find.text(DmhyResourceSort.seedDesc.label).last);
+    await tester.tap(seedSortChip);
     await tester.pumpAndSettle();
 
     expect(dmhyRepository.requests, hasLength(2));
@@ -1025,7 +1053,7 @@ void main() {
     );
   });
 
-  testWidgets('DMHY 资源筛选和字幕组偏好可以缩小当前结果且不重新请求', (tester) async {
+  testWidgets('DMHY 资源筛选可以缩小当前结果且不重新请求', (tester) async {
     final dmhyRepository = _FilterableFakeDmhyRepository();
 
     await tester.pumpWidget(
@@ -1041,7 +1069,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('搜索').last);
+    await tester.tap(find.text('资源').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, '测试动画 1080');
     await tester.tap(find.byTooltip('搜索'));
@@ -1051,10 +1079,10 @@ void main() {
     expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
     expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsOneWidget);
 
-    await tester.tap(find.byKey(const Key('dmhy-filter-release-group')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('猫耳字幕').last);
-    await tester.pumpAndSettle();
+    // 字幕组维度：抽屉里只选猫耳字幕。
+    await _openDmhyFilterSheet(tester);
+    await _tapDmhyFilterChip(tester, '猫耳字幕');
+    await _applyDmhyFilter(tester);
 
     expect(dmhyRepository.requests, hasLength(1));
     expect(find.textContaining('显示 1/2'), findsOneWidget);
@@ -1067,12 +1095,10 @@ void main() {
     expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
     expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsOneWidget);
 
-    await tester.ensureVisible(find.byKey(const Key('dmhy-filter-source')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('dmhy-filter-source')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('BDRip').last);
-    await tester.pumpAndSettle();
+    // 片源维度：抽屉里只选 BDRip。
+    await _openDmhyFilterSheet(tester);
+    await _tapDmhyFilterChip(tester, 'BDRip');
+    await _applyDmhyFilter(tester);
 
     expect(dmhyRepository.requests, hasLength(1));
     expect(find.textContaining('显示 1/2'), findsOneWidget);
@@ -1081,14 +1107,10 @@ void main() {
 
     await _tapDmhyClearFilter(tester);
 
-    await tester.ensureVisible(
-      find.byKey(const Key('dmhy-filter-subtitle-label')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('dmhy-filter-subtitle-label')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('简繁内封').last);
-    await tester.pumpAndSettle();
+    // 字幕说明维度：抽屉里只选简繁内封。
+    await _openDmhyFilterSheet(tester);
+    await _tapDmhyFilterChip(tester, '简繁内封');
+    await _applyDmhyFilter(tester);
 
     expect(dmhyRepository.requests, hasLength(1));
     expect(find.textContaining('显示 1/2'), findsOneWidget);
@@ -1097,40 +1119,20 @@ void main() {
 
     await _tapDmhyClearFilter(tester);
 
-    await tester.enterText(
-      find.byKey(const Key('dmhy-filter-min-seed-count')),
-      '10',
+    // 最小种子数维度：抽屉里输入阈值 10。
+    await _openDmhyFilterSheet(tester);
+    final minSeedField = find.byKey(const Key('dmhy-filter-min-seed-count'));
+    await tester.scrollUntilVisible(
+      minSeedField,
+      120,
+      scrollable: find.byType(Scrollable).last,
     );
     await tester.pumpAndSettle();
+    await tester.enterText(minSeedField, '10');
+    await tester.pumpAndSettle();
+    await _applyDmhyFilter(tester);
 
     expect(dmhyRepository.requests, hasLength(1));
-    expect(find.textContaining('显示 1/2'), findsOneWidget);
-    expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
-    expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsNothing);
-
-    await _tapDmhyClearFilter(tester);
-
-    await tester.tap(find.byKey(const Key('dmhy-filter-release-group')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('猫耳字幕').last);
-    await tester.pumpAndSettle();
-
-    await tester.tap(
-      find.byKey(const Key('dmhy-save-release-group-preference')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('偏好：猫耳字幕'), findsOneWidget);
-    expect(find.text('已记住字幕组“猫耳字幕”'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 4));
-    await tester.pumpAndSettle();
-
-    await tester.enterText(find.byType(TextField).first, '测试动画 720');
-    await tester.tap(find.byTooltip('搜索'));
-    await tester.pumpAndSettle();
-
-    expect(dmhyRepository.requests, hasLength(2));
-    expect(find.text('偏好：猫耳字幕'), findsOneWidget);
     expect(find.textContaining('显示 1/2'), findsOneWidget);
     expect(find.text('[猫耳字幕] 测试动画 01 1080p WEB-DL HEVC MKV'), findsOneWidget);
     expect(find.text('[桜都字幕组] 测试动画 01 720p BDRip AVC MP4'), findsNothing);
@@ -1165,7 +1167,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('搜索').last);
+    await tester.tap(find.text('资源').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '测试动画 1080');
     await tester.tap(find.byTooltip('搜索'));
@@ -1189,7 +1191,11 @@ void main() {
     expect(find.text('从种子交接继续'), findsOneWidget);
     expect(find.text('选择本地视频'), findsOneWidget);
 
-    await tester.tap(find.text('搜索').last);
+    // “去播放”会在“我的”tab 之上推入播放页，先返回才能重新点到底部导航。
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('资源').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('我的').last);
     await tester.pumpAndSettle();
@@ -1258,7 +1264,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('搜索').last);
+    await tester.tap(find.text('资源').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '测试动画 1080');
     await tester.tap(find.byTooltip('搜索'));
@@ -1321,7 +1327,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('搜索').last);
+    await tester.tap(find.text('资源').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), '测试动画 1080');
     await tester.tap(find.byTooltip('搜索'));
@@ -1337,16 +1343,49 @@ void main() {
   });
 }
 
-/// 点击 DMHY 筛选栏中的“清除筛选”按钮。
+/// 打开 DMHY 资源筛选底部抽屉。
 ///
-/// 筛选栏在测试视口中有时会贴近顶部，直接点击中心点容易落到 AppBar
-/// 边缘；改点按钮右下角仍可见的区域，模拟用户点击露出的按钮主体。
-Future<void> _tapDmhyClearFilter(WidgetTester tester) async {
-  final finder = find.widgetWithText(TextButton, '清除筛选');
+/// 主列表只保留一个“筛选”入口；点击后弹出承载各维度选项的底部抽屉。
+Future<void> _openDmhyFilterSheet(WidgetTester tester) async {
+  final finder = find.widgetWithText(OutlinedButton, '筛选');
   await tester.ensureVisible(finder);
   await tester.pumpAndSettle();
+  await tester.tap(finder);
+  await tester.pumpAndSettle();
+}
 
-  await tester.tapAt(tester.getBottomRight(finder) - const Offset(12, 12));
+/// 在筛选抽屉里点击指定文案的选项 chip。
+///
+/// 抽屉的选项列表是惰性 [ListView]，靠后的维度（字幕说明等）在初次构建时并不
+/// 存在于 widget 树中，`ensureVisible` 会因找不到元素而抛错。这里改用
+/// `scrollUntilVisible` 滚动抽屉列表，直到目标 chip 被构建并露出后再点击。
+Future<void> _tapDmhyFilterChip(WidgetTester tester, String label) async {
+  final finder = find.widgetWithText(ChoiceChip, label);
+  await tester.scrollUntilVisible(
+    finder,
+    120,
+    scrollable: find.byType(Scrollable).last,
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+  await tester.pumpAndSettle();
+}
+
+/// 点击筛选抽屉底部的“应用”按钮，把草稿条件写回列表并关闭抽屉。
+Future<void> _applyDmhyFilter(WidgetTester tester) async {
+  final finder = find.widgetWithText(FilledButton, '应用');
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+  await tester.pumpAndSettle();
+}
+
+/// 点击 DMHY 筛选控制区中的“清除”按钮，一次性移除全部生效条件。
+Future<void> _tapDmhyClearFilter(WidgetTester tester) async {
+  final finder = find.widgetWithText(TextButton, '清除');
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
   await tester.pumpAndSettle();
 }
 

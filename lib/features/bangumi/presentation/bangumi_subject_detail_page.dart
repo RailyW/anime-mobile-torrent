@@ -6,22 +6,31 @@ import 'package:go_router/go_router.dart';
 import '../../../shared/image_cache/app_image_cache.dart';
 import '../../../shared/widgets/app_async_views.dart';
 import '../../../shared/widgets/app_chip.dart';
-import '../../../shared/widgets/app_section.dart';
 import '../application/bangumi_auth_providers.dart';
 import '../application/bangumi_collection_providers.dart';
 import '../application/bangumi_providers.dart';
 import '../domain/bangumi_collection.dart';
 import '../domain/bangumi_dmhy_keyword.dart';
-import '../domain/bangumi_episode_collection.dart';
 import '../domain/bangumi_subject.dart';
-import 'widgets/bangumi_rating_line.dart';
+import 'widgets/bangumi_collection_editor_sheet.dart';
+import 'widgets/bangumi_episode_progress_panel.dart';
 import 'widgets/bangumi_subject_cover.dart';
+
+/// 沉浸式头部完全展开时的高度（不含状态栏）。
+///
+/// 该值需要保证在小视口（如 600 高的测试窗口）下，头部收拢后内容区仍能直接
+/// 露出 DMHY 资源搜索入口。
+const double _heroExpandedHeight = 300;
 
 /// Bangumi 条目详情页。
 ///
 /// 页面只依赖 `bangumiSubjectDetailProvider`，不直接访问 Dio 或平台能力。收藏
-/// 编辑、章节进度同步等业务逻辑沿用 application 层控制器，本次重构只重做视觉：
-/// 沉浸式封面头部 + 分区内容，去掉零散的工程化措辞。
+/// 编辑、章节进度同步等业务逻辑沿用 application 层控制器。本次重设计聚焦视觉：
+/// - 封面头图升级为可折叠的沉浸式 SliverAppBar，上滑时平滑过渡到小标题栏，
+///   保留封面与头图的渐变融合效果；
+/// - 观看进度重做为「进度仪表 + 时间线章节列表」（见
+///   `widgets/bangumi_episode_progress_panel.dart`）；
+/// - 各内容分区带交错淡入上移的入场动画，系统关闭动画时自动跳到终态。
 class BangumiSubjectDetailPage extends ConsumerWidget {
   const BangumiSubjectDetailPage({required this.subjectId, super.key});
 
@@ -32,10 +41,10 @@ class BangumiSubjectDetailPage extends ConsumerWidget {
     final detail = ref.watch(bangumiSubjectDetailProvider(subjectId));
 
     return Scaffold(
-      body: SafeArea(
-        child: detail.when(
-          loading: () => const AppPageLoading(),
-          error: (error, stackTrace) => Center(
+      body: detail.when(
+        loading: () => const SafeArea(child: AppPageLoading()),
+        error: (error, stackTrace) => SafeArea(
+          child: Center(
             child: AppErrorView(
               title: '读取详情失败',
               message: error.toString(),
@@ -43,49 +52,64 @@ class BangumiSubjectDetailPage extends ConsumerWidget {
                   ref.invalidate(bangumiSubjectDetailProvider(subjectId)),
             ),
           ),
-          data: (subject) => _SubjectDetailBody(subject: subject),
         ),
+        data: (subject) => _SubjectDetailView(subject: subject),
       ),
     );
   }
 }
 
-class _SubjectDetailBody extends ConsumerWidget {
-  const _SubjectDetailBody({required this.subject});
+/// 详情页主体：折叠头部 + 分区内容。
+///
+/// 整页只有 CustomScrollView 这一个滚动体，避免与依赖
+/// `find.byType(Scrollable).last` 的测试滚动逻辑冲突。
+class _SubjectDetailView extends StatelessWidget {
+  const _SubjectDetailView({required this.subject});
 
   final BangumiSubject subject;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: [
-        _SubjectHero(subject: subject),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _DmhyLinkSection(subject: subject),
-              const SizedBox(height: 24),
-              _MyCollectionSection(subject: subject),
-              const SizedBox(height: 24),
-              _SubjectSummarySection(summary: subject.summary),
-              const SizedBox(height: 24),
-              _CollectionStatsSection(collection: subject.collection),
-              if (subject.infobox.isNotEmpty) ...[
-                const SizedBox(height: 24),
-                _InfoBoxSection(items: subject.infobox),
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.paddingOf(context).bottom;
+
+    // 各内容分区按出现顺序编号，交错入场；条件分区共用同一个递增序号。
+    var revealOrder = 0;
+    Widget reveal(Widget child) => _Reveal(order: revealOrder++, child: child);
+
+    return CustomScrollView(
+      slivers: [
+        _SubjectHeroAppBar(subject: subject),
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(16, 14, 16, bottomInset + 32),
+          sliver: SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                reveal(_SubjectMetaChips(subject: subject)),
+                const SizedBox(height: 18),
+                reveal(_DmhyCtaCard(subject: subject)),
+                const SizedBox(height: 26),
+                reveal(_MyCollectionSection(subject: subject)),
+                const SizedBox(height: 26),
+                reveal(_SubjectSummarySection(summary: subject.summary)),
+                const SizedBox(height: 26),
+                reveal(
+                  _CollectionStatsSection(collection: subject.collection),
+                ),
+                if (subject.infobox.isNotEmpty) ...[
+                  const SizedBox(height: 26),
+                  reveal(_InfoBoxSection(items: subject.infobox)),
+                ],
+                if (subject.metaTags.isNotEmpty) ...[
+                  const SizedBox(height: 26),
+                  reveal(_TagsSection(title: '维基标签', tags: subject.metaTags)),
+                ],
+                if (subject.tags.isNotEmpty) ...[
+                  const SizedBox(height: 26),
+                  reveal(_UserTagsSection(tags: subject.tags)),
+                ],
               ],
-              if (subject.metaTags.isNotEmpty) ...[
-                const SizedBox(height: 24),
-                _TagsSection(title: '维基标签', tags: subject.metaTags),
-              ],
-              if (subject.tags.isNotEmpty) ...[
-                const SizedBox(height: 24),
-                _UserTagsSection(tags: subject.tags),
-              ],
-            ],
+            ),
           ),
         ),
       ],
@@ -93,12 +117,156 @@ class _SubjectDetailBody extends ConsumerWidget {
   }
 }
 
-/// 沉浸式封面头部。
+/// 可折叠的沉浸式封面头部。
 ///
-/// 用大封面叠加品牌粉渐变蒙版托起标题、评分与关键信息，并保留一个返回按钮。
-/// 相比此前的并排小封面，更有内容 App 的视觉重量。
-class _SubjectHero extends StatelessWidget {
-  const _SubjectHero({required this.subject});
+/// 完全展开时用大封面头图叠加品牌粉渐变蒙版托起封面卡、标题与评分（保留
+/// 旧版广受好评的封面/头图融合效果）；上滑折叠时头图与内容渐隐、小标题在
+/// 工具栏位置淡入，返回按钮全程常驻。
+class _SubjectHeroAppBar extends StatelessWidget {
+  const _SubjectHeroAppBar({required this.subject});
+
+  final BangumiSubject subject;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+
+    return SliverAppBar(
+      pinned: true,
+      expandedHeight: _heroExpandedHeight,
+      backgroundColor: scheme.surface,
+      surfaceTintColor: Colors.transparent,
+      automaticallyImplyLeading: false,
+      leading: Center(
+        child: IconButton.filledTonal(
+          onPressed: () => Navigator.of(context).maybePop(),
+          icon: const Icon(Icons.arrow_back),
+        ),
+      ),
+      flexibleSpace: LayoutBuilder(
+        builder: (context, constraints) {
+          final topPadding = MediaQuery.paddingOf(context).top;
+          final minExtent = topPadding + kToolbarHeight;
+          final maxExtent = topPadding + _heroExpandedHeight;
+          // t = 1 完全展开，t = 0 完全折叠。
+          final t = maxExtent > minExtent
+              ? ((constraints.maxHeight - minExtent) / (maxExtent - minExtent))
+                    .clamp(0.0, 1.0)
+              : 0.0;
+          // 头图与大标题内容在折叠过半后加速淡出，避免与工具栏重叠。
+          final heroOpacity = ((t - 0.35) / 0.65).clamp(0.0, 1.0);
+          // 折叠小标题在接近收拢时才淡入。
+          final collapsedOpacity = (1 - t / 0.3).clamp(0.0, 1.0);
+
+          return Stack(
+            fit: StackFit.expand,
+            clipBehavior: Clip.hardEdge,
+            children: [
+              // 底层：封面头图 + 渐变融合（与旧版一致的融合效果），随折叠渐隐。
+              Opacity(
+                opacity: heroOpacity,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    subject.images.large == null
+                        ? ColoredBox(color: scheme.primaryContainer)
+                        : CachedNetworkImage(
+                            imageUrl: subject.images.large!,
+                            cacheManager: appImageCacheManager,
+                            fit: BoxFit.cover,
+                            errorWidget: (context, url, error) =>
+                                ColoredBox(color: scheme.primaryContainer),
+                          ),
+                    DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            scheme.surface.withValues(alpha: 0.2),
+                            scheme.surface.withValues(alpha: 0.85),
+                            scheme.surface,
+                          ],
+                          stops: const [0.0, 0.7, 1.0],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // 展开态内容：封面卡 + 标题 + 原名 + 大评分。轻微上移增强折叠时
+              // 的进出方向感。
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 16,
+                child: Opacity(
+                  opacity: heroOpacity,
+                  child: Transform.translate(
+                    offset: Offset(0, (1 - t) * 20),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(14),
+                            boxShadow: [
+                              BoxShadow(
+                                color: scheme.shadow.withValues(alpha: 0.28),
+                                blurRadius: 18,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
+                          ),
+                          child: BangumiSubjectCover(
+                            imageUrl:
+                                subject.images.large ??
+                                subject.images.preferredListUrl,
+                            width: 110,
+                            height: 156,
+                            borderRadius: 14,
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(child: _HeroTitleBlock(subject: subject)),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              // 折叠态小标题：出现在工具栏位置，与返回按钮同排。
+              Positioned(
+                top: topPadding,
+                left: 60,
+                right: 16,
+                height: kToolbarHeight,
+                child: IgnorePointer(
+                  child: Opacity(
+                    opacity: collapsedOpacity,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        subject.displayName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 展开态头部右侧的标题块：主标题、原名与大评分行。
+class _HeroTitleBlock extends StatelessWidget {
+  const _HeroTitleBlock({required this.subject});
 
   final BangumiSubject subject;
 
@@ -106,113 +274,109 @@ class _SubjectHero extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final rating = subject.rating;
 
-    return Stack(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Positioned.fill(
-          child: subject.images.large == null
-              ? ColoredBox(color: scheme.primaryContainer)
-              : CachedNetworkImage(
-                  imageUrl: subject.images.large!,
-                  cacheManager: appImageCacheManager,
-                  fit: BoxFit.cover,
-                  errorWidget: (context, url, error) =>
-                      ColoredBox(color: scheme.primaryContainer),
-                ),
+        Text(
+          subject.displayName,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+            height: 1.25,
+          ),
         ),
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  scheme.surface.withValues(alpha: 0.2),
-                  scheme.surface.withValues(alpha: 0.85),
-                  scheme.surface,
-                ],
-                stops: const [0.0, 0.7, 1.0],
-              ),
+        if (subject.subtitleName != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            subject.subtitleName!,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
             ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: IconButton.filledTonal(
-                  onPressed: () => Navigator.of(context).maybePop(),
-                  icon: const Icon(Icons.arrow_back),
+        ],
+        const SizedBox(height: 10),
+        // 大评分行：星标 + 大号分数 + Rank 与评分人数。
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(Icons.star_rounded, size: 22, color: scheme.secondary),
+            const SizedBox(width: 4),
+            if (rating.score > 0)
+              Text(
+                rating.score.toStringAsFixed(1),
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w800,
+                  color: scheme.primary,
+                ),
+              )
+            else
+              Text(
+                '暂无评分',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
                 ),
               ),
-              const SizedBox(height: 12),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  BangumiSubjectCover(
-                    imageUrl:
-                        subject.images.large ?? subject.images.preferredListUrl,
-                    width: 110,
-                    height: 156,
-                    borderRadius: 12,
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          subject.displayName,
-                          style: theme.textTheme.titleLarge,
-                        ),
-                        if (subject.subtitleName != null) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            subject.subtitleName!,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 10),
-                        BangumiRatingLine(rating: subject.rating, large: true),
-                      ],
-                    ),
-                  ),
-                ],
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                [
+                  if (rating.rank > 0) 'Rank ${rating.rank}',
+                  if (rating.total > 0) '${rating.total} 人评分',
+                ].join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
               ),
-              const SizedBox(height: 14),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  AppChip(label: subject.type.label, tone: AppChipTone.brand),
-                  AppChip(
-                    label: subject.platform.isEmpty ? '平台未知' : subject.platform,
-                  ),
-                  AppChip(label: subject.episodeLabel),
-                  if (subject.airDate != null) AppChip(label: subject.airDate!),
-                  if (subject.nsfw)
-                    const AppChip(
-                      label: 'NSFW',
-                      icon: Icons.visibility_off_outlined,
-                      tone: AppChipTone.positive,
-                    ),
-                ],
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ],
     );
   }
 }
 
-class _DmhyLinkSection extends StatelessWidget {
-  const _DmhyLinkSection({required this.subject});
+/// 头部下方的关键信息 chips：类型、平台、话数、放送日期与 NSFW 标记。
+///
+/// 放在滚动内容区而不是折叠头部内，让长文案可以自然换行而不会溢出头部。
+class _SubjectMetaChips extends StatelessWidget {
+  const _SubjectMetaChips({required this.subject});
+
+  final BangumiSubject subject;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
+      children: [
+        AppChip(label: subject.type.label, tone: AppChipTone.brand),
+        AppChip(label: subject.platform.isEmpty ? '平台未知' : subject.platform),
+        AppChip(label: subject.episodeLabel),
+        if (subject.airDate != null) AppChip(label: subject.airDate!),
+        if (subject.nsfw)
+          const AppChip(
+            label: 'NSFW',
+            icon: Icons.visibility_off_outlined,
+            tone: AppChipTone.positive,
+          ),
+      ],
+    );
+  }
+}
+
+/// DMHY 资源搜索入口卡片。
+///
+/// 用樱粉渐变底和圆形图标强调这是详情页的核心动作；「搜资源」按钮文案与
+/// 禁用条件保持不变。
+class _DmhyCtaCard extends StatelessWidget {
+  const _DmhyCtaCard({required this.subject});
 
   final BangumiSubject subject;
 
@@ -222,16 +386,39 @@ class _DmhyLinkSection extends StatelessWidget {
     final scheme = theme.colorScheme;
     final keyword = buildBangumiDmhyKeyword(subject);
 
-    return AppPanel(
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            scheme.primaryContainer.withValues(alpha: 0.6),
+            scheme.secondaryContainer.withValues(alpha: 0.35),
+          ],
+        ),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.12)),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(Icons.search_outlined, color: scheme.primary),
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: scheme.surface.withValues(alpha: 0.85),
+            ),
+            child: Icon(Icons.search_outlined, color: scheme.primary),
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Text(
               keyword.isEmpty ? '当前条目缺少可搜索标题' : '在 DMHY 搜索这部番的资源',
-              style: theme.textTheme.bodyMedium,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
           const SizedBox(width: 8),
@@ -252,26 +439,7 @@ class _DmhyLinkSection extends StatelessWidget {
   }
 }
 
-class _SubjectSummarySection extends StatelessWidget {
-  const _SubjectSummarySection({required this.summary});
-
-  final String summary;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const AppSectionHeader(title: '简介'),
-        Text(
-          summary.isEmpty ? '暂无简介。' : summary,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(height: 1.6),
-        ),
-      ],
-    );
-  }
-}
-
+/// 「我的收藏」分区：登录状态、单条收藏与观看进度面板的容器。
 class _MyCollectionSection extends ConsumerWidget {
   const _MyCollectionSection({required this.subject});
 
@@ -287,7 +455,7 @@ class _MyCollectionSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const AppSectionHeader(title: '我的收藏'),
+        const _DetailSectionHeader(title: '我的收藏'),
         userState.when(
           loading: () => const AppInlineLoading(label: '正在读取登录状态…'),
           error: (error, stackTrace) => AppErrorView(
@@ -314,7 +482,7 @@ class _MyCollectionSection extends ConsumerWidget {
               data: (collection) => _MyCollectionContent(
                 subject: subject,
                 collection: collection,
-                onEdit: () => _showCollectionEditor(
+                onEdit: () => showBangumiCollectionEditorSheet(
                   context: context,
                   ref: ref,
                   subject: subject,
@@ -329,6 +497,7 @@ class _MyCollectionSection extends ConsumerWidget {
   }
 }
 
+/// 未登录时的收藏引导卡。文案保持不变，供测试匹配。
 class _MyCollectionLoggedOut extends StatelessWidget {
   const _MyCollectionLoggedOut();
 
@@ -337,7 +506,12 @@ class _MyCollectionLoggedOut extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return AppPanel(
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -362,7 +536,8 @@ class _MyCollectionLoggedOut extends StatelessWidget {
   }
 }
 
-class _MyCollectionContent extends ConsumerWidget {
+/// 已登录时的收藏卡片：收藏摘要 + 编辑入口 + 观看进度面板。
+class _MyCollectionContent extends StatelessWidget {
   const _MyCollectionContent({
     required this.subject,
     required this.collection,
@@ -374,1121 +549,170 @@ class _MyCollectionContent extends ConsumerWidget {
   final VoidCallback onEdit;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final collection = this.collection;
 
-    if (collection == null) {
-      return AppPanel(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '还没有收藏这部番',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: onEdit,
-              icon: const Icon(Icons.bookmark_add_outlined),
-              label: const Text('添加收藏'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return AppPanel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              AppChip(
-                label: collection.type.label,
-                icon: Icons.bookmark_outline,
-                tone: AppChipTone.brand,
-              ),
-              AppChip(
-                label: collection.rate > 0 ? '${collection.rate} 分' : '未评分',
-                icon: Icons.star_outline,
-              ),
-              if (collection.isPrivate)
-                const AppChip(
-                  label: '仅自己可见',
-                  icon: Icons.visibility_off_outlined,
-                ),
-              if (collection.epStatus > 0)
-                AppChip(label: '章节 ${collection.epStatus}'),
-              if (collection.volStatus > 0)
-                AppChip(label: '卷 ${collection.volStatus}'),
-            ],
-          ),
-          if (collection.comment.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(collection.comment, style: theme.textTheme.bodyMedium),
-          ],
-          if (collection.tags.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
+      ),
+      child: collection == null
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final tag in collection.tags.take(12))
-                  AppChip(label: tag, icon: Icons.sell_outlined),
+                Text(
+                  '还没有收藏这部番',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.bookmark_add_outlined),
+                  label: const Text('添加收藏'),
+                ),
+              ],
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          AppChip(
+                            label: collection.type.label,
+                            icon: Icons.bookmark_outline,
+                            tone: AppChipTone.brand,
+                          ),
+                          AppChip(
+                            label: collection.rate > 0
+                                ? '${collection.rate} 分'
+                                : '未评分',
+                            icon: Icons.star_outline,
+                          ),
+                          if (collection.isPrivate)
+                            const AppChip(
+                              label: '仅自己可见',
+                              icon: Icons.visibility_off_outlined,
+                            ),
+                          if (collection.epStatus > 0)
+                            AppChip(label: '章节 ${collection.epStatus}'),
+                          if (collection.volStatus > 0)
+                            AppChip(label: '卷 ${collection.volStatus}'),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filledTonal(
+                      onPressed: onEdit,
+                      tooltip: '修改收藏',
+                      visualDensity: VisualDensity.compact,
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                    ),
+                  ],
+                ),
+                if (collection.comment.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(collection.comment, style: theme.textTheme.bodyMedium),
+                ],
+                if (collection.tags.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final tag in collection.tags.take(12))
+                        AppChip(label: tag, icon: Icons.sell_outlined),
+                    ],
+                  ),
+                ],
+                if (subject.type == BangumiSubjectType.anime) ...[
+                  const SizedBox(height: 16),
+                  Divider(
+                    height: 1,
+                    color: scheme.outlineVariant.withValues(alpha: 0.6),
+                  ),
+                  const SizedBox(height: 16),
+                  BangumiEpisodeProgressPanel(subject: subject),
+                ],
               ],
             ),
-          ],
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: onEdit,
-            icon: const Icon(Icons.edit_outlined),
-            label: const Text('修改收藏'),
-          ),
-          const SizedBox(height: 20),
-          _MyEpisodeProgressContent(subject: subject),
-        ],
-      ),
     );
   }
 }
 
-class _MyEpisodeProgressContent extends ConsumerStatefulWidget {
-  const _MyEpisodeProgressContent({required this.subject});
+/// 简介分区：默认折叠 6 行，可展开全文，展开/收起带 AnimatedSize 过渡。
+class _SubjectSummarySection extends StatefulWidget {
+  const _SubjectSummarySection({required this.summary});
 
-  final BangumiSubject subject;
+  final String summary;
 
   @override
-  ConsumerState<_MyEpisodeProgressContent> createState() =>
-      _MyEpisodeProgressContentState();
+  State<_SubjectSummarySection> createState() => _SubjectSummarySectionState();
 }
 
-class _MyEpisodeProgressContentState
-    extends ConsumerState<_MyEpisodeProgressContent> {
-  @override
-  void initState() {
-    super.initState();
-    _loadFirstPageSoon();
-  }
-
-  @override
-  void didUpdateWidget(covariant _MyEpisodeProgressContent oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    if (oldWidget.subject.id != widget.subject.id) {
-      _loadFirstPageSoon();
-    }
-  }
-
-  /// 在当前构建帧结束后启动章节首屏加载。
-  ///
-  /// Notifier 的状态修改不应发生在 widget 构建过程内部，因此用 microtask 把首次
-  /// 加载安排到下一轮事件循环，同时保持进入详情页后自动读取观看进度的体验。
-  void _loadFirstPageSoon() {
-    Future.microtask(() {
-      if (!mounted || widget.subject.type != BangumiSubjectType.anime) {
-        return;
-      }
-
-      ref
-          .read(
-            bangumiSubjectEpisodeCollectionListControllerProvider(
-              widget.subject.id,
-            ).notifier,
-          )
-          .loadFirstPage();
-    });
-  }
+class _SubjectSummarySectionState extends State<_SubjectSummarySection> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
-    if (widget.subject.type != BangumiSubjectType.anime) {
-      return const SizedBox.shrink();
-    }
-
-    final provider = bangumiSubjectEpisodeCollectionListControllerProvider(
-      widget.subject.id,
-    );
-    final progressState = ref.watch(provider);
-    final controller = ref.read(provider.notifier);
+    final theme = Theme.of(context);
+    final summary = widget.summary;
+    // 短简介直接完整展示，不出现展开按钮。
+    final needsToggle = summary.length > 160;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('观看进度', style: Theme.of(context).textTheme.titleSmall),
-        const SizedBox(height: 10),
-        if (progressState.isInitialLoading)
-          const AppInlineLoading(label: '正在读取章节进度…')
-        else if (progressState.isLoggedOut)
-          const Text('登录 Bangumi 后，可以同步这部番的章节观看进度。')
-        else if (progressState.errorMessage != null &&
-            !progressState.hasEpisodes)
-          AppErrorView(
-            compact: true,
-            title: '读取章节进度失败',
-            message: progressState.errorMessage!,
-            onRetry: controller.loadFirstPage,
-          )
-        else if (!progressState.hasLoadedOnce)
-          const AppInlineLoading(label: '正在准备章节进度…')
-        else
-          _EpisodeProgressList(subject: widget.subject, state: progressState),
-      ],
-    );
-  }
-}
-
-class _EpisodeProgressList extends ConsumerStatefulWidget {
-  const _EpisodeProgressList({required this.subject, required this.state});
-
-  final BangumiSubject subject;
-  final BangumiSubjectEpisodeCollectionListState state;
-
-  @override
-  ConsumerState<_EpisodeProgressList> createState() =>
-      _EpisodeProgressListState();
-}
-
-class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
-  int? _savingEpisodeId;
-  bool _isSavingBatch = false;
-  int? _selectedBatchEpisodeId;
-  bool _showAllLoadedEpisodes = false;
-
-  @override
-  void didUpdateWidget(covariant _EpisodeProgressList oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    if (oldWidget.state.episodeType != widget.state.episodeType) {
-      _selectedBatchEpisodeId = null;
-      _showAllLoadedEpisodes = false;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final state = widget.state;
-    final page = state.loadedPage;
-    final controller = ref.read(
-      bangumiSubjectEpisodeCollectionListControllerProvider(
-        widget.subject.id,
-      ).notifier,
-    );
-    final total = page.total > 0 ? page.total : page.episodes.length;
-    final currentTypeEpisodes = page.episodesOfType(state.episodeType);
-    final nextEpisode = page.firstUnwatchedForType(state.episodeType);
-    final isPageLoading = state.isLoading;
-    final selectedBatchTarget = _resolveBatchTarget(
-      currentTypeEpisodes: currentTypeEpisodes,
-      nextEpisode: nextEpisode,
-    );
-    final visibleEpisodes = _showAllLoadedEpisodes
-        ? page.episodes
-        : page.episodes.take(8).toList(growable: false);
-    final hasHiddenLoadedEpisodes =
-        page.episodes.length > visibleEpisodes.length;
-
-    if (page.episodes.isEmpty) {
-      return DecoratedBox(
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: scheme.outlineVariant),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _EpisodeTypeSelector(
-                selectedType: state.episodeType,
-                isDisabled:
-                    isPageLoading || _savingEpisodeId != null || _isSavingBatch,
-                onChanged: controller.selectEpisodeType,
-              ),
-              const SizedBox(height: 10),
-              Text('Bangumi 暂无可同步的${state.episodeType.label}章节。'),
-            ],
+        const _DetailSectionHeader(title: '简介'),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 240),
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: Text(
+            summary.isEmpty ? '暂无简介。' : summary,
+            maxLines: needsToggle && !_expanded ? 6 : null,
+            overflow: needsToggle && !_expanded
+                ? TextOverflow.ellipsis
+                : TextOverflow.visible,
+            style: theme.textTheme.bodyMedium?.copyWith(height: 1.6),
           ),
         ),
-      );
-    }
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: scheme.surface,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: scheme.outlineVariant),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _EpisodeTypeSelector(
-              selectedType: state.episodeType,
-              isDisabled:
-                  isPageLoading || _savingEpisodeId != null || _isSavingBatch,
-              onChanged: controller.selectEpisodeType,
-            ),
-            const SizedBox(height: 10),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.playlist_add_check_outlined, color: scheme.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '已看 ${page.watchedCountForType(state.episodeType)} / $total ${state.episodeType.label}',
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                FilledButton.icon(
-                  onPressed:
-                      nextEpisode == null ||
-                          _savingEpisodeId != null ||
-                          _isSavingBatch ||
-                          isPageLoading
-                      ? null
-                      : () => _saveEpisodeStatus(
-                          nextEpisode,
-                          BangumiEpisodeCollectionType.done,
-                        ),
-                  icon: const Icon(Icons.done_outline, size: 18),
-                  label: const Text('标记下一话看过'),
-                ),
-                OutlinedButton.icon(
-                  onPressed:
-                      _savingEpisodeId == null &&
-                          !_isSavingBatch &&
-                          !isPageLoading
-                      ? controller.refreshLoadedEpisodes
-                      : null,
-                  icon: isPageLoading
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.refresh_outlined, size: 18),
-                  label: Text(isPageLoading ? '刷新中…' : '刷新进度'),
-                ),
-                if (state.hasMore)
-                  OutlinedButton.icon(
-                    onPressed:
-                        _savingEpisodeId == null &&
-                            !_isSavingBatch &&
-                            !isPageLoading
-                        ? controller.loadNextPage
-                        : null,
-                    icon: isPageLoading
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.expand_more_outlined, size: 18),
-                    label: Text(isPageLoading ? '加载中…' : '加载更多章节'),
-                  ),
-                if (currentTypeEpisodes.isNotEmpty)
-                  OutlinedButton.icon(
-                    onPressed:
-                        _savingEpisodeId == null &&
-                            !_isSavingBatch &&
-                            !isPageLoading
-                        ? () => _saveLoadedEpisodesAs(
-                            BangumiEpisodeCollectionType.done,
-                          )
-                        : null,
-                    icon: const Icon(Icons.done_all_outlined, size: 18),
-                    label: const Text('已加载全看过'),
-                  ),
-                if (currentTypeEpisodes.isNotEmpty)
-                  OutlinedButton.icon(
-                    onPressed:
-                        _savingEpisodeId == null &&
-                            !_isSavingBatch &&
-                            !isPageLoading
-                        ? () => _saveLoadedEpisodesAs(
-                            BangumiEpisodeCollectionType.none,
-                          )
-                        : null,
-                    icon: const Icon(Icons.clear_all_outlined, size: 18),
-                    label: const Text('清空已加载'),
-                  ),
-              ],
-            ),
-            if (currentTypeEpisodes.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              _EpisodeBatchProgressControl(
-                episodes: currentTypeEpisodes,
-                selectedEpisodeId: selectedBatchTarget?.episode.id,
-                isSaving: _isSavingBatch,
-                onChanged: (episodeId) {
-                  setState(() {
-                    _selectedBatchEpisodeId = episodeId;
-                  });
-                },
-                onSubmit:
-                    selectedBatchTarget == null ||
-                        _savingEpisodeId != null ||
-                        _isSavingBatch ||
-                        isPageLoading
-                    ? null
-                    : () => _saveEpisodesThrough(selectedBatchTarget),
-              ),
-            ],
-            const SizedBox(height: 10),
-            for (final item in visibleEpisodes)
-              _EpisodeProgressTile(
-                item: item,
-                isSaving: _savingEpisodeId == item.episode.id,
-                isDisabled: isPageLoading || _isSavingBatch,
-                onSetStatus: (type) => _saveEpisodeStatus(item, type),
-              ),
-            if (state.errorMessage != null) ...[
-              const SizedBox(height: 10),
-              _EpisodePageErrorNote(
-                message: state.errorMessage!,
-                onRetry: state.hasMore
-                    ? controller.loadNextPage
-                    : controller.refreshLoadedEpisodes,
-              ),
-            ],
-            if (page.episodes.length > 8) ...[
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _showAllLoadedEpisodes = !_showAllLoadedEpisodes;
-                  });
-                },
-                icon: Icon(
-                  _showAllLoadedEpisodes
-                      ? Icons.unfold_less_outlined
-                      : Icons.unfold_more_outlined,
-                  size: 18,
-                ),
-                label: Text(_showAllLoadedEpisodes ? '收起章节' : '展开已加载章节'),
-              ),
-            ],
-            if (total > visibleEpisodes.length ||
-                total > page.episodes.length) ...[
-              const SizedBox(height: 6),
-              Text(
-                _episodeProgressFootnote(
-                  visibleCount: visibleEpisodes.length,
-                  loadedCount: page.episodes.length,
-                  totalCount: total,
-                  episodeTypeLabel: state.episodeType.label,
-                  hasHiddenLoadedEpisodes: hasHiddenLoadedEpisodes,
-                  hasMore: state.hasMore,
-                ),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _saveEpisodeStatus(
-    BangumiEpisodeCollection item,
-    BangumiEpisodeCollectionType type,
-  ) async {
-    if (_savingEpisodeId != null) {
-      return;
-    }
-
-    setState(() {
-      _savingEpisodeId = item.episode.id;
-    });
-
-    try {
-      final repository = ref.read(bangumiMyCollectionRepositoryProvider);
-      await repository.saveMySubjectEpisodeStatus(
-        subjectId: widget.subject.id,
-        episodeIds: [item.episode.id],
-        type: type,
-        episodeType: widget.state.episodeType,
-      );
-
-      await ref
-          .read(
-            bangumiSubjectEpisodeCollectionListControllerProvider(
-              widget.subject.id,
-            ).notifier,
-          )
-          .refreshLoadedEpisodes();
-      ref.invalidate(bangumiMySubjectCollectionProvider(widget.subject.id));
-      ref.invalidate(bangumiSubjectDetailProvider(widget.subject.id));
-
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${item.episode.sortLabel} 已标记为${type.label}')),
-      );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
-    } finally {
-      if (mounted) {
-        setState(() {
-          _savingEpisodeId = null;
-        });
-      }
-    }
-  }
-
-  BangumiEpisodeCollection? _resolveBatchTarget({
-    required List<BangumiEpisodeCollection> currentTypeEpisodes,
-    required BangumiEpisodeCollection? nextEpisode,
-  }) {
-    if (currentTypeEpisodes.isEmpty) {
-      return null;
-    }
-
-    final selectedEpisodeId = _selectedBatchEpisodeId;
-    if (selectedEpisodeId != null) {
-      for (final item in currentTypeEpisodes) {
-        if (item.episode.id == selectedEpisodeId) {
-          return item;
-        }
-      }
-    }
-
-    return nextEpisode ?? currentTypeEpisodes.last;
-  }
-
-  Future<void> _saveEpisodesThrough(BangumiEpisodeCollection target) async {
-    if (_savingEpisodeId != null || _isSavingBatch) {
-      return;
-    }
-
-    final targetEpisodes = widget.state.loadedPage.unwatchedEpisodesThrough(
-      target,
-      episodeType: widget.state.episodeType,
-    );
-    if (targetEpisodes.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('目标范围内已全部标记为看过')));
-      return;
-    }
-
-    setState(() {
-      _isSavingBatch = true;
-      _selectedBatchEpisodeId = target.episode.id;
-    });
-
-    try {
-      final repository = ref.read(bangumiMyCollectionRepositoryProvider);
-      await repository.saveMySubjectEpisodeStatus(
-        subjectId: widget.subject.id,
-        episodeIds: targetEpisodes
-            .map((item) => item.episode.id)
-            .toList(growable: false),
-        type: BangumiEpisodeCollectionType.done,
-        episodeType: widget.state.episodeType,
-      );
-
-      await ref
-          .read(
-            bangumiSubjectEpisodeCollectionListControllerProvider(
-              widget.subject.id,
-            ).notifier,
-          )
-          .refreshLoadedEpisodes();
-      ref.invalidate(bangumiMySubjectCollectionProvider(widget.subject.id));
-      ref.invalidate(bangumiSubjectDetailProvider(widget.subject.id));
-
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '已标记到${target.episode.sortLabel}看过，共 ${targetEpisodes.length} 话',
-          ),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSavingBatch = false;
-        });
-      }
-    }
-  }
-
-  /// 将当前已加载的同类型章节批量设置为指定状态。
-  ///
-  /// 这里显式使用 `loadedPage.episodesNeedingStatus` 计算目标集合，只影响当前
-  /// 已经加载到页面内存中的章节。长篇条目尚未加载的后续分页不会被隐式修改。
-  Future<void> _saveLoadedEpisodesAs(
-    BangumiEpisodeCollectionType targetType,
-  ) async {
-    if (_savingEpisodeId != null || _isSavingBatch) {
-      return;
-    }
-
-    final targetEpisodes = widget.state.loadedPage.episodesNeedingStatus(
-      episodeType: widget.state.episodeType,
-      targetType: targetType,
-    );
-    if (targetEpisodes.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '当前已加载的${widget.state.episodeType.label}章节已全部是${targetType.label}',
-          ),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _isSavingBatch = true;
-    });
-
-    try {
-      final repository = ref.read(bangumiMyCollectionRepositoryProvider);
-      await repository.saveMySubjectEpisodeStatus(
-        subjectId: widget.subject.id,
-        episodeIds: targetEpisodes
-            .map((item) => item.episode.id)
-            .toList(growable: false),
-        type: targetType,
-        episodeType: widget.state.episodeType,
-      );
-
-      await ref
-          .read(
-            bangumiSubjectEpisodeCollectionListControllerProvider(
-              widget.subject.id,
-            ).notifier,
-          )
-          .refreshLoadedEpisodes();
-      ref.invalidate(bangumiMySubjectCollectionProvider(widget.subject.id));
-      ref.invalidate(bangumiSubjectDetailProvider(widget.subject.id));
-
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '已将 ${targetEpisodes.length} 条已加载${widget.state.episodeType.label}章节标记为${targetType.label}',
-          ),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSavingBatch = false;
-        });
-      }
-    }
-  }
-}
-
-class _EpisodeTypeSelector extends StatelessWidget {
-  const _EpisodeTypeSelector({
-    required this.selectedType,
-    required this.isDisabled,
-    required this.onChanged,
-  });
-
-  final BangumiEpisodeType selectedType;
-  final bool isDisabled;
-  final ValueChanged<BangumiEpisodeType> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return DropdownButtonFormField<BangumiEpisodeType>(
-      initialValue: selectedType,
-      isExpanded: true,
-      decoration: const InputDecoration(
-        labelText: '章节类型',
-        contentPadding: EdgeInsets.symmetric(horizontal: 12),
-      ),
-      items: [
-        for (final type in BangumiEpisodeType.values)
-          DropdownMenuItem(value: type, child: Text(type.label)),
-      ],
-      onChanged: isDisabled
-          ? null
-          : (value) {
-              if (value == null) {
-                return;
-              }
-
-              onChanged(value);
+        if (needsToggle)
+          TextButton.icon(
+            onPressed: () {
+              setState(() {
+                _expanded = !_expanded;
+              });
             },
-    );
-  }
-}
-
-class _EpisodeBatchProgressControl extends StatelessWidget {
-  const _EpisodeBatchProgressControl({
-    required this.episodes,
-    required this.selectedEpisodeId,
-    required this.isSaving,
-    required this.onChanged,
-    required this.onSubmit,
-  });
-
-  final List<BangumiEpisodeCollection> episodes;
-  final int? selectedEpisodeId;
-  final bool isSaving;
-  final ValueChanged<int?> onChanged;
-  final VoidCallback? onSubmit;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: DropdownButtonFormField<int>(
-            initialValue: selectedEpisodeId,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: '标记到',
-              contentPadding: EdgeInsets.symmetric(horizontal: 12),
+            icon: Icon(
+              _expanded
+                  ? Icons.keyboard_arrow_up_outlined
+                  : Icons.keyboard_arrow_down_outlined,
+              size: 18,
             ),
-            items: [
-              for (final item in episodes)
-                DropdownMenuItem<int>(
-                  value: item.episode.id,
-                  child: Text(
-                    '${item.episode.sortLabel} · ${item.episode.displayName}',
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-            ],
-            onChanged: isSaving ? null : onChanged,
+            label: Text(_expanded ? '收起' : '展开全文'),
           ),
-        ),
-        const SizedBox(width: 8),
-        SizedBox(
-          height: 52,
-          child: FilledButton.icon(
-            onPressed: onSubmit,
-            icon: isSaving
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.done_all_outlined, size: 18),
-            label: Text(isSaving ? '同步中…' : '批量看过'),
-          ),
-        ),
       ],
     );
   }
 }
 
-class _EpisodeProgressTile extends StatelessWidget {
-  const _EpisodeProgressTile({
-    required this.item,
-    required this.isSaving,
-    required this.isDisabled,
-    required this.onSetStatus,
-  });
-
-  final BangumiEpisodeCollection item;
-  final bool isSaving;
-  final bool isDisabled;
-  final ValueChanged<BangumiEpisodeCollectionType> onSetStatus;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final episode = item.episode;
-
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 52,
-            child: Text(
-              episode.sortLabel,
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: scheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  episode.displayName,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                if (episode.subtitleName != null) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    episode.subtitleName!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 5),
-                Wrap(
-                  spacing: 6,
-                  runSpacing: 6,
-                  children: [
-                    AppChip(
-                      label: item.type.label,
-                      icon: _episodeStatusIcon(item.type),
-                      tone: item.type == BangumiEpisodeCollectionType.done
-                          ? AppChipTone.positive
-                          : AppChipTone.neutral,
-                    ),
-                    if (episode.airDate != null)
-                      AppChip(label: episode.airDate!),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          PopupMenuButton<BangumiEpisodeCollectionType>(
-            tooltip: '修改章节状态',
-            enabled: !isSaving && !isDisabled,
-            icon: isSaving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.more_horiz),
-            onSelected: onSetStatus,
-            itemBuilder: (context) {
-              return [
-                for (final type in BangumiEpisodeCollectionType.values)
-                  PopupMenuItem(value: type, child: Text(type.label)),
-              ];
-            },
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _EpisodePageErrorNote extends StatelessWidget {
-  const _EpisodePageErrorNote({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: scheme.errorContainer,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.error_outline, color: scheme.onErrorContainer, size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                message,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onErrorContainer,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            TextButton(onPressed: onRetry, child: const Text('重试')),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-IconData _episodeStatusIcon(BangumiEpisodeCollectionType type) {
-  switch (type) {
-    case BangumiEpisodeCollectionType.none:
-      return Icons.radio_button_unchecked;
-    case BangumiEpisodeCollectionType.wish:
-      return Icons.schedule_outlined;
-    case BangumiEpisodeCollectionType.done:
-      return Icons.check_circle_outline;
-    case BangumiEpisodeCollectionType.dropped:
-      return Icons.block_outlined;
-  }
-}
-
-/// 生成章节列表底部说明。
+/// 收藏统计分区：分段堆叠分布条 + 图例数值。
 ///
-/// 说明需要区分“只是当前收起了已加载章节”和“服务端仍有更多章节未加载”，避免
-/// 用户误以为批量操作已经覆盖了完整长篇条目。
-String _episodeProgressFootnote({
-  required int visibleCount,
-  required int loadedCount,
-  required int totalCount,
-  required String episodeTypeLabel,
-  required bool hasHiddenLoadedEpisodes,
-  required bool hasMore,
-}) {
-  final parts = <String>[];
-
-  if (hasHiddenLoadedEpisodes) {
-    parts.add('已展示前 $visibleCount / $loadedCount 条已加载章节');
-  } else {
-    parts.add('已展示 $visibleCount 条已加载章节');
-  }
-
-  if (totalCount > loadedCount) {
-    parts.add(hasMore ? '服务端共 $totalCount 条，可继续加载更多章节' : '服务端共 $totalCount 条');
-  }
-
-  parts.add('批量标记只作用于当前已加载的$episodeTypeLabel章节');
-  return '${parts.join('；')}。';
-}
-
-Future<void> _showCollectionEditor({
-  required BuildContext context,
-  required WidgetRef ref,
-  required BangumiSubject subject,
-  required BangumiSubjectCollection? collection,
-}) async {
-  var selectedType = collection?.type ?? BangumiCollectionType.wish;
-  var selectedRate = collection?.rate ?? 0;
-  var isPrivate = collection?.isPrivate ?? false;
-  var isSaving = false;
-  final commentController = TextEditingController(
-    text: collection?.comment ?? '',
-  );
-
-  try {
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            return AlertDialog(
-              title: Text(collection == null ? '添加收藏' : '修改收藏'),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      subject.displayName,
-                      style: Theme.of(dialogContext).textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 14),
-                    DropdownButtonFormField<BangumiCollectionType>(
-                      initialValue: selectedType,
-                      decoration: const InputDecoration(labelText: '收藏状态'),
-                      items: [
-                        for (final type in BangumiCollectionType.values)
-                          DropdownMenuItem(
-                            value: type,
-                            child: Text(type.label),
-                          ),
-                      ],
-                      onChanged: isSaving
-                          ? null
-                          : (value) {
-                              if (value == null) {
-                                return;
-                              }
-
-                              setDialogState(() {
-                                selectedType = value;
-                              });
-                            },
-                    ),
-                    const SizedBox(height: 14),
-                    Text('评分：${selectedRate == 0 ? '不评分' : '$selectedRate 分'}'),
-                    Slider(
-                      value: selectedRate.toDouble(),
-                      min: 0,
-                      max: 10,
-                      divisions: 10,
-                      label: selectedRate == 0 ? '不评分' : '$selectedRate',
-                      onChanged: isSaving
-                          ? null
-                          : (value) {
-                              setDialogState(() {
-                                selectedRate = value.round();
-                              });
-                            },
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: const Text('仅自己可见'),
-                      value: isPrivate,
-                      onChanged: isSaving
-                          ? null
-                          : (value) {
-                              setDialogState(() {
-                                isPrivate = value;
-                              });
-                            },
-                    ),
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: commentController,
-                      enabled: !isSaving,
-                      decoration: const InputDecoration(labelText: '短评'),
-                      minLines: 2,
-                      maxLines: 4,
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isSaving
-                      ? null
-                      : () => Navigator.of(dialogContext).pop(),
-                  child: const Text('取消'),
-                ),
-                FilledButton.icon(
-                  onPressed: isSaving
-                      ? null
-                      : () async {
-                          setDialogState(() {
-                            isSaving = true;
-                          });
-
-                          try {
-                            final repository = ref.read(
-                              bangumiMyCollectionRepositoryProvider,
-                            );
-                            await repository.saveMySubjectCollection(
-                              subjectId: subject.id,
-                              update: BangumiSubjectCollectionUpdate(
-                                type: selectedType,
-                                rate: selectedRate,
-                                comment: commentController.text,
-                                isPrivate: isPrivate,
-                              ),
-                            );
-                            ref.invalidate(
-                              bangumiMySubjectCollectionProvider(subject.id),
-                            );
-
-                            if (!dialogContext.mounted) {
-                              return;
-                            }
-
-                            Navigator.of(dialogContext).pop();
-
-                            if (!context.mounted) {
-                              return;
-                            }
-
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Bangumi 收藏已保存')),
-                            );
-                          } catch (error) {
-                            if (!dialogContext.mounted) {
-                              return;
-                            }
-
-                            ScaffoldMessenger.of(dialogContext).showSnackBar(
-                              SnackBar(content: Text(error.toString())),
-                            );
-                            setDialogState(() {
-                              isSaving = false;
-                            });
-                          }
-                        },
-                  icon: isSaving
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.save_outlined),
-                  label: Text(isSaving ? '保存中…' : '保存'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  } finally {
-    commentController.dispose();
-  }
-}
-
-/// 收藏统计区。
+/// 分布条把想看/在看/看过/搁置/抛弃按人数比例着色，比一排数字更能一眼看出
+/// 这部番的口碑结构；「合计」文本保持不变，供测试匹配。
 class _CollectionStatsSection extends StatelessWidget {
   const _CollectionStatsSection({required this.collection});
 
@@ -1496,20 +720,62 @@ class _CollectionStatsSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final entries = [
+      (label: '想看', value: collection.wish, color: scheme.secondary),
+      (label: '在看', value: collection.doing, color: scheme.primary),
+      (label: '看过', value: collection.collect, color: scheme.tertiary),
+      (label: '搁置', value: collection.onHold, color: scheme.outline),
+      (
+        label: '抛弃',
+        value: collection.dropped,
+        color: scheme.error.withValues(alpha: 0.65),
+      ),
+    ];
+    final hasAny = entries.any((entry) => entry.value > 0);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const AppSectionHeader(title: '收藏统计'),
+        const _DetailSectionHeader(title: '收藏统计'),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: SizedBox(
+            height: 12,
+            width: double.infinity,
+            child: hasAny
+                ? Row(
+                    children: [
+                      for (final entry in entries)
+                        if (entry.value > 0)
+                          Expanded(
+                            flex: entry.value,
+                            child: Container(
+                              margin: const EdgeInsets.only(right: 2),
+                              color: entry.color,
+                            ),
+                          ),
+                    ],
+                  )
+                : ColoredBox(
+                    color: scheme.surfaceContainerHighest.withValues(
+                      alpha: 0.8,
+                    ),
+                  ),
+          ),
+        ),
+        const SizedBox(height: 12),
         Wrap(
           spacing: 8,
           runSpacing: 8,
           children: [
-            _CollectionPill(label: '想看', value: collection.wish),
-            _CollectionPill(label: '看过', value: collection.collect),
-            _CollectionPill(label: '在看', value: collection.doing),
-            _CollectionPill(label: '搁置', value: collection.onHold),
-            _CollectionPill(label: '抛弃', value: collection.dropped),
-            _CollectionPill(
+            for (final entry in entries)
+              _CollectionLegendPill(
+                label: entry.label,
+                value: entry.value,
+                dotColor: entry.color,
+              ),
+            _CollectionLegendPill(
               label: '合计',
               value: collection.total,
               highlighted: true,
@@ -1521,6 +787,72 @@ class _CollectionStatsSection extends StatelessWidget {
   }
 }
 
+/// 收藏统计图例胶囊：彩色圆点 + 状态名 + 人数。
+class _CollectionLegendPill extends StatelessWidget {
+  const _CollectionLegendPill({
+    required this.label,
+    required this.value,
+    this.dotColor,
+    this.highlighted = false,
+  });
+
+  final String label;
+  final int value;
+  final Color? dotColor;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final background = highlighted
+        ? scheme.primaryContainer
+        : scheme.surfaceContainerHighest.withValues(alpha: 0.7);
+    final foreground = highlighted
+        ? scheme.onPrimaryContainer
+        : scheme.onSurfaceVariant;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (dotColor != null) ...[
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: dotColor,
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
+              style: theme.textTheme.labelMedium?.copyWith(color: foreground),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              value.toString(),
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: foreground,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 制作信息分区：标签-值对照表。
 class _InfoBoxSection extends StatelessWidget {
   const _InfoBoxSection({required this.items});
 
@@ -1531,7 +863,7 @@ class _InfoBoxSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const AppSectionHeader(title: '制作信息'),
+        const _DetailSectionHeader(title: '制作信息'),
         for (final item in items.take(14))
           _InfoBoxRow(label: item.key, value: item.valueLabel),
       ],
@@ -1539,6 +871,7 @@ class _InfoBoxSection extends StatelessWidget {
   }
 }
 
+/// 维基标签等纯文本标签分区。
 class _TagsSection extends StatelessWidget {
   const _TagsSection({required this.title, required this.tags});
 
@@ -1550,7 +883,7 @@ class _TagsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AppSectionHeader(title: title),
+        _DetailSectionHeader(title: title),
         Wrap(
           spacing: 6,
           runSpacing: 6,
@@ -1564,6 +897,7 @@ class _TagsSection extends StatelessWidget {
   }
 }
 
+/// 用户标签分区：标签名 + 使用人数。
 class _UserTagsSection extends StatelessWidget {
   const _UserTagsSection({required this.tags});
 
@@ -1574,7 +908,7 @@ class _UserTagsSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const AppSectionHeader(title: '用户标签'),
+        const _DetailSectionHeader(title: '用户标签'),
         Wrap(
           spacing: 6,
           runSpacing: 6,
@@ -1588,57 +922,50 @@ class _UserTagsSection extends StatelessWidget {
   }
 }
 
-class _CollectionPill extends StatelessWidget {
-  const _CollectionPill({
-    required this.label,
-    required this.value,
-    this.highlighted = false,
-  });
+/// 详情页专用分区标题：樱粉渐变小竖条 + 标题文本。
+///
+/// 与共享的 `AppSectionHeader` 相比多了品牌色 accent，属于详情页局部风格，
+/// 因此不改动共享组件。
+class _DetailSectionHeader extends StatelessWidget {
+  const _DetailSectionHeader({required this.title});
 
-  final String label;
-  final int value;
-  final bool highlighted;
+  final String title;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final background = highlighted
-        ? scheme.primaryContainer
-        : scheme.surfaceContainerHighest;
-    final foreground = highlighted
-        ? scheme.onPrimaryContainer
-        : scheme.onSurfaceVariant;
 
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              value.toString(),
-              style: theme.textTheme.titleMedium?.copyWith(
-                color: foreground,
-                fontWeight: FontWeight.w800,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 16,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(2),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [scheme.primary, scheme.secondary],
               ),
             ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: theme.textTheme.labelMedium?.copyWith(color: foreground),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            title,
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w800,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
+/// 制作信息里的一行标签-值。
 class _InfoBoxRow extends StatelessWidget {
   const _InfoBoxRow({required this.label, required this.value});
 
@@ -1672,3 +999,83 @@ class _InfoBoxRow extends StatelessWidget {
     );
   }
 }
+
+/// 分区入场动画：淡入 + 轻微上移，按 [order] 交错启动。
+///
+/// 实现要点：
+/// - 用单个 AnimationController 配合 Interval 曲线制造延迟，全程没有
+///   Timer，`pumpAndSettle` 可以正常收敛，测试结束时也不会有挂起的定时器；
+/// - 系统开启「减少动画」（`MediaQuery.disableAnimations`）时直接跳到终态。
+class _Reveal extends StatefulWidget {
+  const _Reveal({required this.order, required this.child});
+
+  /// 分区出现顺序，从 0 开始；数值越大启动越晚。
+  final int order;
+
+  final Widget child;
+
+  @override
+  State<_Reveal> createState() => _RevealState();
+}
+
+class _RevealState extends State<_Reveal> with SingleTickerProviderStateMixin {
+  static const int _baseMs = 340;
+  static const int _stepMs = 70;
+
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+  late final Animation<Offset> _offset;
+  bool _started = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // 交错延迟折算进总时长，实际动画段通过 Interval 推后启动。
+    final delayMs = widget.order.clamp(0, 8) * _stepMs;
+    final totalMs = _baseMs + delayMs;
+    _controller = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: totalMs),
+    );
+    final curve = CurvedAnimation(
+      parent: _controller,
+      curve: Interval(delayMs / totalMs, 1, curve: Curves.easeOutCubic),
+    );
+    _opacity = curve;
+    _offset = Tween<Offset>(
+      begin: const Offset(0, 0.045),
+      end: Offset.zero,
+    ).animate(curve);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (_started) {
+      return;
+    }
+    _started = true;
+
+    if (MediaQuery.maybeDisableAnimationsOf(context) ?? false) {
+      _controller.value = 1;
+    } else {
+      _controller.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: SlideTransition(position: _offset, child: widget.child),
+    );
+  }
+}
+

@@ -30,7 +30,7 @@ enum HomeProfileDestination {
 
 /// APP 首页壳。
 ///
-/// 首页只承担三段式底部导航：Bangumi、搜索、我的。每个 tab 对应一个独立 feature
+/// 首页只承担三段式底部导航：Bangumi、资源、我的。每个 tab 对应一个独立 feature
 /// 页面，首页本身不直接调用 Bangumi、DMHY 或 Android 平台能力，只负责在 tab
 /// 之间切换，并把深链参数透传给对应模块。
 class HomeScreen extends ConsumerStatefulWidget {
@@ -44,18 +44,18 @@ class HomeScreen extends ConsumerStatefulWidget {
     super.key,
   });
 
-  /// 初次打开首页时选中的底部导航项（0 Bangumi / 1 搜索 / 2 我的）。
+  /// 初次打开首页时选中的底部导航项（0 Bangumi / 1 资源 / 2 我的）。
   final int initialTabIndex;
 
-  /// 初次打开搜索 tab 时自动填入并搜索的关键词。
+  /// 初次打开资源 tab 时自动填入并搜索的关键词。
   final String? initialDmhyKeyword;
 
-  /// 初次打开搜索 tab 时使用的搜索范围。
+  /// 初次打开资源 tab 时使用的搜索范围。
   ///
   /// 订阅检查可以从全站范围跳回 DMHY 搜索，因此这里不能固定为动画分类。
   final bool initialDmhyAnimeOnly;
 
-  /// 初次打开搜索 tab 时展示的入口语境。
+  /// 初次打开资源 tab 时展示的入口语境。
   ///
   /// 首页只透传展示语境，真实搜索、订阅保存和种子交接仍由 DMHY 模块处理。
   final DmhyEntryContext initialDmhyEntryContext;
@@ -165,9 +165,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         child: BangumiTab(),
       ),
       _HomeTab(
-        icon: const Icon(Icons.search_outlined),
-        selectedIcon: const Icon(Icons.saved_search),
-        label: '搜索',
+        icon: const Icon(Icons.inventory_2_outlined),
+        selectedIcon: const Icon(Icons.inventory_2),
+        label: '资源',
         child: DmhyTab(
           initialKeyword: widget.initialDmhyKeyword,
           initialAnimeOnly: widget.initialDmhyAnimeOnly,
@@ -207,7 +207,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 /// “我的”tab 在底部导航中的下标。
 const int _profileTabIndex = 2;
 
-/// 将外部传入的 tab 下标收敛到合法范围（0 Bangumi / 1 搜索 / 2 我的）。
+/// 将外部传入的 tab 下标收敛到合法范围（0 Bangumi / 1 资源 / 2 我的）。
 int _normalizeTabIndex(int value) {
   if (value < 0) {
     return 0;

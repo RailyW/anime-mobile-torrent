@@ -13,20 +13,18 @@ import '../../torrent_handoff/application/torrent_handoff_providers.dart';
 import '../../torrent_handoff/domain/torrent_client_capabilities.dart';
 import '../../torrent_handoff/domain/torrent_seed_history_item.dart';
 import '../../torrent_handoff/domain/torrent_seed_file.dart';
-import '../application/dmhy_filter_preference_providers.dart';
 import '../application/dmhy_resource_filter.dart';
 import '../application/dmhy_providers.dart';
 import '../domain/dmhy_entry_context.dart';
-import '../domain/dmhy_filter_preference.dart';
 import '../domain/dmhy_resource.dart';
 import '../domain/dmhy_resource_metadata.dart';
 
-/// 搜索（DMHY）tab。
+/// 资源（DMHY）tab。
 ///
 /// 用户在这里搜索动画资源、按字幕组/分辨率等条件筛选，并把 magnet 或
 /// `.torrent` 交给外部 BT 客户端。模块只做资源获取与交接，不下载视频内容，也
-/// 不管理外部客户端任务。本次重构去掉了顶部品牌横幅、能力清单与逐卡的客户端
-/// 自检说明，保留全部搜索、筛选、订阅与交接逻辑。
+/// 不管理外部客户端任务。本次改版把搜索范围与排序整合成一行横向 chip 组，并把
+/// 多维度筛选收进底部抽屉，主列表只保留可一键移除的生效条件，让筛选更简洁统一。
 class DmhyTab extends ConsumerStatefulWidget {
   const DmhyTab({
     this.initialKeyword,
@@ -56,8 +54,6 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
   DmhyResourceSort _sort = DmhyResourceSort.publishedDesc;
   DmhyResourceFilter _filter = const DmhyResourceFilter.empty();
   DmhyEntryContext _entryContext = DmhyEntryContext.normal;
-  bool _preferredReleaseGroupAutoApplied = false;
-  bool _preferredReleaseGroupSuppressed = false;
 
   @override
   void initState() {
@@ -114,7 +110,6 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
       _animeOnly = animeOnly;
       _entryContext = widget.initialEntryContext;
       _filter = const DmhyResourceFilter.empty();
-      _resetPreferredReleaseGroupAutoApply();
     }
 
     if (notify && mounted) {
@@ -127,14 +122,13 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
   /// 提交 RSS 搜索关键词。
   ///
   /// 空关键词不访问 DMHY，避免用户误触导致无意义请求。搜索默认限制在动画
-  /// 分类，用户可以通过开关切到全站 RSS。
+  /// 分类，用户可以通过范围 chip 切到全站 RSS。
   void _submitSearch() {
     final keyword = _keywordController.text.trim();
     if (keyword.isEmpty) {
       setState(() {
         _searchRequest = null;
         _entryContext = DmhyEntryContext.normal;
-        _resetPreferredReleaseGroupAutoApply();
       });
       return;
     }
@@ -147,14 +141,17 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
       );
       _entryContext = DmhyEntryContext.normal;
       _filter = const DmhyResourceFilter.empty();
-      _resetPreferredReleaseGroupAutoApply();
     });
   }
 
-  /// 切换是否只搜索动画分类。
+  /// 切换搜索范围（仅动画 / 全站）。
   ///
   /// 如果当前已经有搜索请求，切换后立即使用同一个关键词重新搜索。
   void _setAnimeOnly(bool value) {
+    if (_animeOnly == value) {
+      return;
+    }
+
     setState(() {
       _animeOnly = value;
       _entryContext = DmhyEntryContext.normal;
@@ -163,14 +160,13 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
           ? null
           : DmhySearchRequest(keyword: keyword, animeOnly: value, sort: _sort);
       _filter = const DmhyResourceFilter.empty();
-      _resetPreferredReleaseGroupAutoApply();
     });
   }
 
   /// 切换 DMHY 资源排序方式。
   ///
   /// 排序是搜索请求的一部分。如果用户已经输入并提交过关键词，切换后立即用当前
-  /// 关键词重新请求；如果输入框为空，则只更新菜单选择，等待下一次搜索。
+  /// 关键词重新请求；如果输入框为空，则只更新选择，等待下一次搜索。
   void _setSort(DmhyResourceSort value) {
     if (_sort == value) {
       return;
@@ -194,13 +190,8 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
   /// 筛选只作用于已经加载到页面的结果，不会改变搜索请求缓存键，也不会重新
   /// 访问 DMHY。
   void _setFilter(DmhyResourceFilter value) {
-    final releaseGroupCleared =
-        _filter.releaseGroup != null && value.releaseGroup == null;
     setState(() {
       _filter = value;
-      if (releaseGroupCleared) {
-        _preferredReleaseGroupSuppressed = true;
-      }
     });
   }
 
@@ -208,30 +199,6 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
   void _clearFilter() {
     setState(() {
       _filter = const DmhyResourceFilter.empty();
-      _preferredReleaseGroupSuppressed = true;
-    });
-  }
-
-  /// 允许新一轮搜索结果根据本机字幕组偏好自动套用一次筛选。
-  void _resetPreferredReleaseGroupAutoApply() {
-    _preferredReleaseGroupAutoApplied = false;
-    _preferredReleaseGroupSuppressed = false;
-  }
-
-  /// 当前结果集加载完成后，按本机字幕组偏好自动套用筛选。
-  ///
-  /// 自动套用只在用户没有手动清空当前结果筛选时发生；一旦用户清除筛选，本轮
-  /// 结果不会再次自动恢复偏好，避免“清了又回来”的割裂体验。
-  void _autoApplyPreferredReleaseGroup(String releaseGroup) {
-    if (_preferredReleaseGroupAutoApplied ||
-        _preferredReleaseGroupSuppressed ||
-        _filter.releaseGroup != null) {
-      return;
-    }
-
-    setState(() {
-      _filter = _filter.copyWith(releaseGroup: DmhyFilterValue(releaseGroup));
-      _preferredReleaseGroupAutoApplied = true;
     });
   }
 
@@ -240,7 +207,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
     final request = _searchRequest;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('搜索')),
+      appBar: AppBar(title: const Text('资源')),
       body: SafeArea(
         top: false,
         child: ListView(
@@ -265,11 +232,8 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
               _DmhySearchResult(
                 request: request,
                 filter: _filter,
-                preferenceAutoApplySuppressed: _preferredReleaseGroupSuppressed,
-                preferenceAlreadyAutoApplied: _preferredReleaseGroupAutoApplied,
                 onFilterChanged: _setFilter,
                 onFilterCleared: _clearFilter,
-                onPreferredReleaseGroupAutoApply: _autoApplyPreferredReleaseGroup,
               ),
           ],
         ),
@@ -346,8 +310,8 @@ class _DmhyEntryContextBanner extends StatelessWidget {
 
 /// 搜索输入区。
 ///
-/// 圆角搜索框承载关键词，下面一行放排序菜单与“仅动画”开关。回车或点击键盘
-/// 搜索键即可提交，去掉了独立的大号搜索按钮。
+/// 圆角搜索框承载关键词，下面一行是横向滚动的 chip 组：先是搜索范围
+/// （仅动画 / 全站），再是排序方式。回车或点击键盘搜索键即可提交。
 class _DmhySearchBar extends StatelessWidget {
   const _DmhySearchBar({
     required this.controller,
@@ -367,6 +331,12 @@ class _DmhySearchBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final labelStyle = theme.textTheme.labelMedium?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -384,43 +354,40 @@ class _DmhySearchBar extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: SizedBox(
-                height: 44,
-                child: DropdownButtonFormField<DmhyResourceSort>(
-                  initialValue: selectedSort,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12),
-                    prefixIcon: Icon(Icons.sort_outlined, size: 20),
-                  ),
-                  items: [
-                    for (final sort in DmhyResourceSort.values)
-                      DropdownMenuItem(value: sort, child: Text(sort.label)),
-                  ],
-                  onChanged: (sort) {
-                    if (sort == null) {
-                      return;
-                    }
-                    onSortChanged(sort);
-                  },
+        const SizedBox(height: 12),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('范围', style: labelStyle),
+              const SizedBox(width: 10),
+              ChoiceChip(
+                label: const Text('仅动画'),
+                selected: animeOnly,
+                onSelected: (_) => onAnimeOnlyChanged(true),
+              ),
+              const SizedBox(width: 8),
+              ChoiceChip(
+                label: const Text('全站'),
+                selected: !animeOnly,
+                onSelected: (_) => onAnimeOnlyChanged(false),
+              ),
+              const SizedBox(width: 14),
+              Container(width: 1, height: 22, color: scheme.outlineVariant),
+              const SizedBox(width: 14),
+              Text('排序', style: labelStyle),
+              const SizedBox(width: 10),
+              for (final sort in DmhyResourceSort.values) ...[
+                ChoiceChip(
+                  label: Text(sort.label),
+                  selected: selectedSort == sort,
+                  onSelected: (_) => onSortChanged(sort),
                 ),
-              ),
-            ),
-            const SizedBox(width: 10),
-            FilterChip(
-              label: const Text('仅动画'),
-              selected: animeOnly,
-              onSelected: onAnimeOnlyChanged,
-              avatar: Icon(
-                animeOnly ? Icons.check : Icons.category_outlined,
-                size: 18,
-              ),
-            ),
-          ],
+                const SizedBox(width: 8),
+              ],
+            ],
+          ),
         ),
       ],
     );
@@ -448,33 +415,24 @@ class _DmhyEmptyState extends StatelessWidget {
 
 /// 搜索结果区。
 ///
-/// 监听搜索 Provider，处理加载 / 错误 / 空结果，并在有结果时展示摘要、筛选栏与
-/// 资源卡片。所有筛选、字幕组偏好自动套用、订阅逻辑与重构前保持一致。
+/// 监听搜索 Provider，处理加载 / 错误 / 空结果，并在有结果时展示摘要、筛选入口与
+/// 资源卡片。筛选逻辑与改版前一致，仅把多维度选择收进底部抽屉。
 class _DmhySearchResult extends ConsumerWidget {
   const _DmhySearchResult({
     required this.request,
     required this.filter,
-    required this.preferenceAutoApplySuppressed,
-    required this.preferenceAlreadyAutoApplied,
     required this.onFilterChanged,
     required this.onFilterCleared,
-    required this.onPreferredReleaseGroupAutoApply,
   });
 
   final DmhySearchRequest request;
   final DmhyResourceFilter filter;
-  final bool preferenceAutoApplySuppressed;
-  final bool preferenceAlreadyAutoApplied;
   final ValueChanged<DmhyResourceFilter> onFilterChanged;
   final VoidCallback onFilterCleared;
-  final ValueChanged<String> onPreferredReleaseGroupAutoApply;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final result = ref.watch(dmhySearchProvider(request));
-    final preferenceAsync = ref.watch(dmhyFilterPreferenceControllerProvider);
-    final preference =
-        preferenceAsync.value ?? const DmhyFilterPreference.empty();
     final subscriptionAsync = ref.watch(dmhySubscriptionControllerProvider);
     final subscriptionState = subscriptionAsync.value;
     final isSubscriptionBusy =
@@ -494,16 +452,12 @@ class _DmhySearchResult extends ConsumerWidget {
             compact: true,
             icon: Icons.search_off_outlined,
             title: '没有找到资源',
-            message: '换一个关键词，或关闭“仅动画”试试',
+            message: '换一个关键词，或切换到“全站”试试',
           );
         }
 
         final filterOptions = DmhyResourceFilterOptions.fromResources(
           resources,
-        );
-        _schedulePreferredReleaseGroupAutoApply(
-          preference: preference,
-          options: filterOptions,
         );
         final filteredResources = filter.apply(resources);
 
@@ -522,19 +476,11 @@ class _DmhySearchResult extends ConsumerWidget {
             ),
             if (filterOptions.isNotEmpty) ...[
               const SizedBox(height: 12),
-              _DmhyFilterBar(
+              _DmhyFilterControls(
                 filter: filter,
                 options: filterOptions,
-                preferredReleaseGroup: preference.preferredReleaseGroup,
-                isPreferenceBusy: preferenceAsync.isLoading,
                 onChanged: onFilterChanged,
                 onClear: onFilterCleared,
-                onPreferredReleaseGroupSaved: (releaseGroup) {
-                  _savePreferredReleaseGroup(context, ref, releaseGroup);
-                },
-                onPreferredReleaseGroupCleared: () {
-                  _clearPreferredReleaseGroup(context, ref);
-                },
               ),
             ],
             const SizedBox(height: 12),
@@ -549,75 +495,6 @@ class _DmhySearchResult extends ConsumerWidget {
           ],
         );
       },
-    );
-  }
-
-  /// 在当前资源集合中存在本机字幕组偏好时，安排一次自动筛选。
-  ///
-  /// 使用 post-frame 回调，避免在 `build` 过程中直接修改父组件状态。父级会记录
-  /// 本轮结果是否已经自动套用过，避免重复调度。
-  void _schedulePreferredReleaseGroupAutoApply({
-    required DmhyFilterPreference preference,
-    required DmhyResourceFilterOptions options,
-  }) {
-    final preferredReleaseGroup = preference.preferredReleaseGroup;
-    if (preferredReleaseGroup == null ||
-        preferenceAutoApplySuppressed ||
-        preferenceAlreadyAutoApplied ||
-        filter.releaseGroup != null ||
-        !options.releaseGroups.contains(preferredReleaseGroup)) {
-      return;
-    }
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      onPreferredReleaseGroupAutoApply(preferredReleaseGroup);
-    });
-  }
-
-  /// 保存当前筛选中的字幕组为本机偏好。
-  Future<void> _savePreferredReleaseGroup(
-    BuildContext context,
-    WidgetRef ref,
-    String releaseGroup,
-  ) async {
-    final messenger = ScaffoldMessenger.of(context);
-    await ref
-        .read(dmhyFilterPreferenceControllerProvider.notifier)
-        .setPreferredReleaseGroup(releaseGroup);
-
-    if (!context.mounted) {
-      return;
-    }
-
-    final preferenceState = ref.read(dmhyFilterPreferenceControllerProvider);
-    final error = preferenceState.error;
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          error == null ? '已记住字幕组“$releaseGroup”' : '字幕组偏好保存失败：$error',
-        ),
-      ),
-    );
-  }
-
-  /// 清除本机保存的字幕组偏好。
-  Future<void> _clearPreferredReleaseGroup(
-    BuildContext context,
-    WidgetRef ref,
-  ) async {
-    final messenger = ScaffoldMessenger.of(context);
-    await ref
-        .read(dmhyFilterPreferenceControllerProvider.notifier)
-        .clearPreferredReleaseGroup();
-
-    if (!context.mounted) {
-      return;
-    }
-
-    final preferenceState = ref.read(dmhyFilterPreferenceControllerProvider);
-    final error = preferenceState.error;
-    messenger.showSnackBar(
-      SnackBar(content: Text(error == null ? '已清除字幕组偏好' : '字幕组偏好清除失败：$error')),
     );
   }
 
@@ -718,464 +595,442 @@ class _ResultSummary extends StatelessWidget {
   }
 }
 
-/// 资源筛选栏。
+/// 资源筛选控制区。
 ///
-/// 折叠在一个浅色面板里，包含清除入口、字幕组偏好操作和按结果动态生成的多个
-/// 筛选下拉。所有筛选项的可用性、取值与回调逻辑与重构前一致。
-class _DmhyFilterBar extends StatelessWidget {
-  const _DmhyFilterBar({
+/// 主列表里只保留一个“筛选”入口按钮、一个“清除”入口，以及若干代表当前生效
+/// 条件的可移除 chip。真正的多维度选择收进底部抽屉 [_DmhyFilterSheet]，避免大量
+/// 下拉框把列表顶部堆得又高又乱。
+class _DmhyFilterControls extends StatelessWidget {
+  const _DmhyFilterControls({
     required this.filter,
     required this.options,
-    required this.preferredReleaseGroup,
-    required this.isPreferenceBusy,
     required this.onChanged,
     required this.onClear,
-    required this.onPreferredReleaseGroupSaved,
-    required this.onPreferredReleaseGroupCleared,
   });
 
   final DmhyResourceFilter filter;
   final DmhyResourceFilterOptions options;
-  final String? preferredReleaseGroup;
-  final bool isPreferenceBusy;
   final ValueChanged<DmhyResourceFilter> onChanged;
   final VoidCallback onClear;
-  final ValueChanged<String> onPreferredReleaseGroupSaved;
-  final VoidCallback onPreferredReleaseGroupCleared;
+
+  @override
+  Widget build(BuildContext context) {
+    final activeChips = _buildActiveChips(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            OutlinedButton.icon(
+              onPressed: () => _openFilterSheet(context),
+              icon: const Icon(Icons.tune_outlined, size: 18),
+              label: Text(
+                filter.isEmpty ? '筛选' : '筛选 · ${_activeCount()}',
+              ),
+            ),
+            const Spacer(),
+            if (filter.isNotEmpty)
+              TextButton.icon(
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 36),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                onPressed: onClear,
+                icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+                label: const Text('清除'),
+              ),
+          ],
+        ),
+        if (activeChips.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          Wrap(spacing: 8, runSpacing: 8, children: activeChips),
+        ],
+      ],
+    );
+  }
+
+  /// 当前生效的筛选维度数量，用于“筛选 · N”角标。
+  int _activeCount() {
+    var count = 0;
+    if (filter.releaseGroup != null) count++;
+    if (filter.resolution != null) count++;
+    if (filter.source != null) count++;
+    if (filter.mediaFormat != null) count++;
+    if (filter.videoCodec != null) count++;
+    if (filter.subtitleLabel != null) count++;
+    if (filter.subtitleLanguage != null) count++;
+    if (filter.sizeRange != null) count++;
+    if (filter.minSeedCount != null) count++;
+    if (filter.excludedKeywords != null &&
+        filter.excludedKeywords!.trim().isNotEmpty) {
+      count++;
+    }
+    return count;
+  }
+
+  /// 把每个生效维度渲染成一枚可点 ✕ 移除的 chip。
+  List<Widget> _buildActiveChips(BuildContext context) {
+    final chips = <Widget>[];
+
+    void addChip(String label, DmhyResourceFilter cleared) {
+      chips.add(
+        InputChip(
+          label: Text(label),
+          onDeleted: () => onChanged(cleared),
+          deleteIconColor: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
+
+    if (filter.releaseGroup != null) {
+      addChip(
+        '字幕组：${filter.releaseGroup}',
+        filter.copyWith(releaseGroup: const DmhyFilterValue(null)),
+      );
+    }
+    if (filter.resolution != null) {
+      addChip(
+        '分辨率：${filter.resolution}',
+        filter.copyWith(resolution: const DmhyFilterValue(null)),
+      );
+    }
+    if (filter.source != null) {
+      addChip(
+        '片源：${filter.source}',
+        filter.copyWith(source: const DmhyFilterValue(null)),
+      );
+    }
+    if (filter.mediaFormat != null) {
+      addChip(
+        '封装：${filter.mediaFormat}',
+        filter.copyWith(mediaFormat: const DmhyFilterValue(null)),
+      );
+    }
+    if (filter.videoCodec != null) {
+      addChip(
+        '编码：${filter.videoCodec}',
+        filter.copyWith(videoCodec: const DmhyFilterValue(null)),
+      );
+    }
+    if (filter.subtitleLabel != null) {
+      addChip(
+        '字幕说明：${filter.subtitleLabel}',
+        filter.copyWith(subtitleLabel: const DmhyFilterValue(null)),
+      );
+    }
+    if (filter.subtitleLanguage != null) {
+      addChip(
+        '字幕语言：${filter.subtitleLanguage!.label}',
+        filter.copyWith(subtitleLanguage: const DmhyFilterValue(null)),
+      );
+    }
+    if (filter.sizeRange != null) {
+      addChip(
+        '大小：${filter.sizeRange!.label}',
+        filter.copyWith(sizeRange: const DmhyFilterValue(null)),
+      );
+    }
+    if (filter.minSeedCount != null) {
+      addChip(
+        '种子 ≥ ${filter.minSeedCount}',
+        filter.copyWith(minSeedCount: const DmhyFilterValue(null)),
+      );
+    }
+    if (filter.excludedKeywords != null &&
+        filter.excludedKeywords!.trim().isNotEmpty) {
+      addChip(
+        '排除：${filter.excludedKeywords}',
+        filter.copyWith(excludedKeywords: const DmhyFilterValue(null)),
+      );
+    }
+
+    return chips;
+  }
+
+  /// 打开底部筛选抽屉，抽屉里编辑一份草稿，只有点“应用”才写回列表。
+  Future<void> _openFilterSheet(BuildContext context) async {
+    final result = await showModalBottomSheet<DmhyResourceFilter>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _DmhyFilterSheet(initialFilter: filter, options: options),
+    );
+
+    if (result != null) {
+      onChanged(result);
+    }
+  }
+}
+
+/// 底部筛选抽屉。
+///
+/// 每个可用维度渲染成一组可单选的 chip，数值/文本维度用输入框承载。抽屉内部只
+/// 维护一份草稿，点“应用”才回传给列表，点“清除”把草稿重置为空，避免边选边刷新
+/// 造成的跳动。
+class _DmhyFilterSheet extends StatefulWidget {
+  const _DmhyFilterSheet({required this.initialFilter, required this.options});
+
+  final DmhyResourceFilter initialFilter;
+  final DmhyResourceFilterOptions options;
+
+  @override
+  State<_DmhyFilterSheet> createState() => _DmhyFilterSheetState();
+}
+
+class _DmhyFilterSheetState extends State<_DmhyFilterSheet> {
+  late DmhyResourceFilter _draft;
+  late final TextEditingController _minSeedController;
+  late final TextEditingController _excludeController;
+
+  @override
+  void initState() {
+    super.initState();
+    _draft = widget.initialFilter;
+    _minSeedController = TextEditingController(
+      text: _draft.minSeedCount?.toString() ?? '',
+    );
+    _excludeController = TextEditingController(
+      text: _draft.excludedKeywords ?? '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _minSeedController.dispose();
+    _excludeController.dispose();
+    super.dispose();
+  }
+
+  /// 重置草稿到空筛选。
+  void _reset() {
+    setState(() {
+      _draft = const DmhyResourceFilter.empty();
+      _minSeedController.clear();
+      _excludeController.clear();
+    });
+  }
+
+  /// 把文本输入折叠进草稿并回传。
+  void _apply() {
+    final result = _draft.copyWith(
+      minSeedCount: DmhyFilterValue(_parseMinSeedCount(_minSeedController.text)),
+      excludedKeywords: DmhyFilterValue(
+        _normalizeExcludedKeywords(_excludeController.text),
+      ),
+    );
+    Navigator.of(context).pop(result);
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
+    final options = widget.options;
 
-    return AppPanel(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.filter_alt_outlined, color: scheme.primary, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text('筛选', style: theme.textTheme.titleSmall),
+    return Padding(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 12, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('筛选', style: theme.textTheme.titleLarge),
+                  ),
+                  TextButton(
+                    onPressed: _draft.isEmpty ? null : _reset,
+                    child: const Text('清除'),
+                  ),
+                ],
               ),
-              if (filter.isNotEmpty)
-                TextButton.icon(
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    minimumSize: const Size(0, 32),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  onPressed: onClear,
-                  icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
-                  label: const Text('清除'),
+            ),
+            Flexible(
+              child: ListView(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+                children: [
+                  if (options.releaseGroups.isNotEmpty)
+                    _FilterSection(
+                      key: const Key('dmhy-filter-release-group'),
+                      title: '字幕组',
+                      child: _StringChoiceChips(
+                        options: options.releaseGroups,
+                        selected: _draft.releaseGroup,
+                        onSelected: (value) => setState(() {
+                          _draft = _draft.copyWith(
+                            releaseGroup: DmhyFilterValue(value),
+                          );
+                        }),
+                      ),
+                    ),
+                  if (options.resolutions.isNotEmpty)
+                    _FilterSection(
+                      key: const Key('dmhy-filter-resolution'),
+                      title: '分辨率',
+                      child: _StringChoiceChips(
+                        options: options.resolutions,
+                        selected: _draft.resolution,
+                        onSelected: (value) => setState(() {
+                          _draft = _draft.copyWith(
+                            resolution: DmhyFilterValue(value),
+                          );
+                        }),
+                      ),
+                    ),
+                  if (options.sources.isNotEmpty)
+                    _FilterSection(
+                      key: const Key('dmhy-filter-source'),
+                      title: '片源',
+                      child: _StringChoiceChips(
+                        options: options.sources,
+                        selected: _draft.source,
+                        onSelected: (value) => setState(() {
+                          _draft = _draft.copyWith(
+                            source: DmhyFilterValue(value),
+                          );
+                        }),
+                      ),
+                    ),
+                  if (options.mediaFormats.isNotEmpty)
+                    _FilterSection(
+                      key: const Key('dmhy-filter-media-format'),
+                      title: '封装',
+                      child: _StringChoiceChips(
+                        options: options.mediaFormats,
+                        selected: _draft.mediaFormat,
+                        onSelected: (value) => setState(() {
+                          _draft = _draft.copyWith(
+                            mediaFormat: DmhyFilterValue(value),
+                          );
+                        }),
+                      ),
+                    ),
+                  if (options.videoCodecs.isNotEmpty)
+                    _FilterSection(
+                      key: const Key('dmhy-filter-video-codec'),
+                      title: '编码',
+                      child: _StringChoiceChips(
+                        options: options.videoCodecs,
+                        selected: _draft.videoCodec,
+                        onSelected: (value) => setState(() {
+                          _draft = _draft.copyWith(
+                            videoCodec: DmhyFilterValue(value),
+                          );
+                        }),
+                      ),
+                    ),
+                  if (options.subtitleLabels.isNotEmpty)
+                    _FilterSection(
+                      key: const Key('dmhy-filter-subtitle-label'),
+                      title: '字幕说明',
+                      child: _StringChoiceChips(
+                        options: options.subtitleLabels,
+                        selected: _draft.subtitleLabel,
+                        onSelected: (value) => setState(() {
+                          _draft = _draft.copyWith(
+                            subtitleLabel: DmhyFilterValue(value),
+                          );
+                        }),
+                      ),
+                    ),
+                  if (options.subtitleLanguages.isNotEmpty)
+                    _FilterSection(
+                      key: const Key('dmhy-filter-subtitle-language'),
+                      title: '字幕语言',
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final language in options.subtitleLanguages)
+                            ChoiceChip(
+                              label: Text(language.label),
+                              selected: _draft.subtitleLanguage == language,
+                              onSelected: (isSelected) => setState(() {
+                                _draft = _draft.copyWith(
+                                  subtitleLanguage: DmhyFilterValue(
+                                    isSelected ? language : null,
+                                  ),
+                                );
+                              }),
+                            ),
+                        ],
+                      ),
+                    ),
+                  if (options.hasSize)
+                    _FilterSection(
+                      key: const Key('dmhy-filter-size-range'),
+                      title: '大小',
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final range in DmhyResourceSizeRange.values)
+                            ChoiceChip(
+                              label: Text(range.label),
+                              selected: _draft.sizeRange == range,
+                              onSelected: (isSelected) => setState(() {
+                                _draft = _draft.copyWith(
+                                  sizeRange: DmhyFilterValue(
+                                    isSelected ? range : null,
+                                  ),
+                                );
+                              }),
+                            ),
+                        ],
+                      ),
+                    ),
+                  if (options.hasSeedCount)
+                    _FilterSection(
+                      title: '最小种子数',
+                      child: TextField(
+                        key: const Key('dmhy-filter-min-seed-count'),
+                        controller: _minSeedController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        decoration: const InputDecoration(
+                          hintText: '全部',
+                          isDense: true,
+                        ),
+                      ),
+                    ),
+                  if (options.hasKeywordContent)
+                    _FilterSection(
+                      title: '排除关键词',
+                      child: TextField(
+                        key: const Key('dmhy-filter-excluded-keywords'),
+                        controller: _excludeController,
+                        decoration: const InputDecoration(
+                          hintText: '字幕组 / 片源 / 标题',
+                          isDense: true,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: _apply,
+                  child: const Text('应用'),
                 ),
-            ],
-          ),
-          if (preferredReleaseGroup != null ||
-              filter.releaseGroup != null) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                if (preferredReleaseGroup != null)
-                  AppChip(
-                    label: '偏好：$preferredReleaseGroup',
-                    icon: Icons.bookmark_added_outlined,
-                    tone: AppChipTone.positive,
-                  ),
-                if (filter.releaseGroup != null)
-                  OutlinedButton.icon(
-                    key: const Key('dmhy-save-release-group-preference'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      minimumSize: const Size(0, 36),
-                    ),
-                    onPressed: isPreferenceBusy
-                        ? null
-                        : () =>
-                              onPreferredReleaseGroupSaved(filter.releaseGroup!),
-                    icon: const Icon(Icons.bookmark_add_outlined, size: 18),
-                    label: const Text('记住字幕组'),
-                  ),
-                if (preferredReleaseGroup != null)
-                  OutlinedButton.icon(
-                    key: const Key('dmhy-clear-release-group-preference'),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      minimumSize: const Size(0, 36),
-                    ),
-                    onPressed: isPreferenceBusy
-                        ? null
-                        : onPreferredReleaseGroupCleared,
-                    icon: const Icon(Icons.bookmark_remove_outlined, size: 18),
-                    label: const Text('清除偏好'),
-                  ),
-              ],
+              ),
             ),
           ],
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              if (options.releaseGroups.isNotEmpty)
-                _DmhyStringFilterDropdown(
-                  key: const Key('dmhy-filter-release-group'),
-                  label: '字幕组',
-                  value: filter.releaseGroup,
-                  options: options.releaseGroups,
-                  onChanged: (value) {
-                    onChanged(
-                      filter.copyWith(releaseGroup: DmhyFilterValue(value)),
-                    );
-                  },
-                ),
-              if (options.resolutions.isNotEmpty)
-                _DmhyStringFilterDropdown(
-                  key: const Key('dmhy-filter-resolution'),
-                  label: '分辨率',
-                  value: filter.resolution,
-                  options: options.resolutions,
-                  onChanged: (value) {
-                    onChanged(
-                      filter.copyWith(resolution: DmhyFilterValue(value)),
-                    );
-                  },
-                ),
-              if (options.sources.isNotEmpty)
-                _DmhyStringFilterDropdown(
-                  key: const Key('dmhy-filter-source'),
-                  label: '片源',
-                  value: filter.source,
-                  options: options.sources,
-                  onChanged: (value) {
-                    onChanged(filter.copyWith(source: DmhyFilterValue(value)));
-                  },
-                ),
-              if (options.mediaFormats.isNotEmpty)
-                _DmhyStringFilterDropdown(
-                  key: const Key('dmhy-filter-media-format'),
-                  label: '封装',
-                  value: filter.mediaFormat,
-                  options: options.mediaFormats,
-                  onChanged: (value) {
-                    onChanged(
-                      filter.copyWith(mediaFormat: DmhyFilterValue(value)),
-                    );
-                  },
-                ),
-              if (options.videoCodecs.isNotEmpty)
-                _DmhyStringFilterDropdown(
-                  key: const Key('dmhy-filter-video-codec'),
-                  label: '编码',
-                  value: filter.videoCodec,
-                  options: options.videoCodecs,
-                  onChanged: (value) {
-                    onChanged(
-                      filter.copyWith(videoCodec: DmhyFilterValue(value)),
-                    );
-                  },
-                ),
-              if (options.subtitleLabels.isNotEmpty)
-                _DmhyStringFilterDropdown(
-                  key: const Key('dmhy-filter-subtitle-label'),
-                  label: '字幕说明',
-                  value: filter.subtitleLabel,
-                  options: options.subtitleLabels,
-                  onChanged: (value) {
-                    onChanged(
-                      filter.copyWith(subtitleLabel: DmhyFilterValue(value)),
-                    );
-                  },
-                ),
-              if (options.subtitleLanguages.isNotEmpty)
-                _DmhySubtitleLanguageFilterDropdown(
-                  value: filter.subtitleLanguage,
-                  options: options.subtitleLanguages,
-                  onChanged: (value) {
-                    onChanged(
-                      filter.copyWith(
-                        subtitleLanguage: DmhyFilterValue(value),
-                      ),
-                    );
-                  },
-                ),
-              if (options.hasSize)
-                _DmhySizeRangeFilterDropdown(
-                  value: filter.sizeRange,
-                  onChanged: (value) {
-                    onChanged(filter.copyWith(sizeRange: DmhyFilterValue(value)));
-                  },
-                ),
-              if (options.hasSeedCount)
-                _DmhyMinSeedCountFilterInput(
-                  value: filter.minSeedCount,
-                  onChanged: (value) {
-                    onChanged(
-                      filter.copyWith(minSeedCount: DmhyFilterValue(value)),
-                    );
-                  },
-                ),
-              if (options.hasKeywordContent)
-                _DmhyExcludeKeywordFilterInput(
-                  value: filter.excludedKeywords,
-                  onChanged: (value) {
-                    onChanged(
-                      filter.copyWith(excludedKeywords: DmhyFilterValue(value)),
-                    );
-                  },
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DmhyStringFilterDropdown extends StatelessWidget {
-  const _DmhyStringFilterDropdown({
-    required this.label,
-    required this.value,
-    required this.options,
-    required this.onChanged,
-    super.key,
-  });
-
-  final String label;
-  final String? value;
-  final List<String> options;
-  final ValueChanged<String?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 168,
-      child: DropdownButtonFormField<String>(
-        initialValue: value,
-        isExpanded: true,
-        decoration: InputDecoration(
-          labelText: label,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12),
         ),
-        items: [
-          const DropdownMenuItem<String>(value: null, child: Text('全部')),
-          for (final option in options)
-            DropdownMenuItem<String>(
-              value: option,
-              child: Text(option, overflow: TextOverflow.ellipsis),
-            ),
-        ],
-        onChanged: onChanged,
       ),
     );
-  }
-}
-
-/// 归一化字幕语言下拉框。
-///
-/// 它和“字幕说明”互补：字幕说明保留发布者原文，字幕语言则把 `简繁内封`、
-/// `CHS&CHT` 等不同写法归并成稳定语言选项。
-class _DmhySubtitleLanguageFilterDropdown extends StatelessWidget {
-  const _DmhySubtitleLanguageFilterDropdown({
-    required this.value,
-    required this.options,
-    required this.onChanged,
-  });
-
-  final DmhySubtitleLanguage? value;
-  final List<DmhySubtitleLanguage> options;
-  final ValueChanged<DmhySubtitleLanguage?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 168,
-      child: DropdownButtonFormField<DmhySubtitleLanguage>(
-        key: const Key('dmhy-filter-subtitle-language'),
-        initialValue: value,
-        isExpanded: true,
-        decoration: const InputDecoration(
-          labelText: '字幕语言',
-          contentPadding: EdgeInsets.symmetric(horizontal: 12),
-        ),
-        items: [
-          const DropdownMenuItem<DmhySubtitleLanguage>(
-            value: null,
-            child: Text('全部'),
-          ),
-          for (final option in options)
-            DropdownMenuItem<DmhySubtitleLanguage>(
-              value: option,
-              child: Text(option.label, overflow: TextOverflow.ellipsis),
-            ),
-        ],
-        onChanged: onChanged,
-      ),
-    );
-  }
-}
-
-/// 排除关键词输入框。
-///
-/// 只更新当前已加载结果的内存筛选条件，不会触发 RSS 或 HTML 列表请求。
-class _DmhyExcludeKeywordFilterInput extends StatefulWidget {
-  const _DmhyExcludeKeywordFilterInput({
-    required this.value,
-    required this.onChanged,
-  });
-
-  final String? value;
-  final ValueChanged<String?> onChanged;
-
-  @override
-  State<_DmhyExcludeKeywordFilterInput> createState() =>
-      _DmhyExcludeKeywordFilterInputState();
-}
-
-class _DmhyExcludeKeywordFilterInputState
-    extends State<_DmhyExcludeKeywordFilterInput> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.value ?? '');
-  }
-
-  @override
-  void didUpdateWidget(_DmhyExcludeKeywordFilterInput oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.value == widget.value) {
-      return;
-    }
-
-    final nextText = widget.value ?? '';
-    if (_controller.text == nextText) {
-      return;
-    }
-
-    _controller.value = TextEditingValue(
-      text: nextText,
-      selection: TextSelection.collapsed(offset: nextText.length),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 220,
-      child: TextField(
-        key: const Key('dmhy-filter-excluded-keywords'),
-        controller: _controller,
-        decoration: const InputDecoration(
-          labelText: '排除关键词',
-          hintText: '字幕组 / 片源 / 标题',
-          contentPadding: EdgeInsets.symmetric(horizontal: 12),
-        ),
-        onChanged: (value) {
-          widget.onChanged(_normalizeExcludedKeywords(value));
-        },
-      ),
-    );
-  }
-
-  /// 将输入框文本规范化为筛选值。
-  String? _normalizeExcludedKeywords(String value) {
-    final normalized = value.trim();
-    if (normalized.isEmpty) {
-      return null;
-    }
-
-    return normalized;
-  }
-}
-
-/// 最小种子数输入框。
-///
-/// 种子数来自前台 HTML 列表页增强统计。输入框只改变当前内存筛选条件，不会
-/// 触发新的 DMHY 网络请求。
-class _DmhyMinSeedCountFilterInput extends StatefulWidget {
-  const _DmhyMinSeedCountFilterInput({
-    required this.value,
-    required this.onChanged,
-  });
-
-  final int? value;
-  final ValueChanged<int?> onChanged;
-
-  @override
-  State<_DmhyMinSeedCountFilterInput> createState() =>
-      _DmhyMinSeedCountFilterInputState();
-}
-
-class _DmhyMinSeedCountFilterInputState
-    extends State<_DmhyMinSeedCountFilterInput> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: _formatValue(widget.value));
-  }
-
-  @override
-  void didUpdateWidget(_DmhyMinSeedCountFilterInput oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.value == widget.value) {
-      return;
-    }
-
-    final nextText = _formatValue(widget.value);
-    if (_controller.text == nextText) {
-      return;
-    }
-
-    _controller.value = TextEditingValue(
-      text: nextText,
-      selection: TextSelection.collapsed(offset: nextText.length),
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 168,
-      child: TextField(
-        key: const Key('dmhy-filter-min-seed-count'),
-        controller: _controller,
-        keyboardType: TextInputType.number,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        decoration: const InputDecoration(
-          labelText: '最小种子数',
-          hintText: '全部',
-          contentPadding: EdgeInsets.symmetric(horizontal: 12),
-        ),
-        onChanged: (value) {
-          widget.onChanged(_parseMinSeedCount(value));
-        },
-      ),
-    );
-  }
-
-  String _formatValue(int? value) {
-    return value == null ? '' : value.toString();
   }
 
   /// 将用户输入解析为正整数阈值。
@@ -1187,42 +1042,67 @@ class _DmhyMinSeedCountFilterInputState
 
     return parsed;
   }
+
+  /// 将排除关键词输入规范化为筛选值。
+  String? _normalizeExcludedKeywords(String value) {
+    final normalized = value.trim();
+    return normalized.isEmpty ? null : normalized;
+  }
 }
 
-class _DmhySizeRangeFilterDropdown extends StatelessWidget {
-  const _DmhySizeRangeFilterDropdown({
-    required this.value,
-    required this.onChanged,
-  });
+/// 抽屉内的一个筛选分组：标题 + 内容。
+class _FilterSection extends StatelessWidget {
+  const _FilterSection({required this.title, required this.child, super.key});
 
-  final DmhyResourceSizeRange? value;
-  final ValueChanged<DmhyResourceSizeRange?> onChanged;
+  final String title;
+  final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 168,
-      child: DropdownButtonFormField<DmhyResourceSizeRange>(
-        key: const Key('dmhy-filter-size-range'),
-        initialValue: value,
-        isExpanded: true,
-        decoration: const InputDecoration(
-          labelText: '大小',
-          contentPadding: EdgeInsets.symmetric(horizontal: 12),
-        ),
-        items: [
-          const DropdownMenuItem<DmhyResourceSizeRange>(
-            value: null,
-            child: Text('全部'),
-          ),
-          for (final range in DmhyResourceSizeRange.values)
-            DropdownMenuItem<DmhyResourceSizeRange>(
-              value: range,
-              child: Text(range.label, overflow: TextOverflow.ellipsis),
-            ),
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: theme.textTheme.titleSmall),
+          const SizedBox(height: 10),
+          child,
         ],
-        onChanged: onChanged,
       ),
+    );
+  }
+}
+
+/// 字符串维度的单选 chip 组。
+///
+/// 再次点击已选中的 chip 会取消选择（回到“全部”）。
+class _StringChoiceChips extends StatelessWidget {
+  const _StringChoiceChips({
+    required this.options,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final List<String> options;
+  final String? selected;
+  final ValueChanged<String?> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final option in options)
+          ChoiceChip(
+            label: Text(option),
+            selected: selected == option,
+            onSelected: (isSelected) =>
+                onSelected(isSelected ? option : null),
+          ),
+      ],
     );
   }
 }
@@ -1231,7 +1111,7 @@ class _DmhySizeRangeFilterDropdown extends StatelessWidget {
 ///
 /// 顶部是标题与关键信息 chips，底部是三个交接动作：复制 magnet、打开 magnet、
 /// 主种子按钮（按设备能力自适应为打开/分享/复制）。所有复制、打开、下载交接、
-/// 历史记录与播放回流逻辑与重构前保持一致，仅去掉逐卡的客户端自检说明文字。
+/// 历史记录与播放回流逻辑与改版前保持一致。
 class _DmhyResourceCard extends ConsumerStatefulWidget {
   const _DmhyResourceCard({required this.resource});
 
@@ -1247,7 +1127,6 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final resource = widget.resource;
     final clientCapabilities = ref.watch(torrentClientCapabilitiesProvider);
     final torrentAction = _SeedHandoffAction.fromCapabilities(

@@ -20,7 +20,9 @@
 - `presentation/bangumi_tab.dart`：Bangumi tab 与 Bangumi 搜索页。主 tab 的标题栏使用官方 favicon SVG 图标和 `Bangumi` 文案，右上角搜索按钮进入独立搜索页；主内容默认展示“我的动画收藏”分页列表（默认筛选“在看”，初次读取收藏时居中展示加载态，空收藏分类用居中大图标和短说明提示，支持收藏状态筛选、加载更多、收藏条目右侧圆形搜索图标直接跳转 DMHY 搜索、进入详情）。独立搜索页提供 Bangumi 条目搜索框、排序 chips、输入防抖、即时提交、分页加载更多、结果直接跳转 DMHY 搜索和进入详情；未登录时只展示一条引导卡片，点击“去登录”跳转“我的”tab。账号登录、退出、OAuth 配置入口已移至“我的”页，本 tab 不再承载账号面板。
 - `presentation/bangumi_oauth_authorization_page.dart`：Bangumi OAuth 授权 WebView 页面，打开授权页、截获 `https://bgm.tv/oauth/<redirect_uri>` 代理回调、校验 state，并把授权 code 返回给登录入口（现由“我的”页账号卡发起）；当 Android WebView renderer 崩溃或页面加载超时时，会展示重建 WebView 重试、外部浏览器打开、复制授权地址和手动粘贴回调/code 的恢复入口。
 - `presentation/bangumi_oauth_settings_page.dart`：Bangumi OAuth 设置页（从“我的”页进入），提供 client id、client secret、redirect URI 和 scopes 表单，会回填已保存的本机配置，保存本机配置或恢复编译期配置；页面自身只写入本机存储和清理旧 token，账号卡由打开设置页的入口在 route 返回后刷新。
-- `presentation/bangumi_subject_detail_page.dart`：Bangumi 条目详情页，采用沉浸式封面头部，头图走共享图片文件缓存，展示标题、评分、DMHY 资源搜索入口、我的收藏读写、动画章节观看状态同步、章节类型筛选、已加载章节展开/收起、加载更多章节、批量标记到第 N 话看过、当前已加载章节批量设为看过或未收藏、收藏统计、维基信息和标签；未登录时引导跳转“我的”tab 登录。
+- `presentation/bangumi_subject_detail_page.dart`：Bangumi 条目详情页，采用可折叠沉浸式封面头部，头图走共享图片文件缓存，展示标题、评分、DMHY 资源搜索入口、我的收藏读写、动画章节观看状态同步、章节类型筛选、已加载章节展开/收起、加载更多章节、批量标记到第 N 话看过、当前已加载章节批量设为看过或未收藏、收藏统计、维基信息和标签；未登录时引导跳转“我的”tab 登录。
+- `presentation/widgets/bangumi_collection_editor_sheet.dart`：Bangumi 条目详情页内的收藏编辑底部弹层，封装收藏状态、评分、私密标记和短评的移动端表单交互，并复用收藏保存、Provider 失效与保存反馈流程。
+- `presentation/widgets/bangumi_episode_progress_panel.dart`：Bangumi 条目详情页内的章节观看进度面板，封装进度仪表、章节类型切换、快捷标记下一话、批量标记、加载更多和时间线章节状态修改交互。
 - `presentation/widgets/bangumi_logo_icon.dart`：Bangumi 官方 favicon SVG 图标组件，封装 `assets/branding/bangumi_favicon_full_size.svg` 的尺寸、语义标签、官方渐变保留和可选单色染色，供底部导航和 Bangumi 标题栏复用。
 - `presentation/widgets/bangumi_rating_line.dart`：Bangumi 模块内复用的评分摘要组件。
 - `presentation/widgets/bangumi_subject_cover.dart`：Bangumi 模块内复用的条目封面组件，使用共享图片文件缓存读取封面，并内置缺图和加载失败占位。
