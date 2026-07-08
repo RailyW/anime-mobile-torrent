@@ -50,9 +50,7 @@ Future<void> _shareBangumiSubject(
       return;
     }
 
-    messenger.showSnackBar(
-      SnackBar(content: Text('分享失败：$error')),
-    );
+    messenger.showSnackBar(SnackBar(content: Text('分享失败：$error')));
   }
 }
 
@@ -68,7 +66,7 @@ const double _heroExpandedHeight = 360;
 /// 编辑、章节进度同步等业务逻辑沿用 application 层控制器。本次重设计聚焦视觉：
 /// - 封面头图升级为可折叠的沉浸式 SliverAppBar，上滑时平滑过渡到小标题栏，
 ///   保留封面与头图的渐变融合效果；
-/// - 观看进度重做为「进度仪表 + 时间线章节列表」（见
+/// - 观看进度重做为「进度仪表 + 数字章节格」（见
 ///   `widgets/bangumi_episode_progress_panel.dart`）；
 /// - 各内容分区带交错淡入上移的入场动画，系统关闭动画时自动跳到终态。
 class BangumiSubjectDetailPage extends ConsumerWidget {
@@ -131,9 +129,7 @@ class _SubjectDetailView extends StatelessWidget {
                 const SizedBox(height: 26),
                 reveal(_SubjectSummarySection(summary: subject.summary)),
                 const SizedBox(height: 26),
-                reveal(
-                  _CollectionStatsSection(collection: subject.collection),
-                ),
+                reveal(_CollectionStatsSection(collection: subject.collection)),
                 if (subject.infobox.isNotEmpty) ...[
                   const SizedBox(height: 26),
                   reveal(_InfoBoxSection(items: subject.infobox)),
@@ -439,7 +435,8 @@ class _HeroRoundButton extends StatelessWidget {
       solidProgress,
     );
     final iconColor =
-        foreground ?? Color.lerp(AppColors.ink, scheme.onSurface, solidProgress);
+        foreground ??
+        Color.lerp(AppColors.ink, scheme.onSurface, solidProgress);
     final shadowOpacity = (1 - solidProgress) * 0.14;
 
     return DecoratedBox(
@@ -636,7 +633,9 @@ class _MyCollectionSection extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _DetailSectionHeader(
-          title: '我的收藏',
+          title: subject.type == BangumiSubjectType.anime
+              ? '我的收藏 · 进度'
+              : '我的收藏',
           trailing: currentCollection != null
               ? _CollectionStatusPill(
                   label: currentCollection.type.label,
@@ -662,7 +661,9 @@ class _MyCollectionSection extends ConsumerWidget {
             }
 
             return collectionState.when(
-              loading: () => const AppInlineLoading(label: '正在读取我的收藏…'),
+              loading: () => subject.type == BangumiSubjectType.anime
+                  ? _MyCollectionProgressLoadingCard(subject: subject)
+                  : const AppInlineLoading(label: '正在读取收藏状态…'),
               error: (error, stackTrace) => AppErrorView(
                 compact: true,
                 title: '读取收藏失败',
@@ -685,6 +686,25 @@ class _MyCollectionSection extends ConsumerWidget {
           },
         ),
       ],
+    );
+  }
+}
+
+/// 动画条目收藏读取中的进度卡。
+///
+/// 详情页的章节进度只依赖条目 ID 与登录 token，不依赖单条收藏对象本身。以前先
+/// 等收藏对象加载完成，再渲染进度面板，会让用户连续看到收藏加载文案
+/// 和“正在读取章节进度…”两段 loading。这里在收藏对象加载期间先把同一张进度
+/// 卡渲染出来，让章节请求提前开始，也让栏目下始终只有一个主要加载状态。
+class _MyCollectionProgressLoadingCard extends StatelessWidget {
+  const _MyCollectionProgressLoadingCard({required this.subject});
+
+  final BangumiSubject subject;
+
+  @override
+  Widget build(BuildContext context) {
+    return _CollectionCard(
+      child: BangumiEpisodeProgressPanel(subject: subject),
     );
   }
 }
@@ -726,7 +746,7 @@ class _MyCollectionLoggedOut extends StatelessWidget {
 /// 已登录时的收藏卡片。
 ///
 /// 贴设计稿「我的收藏 · 进度」:一张白色 `.card`,动画条目里主体是观看进度面板
-/// (进度条 + 章节时间线),下方以细分隔线托出「我的评分 / 短评 / 标签」这类次级
+/// (进度条 + 数字章节格),下方以细分隔线托出「我的评分 / 短评 / 标签」这类次级
 /// 备注。收藏状态与编辑入口移到分区标题右侧的状态胶囊,不再在卡内堆 chip。
 class _MyCollectionContent extends StatelessWidget {
   const _MyCollectionContent({
@@ -935,11 +955,7 @@ class _CollectionStatusPill extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 2),
-            Icon(
-              Icons.chevron_right,
-              size: 16,
-              color: scheme.onSurfaceVariant,
-            ),
+            Icon(Icons.chevron_right, size: 16, color: scheme.onSurfaceVariant),
           ],
         ),
       ),
@@ -959,9 +975,10 @@ Future<void> showBangumiCollectionStatusSheet({
   return showModalBottomSheet<void>(
     context: context,
     showDragHandle: true,
-    builder: (_) => _CollectionStatusSheet(
-      subject: subject,
-      collection: collection,
+    constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width),
+    builder: (_) => SizedBox(
+      width: double.infinity,
+      child: _CollectionStatusSheet(subject: subject, collection: collection),
     ),
   );
 }
@@ -1410,7 +1427,10 @@ class _DetailSectionHeader extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          if (trailing != null) ...[Expanded(child: titleText), trailing] else
+          if (trailing != null) ...[
+            Expanded(child: titleText),
+            trailing,
+          ] else
             titleText,
         ],
       ),
@@ -1531,4 +1551,3 @@ class _RevealState extends State<_Reveal> with SingleTickerProviderStateMixin {
     );
   }
 }
-

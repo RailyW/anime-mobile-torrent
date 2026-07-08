@@ -210,11 +210,7 @@ class _BangumiSearchPageState extends ConsumerState<BangumiSearchPage> {
   ///
   /// 当前项目还没有持久化搜索历史；这里先按设计稿给出常用关键词入口，后续接入
   /// 本地历史时只需要替换数据来源，不需要改搜索提交流程。
-  static const List<String> _recentKeywordFallback = [
-    '葬送的芙莉莲',
-    '孤独摇滚',
-    '迷宫饭',
-  ];
+  static const List<String> _recentKeywordFallback = ['葬送的芙莉莲', '孤独摇滚', '迷宫饭'];
 
   /// 搜索页待输入态展示的热门条目。
   ///
@@ -382,9 +378,7 @@ class _BangumiSearchPageState extends ConsumerState<BangumiSearchPage> {
           controller: _scrollController,
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 116),
           children: [
-            _BangumiSearchTopBar(
-              onBack: widget.onBack ?? () => context.pop(),
-            ),
+            _BangumiSearchTopBar(onBack: widget.onBack ?? () => context.pop()),
             const SizedBox(height: 6),
             _SearchField(
               controller: _keywordController,
@@ -920,7 +914,9 @@ class _CollectionHeadRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final countLabel = total > 0 ? '$currentTypeLabel $total 部' : currentTypeLabel;
+    final countLabel = total > 0
+        ? '$currentTypeLabel $total 部'
+        : currentTypeLabel;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -947,7 +943,7 @@ class _CollectionHeadRow extends StatelessWidget {
             ],
           ),
         ),
-        if (trailing != null) trailing!,
+        ?trailing,
       ],
     );
   }
@@ -1015,7 +1011,11 @@ class _CollectionViewToggle extends StatelessWidget {
         selected: isGrid,
         onChanged: onChanged,
         segments: const [
-          AppSegment(value: true, icon: Icons.grid_view_rounded, tooltip: '网格视图'),
+          AppSegment(
+            value: true,
+            icon: Icons.grid_view_rounded,
+            tooltip: '网格视图',
+          ),
           AppSegment(
             value: false,
             icon: Icons.view_agenda_outlined,
@@ -1058,8 +1058,8 @@ class _CollectionGrid extends StatelessWidget {
 
 /// 收藏网格里的单个单元格：封面瓦片 + 标题 + 星评。
 ///
-/// 点击整格进入条目详情。封面上叠加观看进度与“已看过”角标,数据来自收藏摘要的
-/// `eps`(总集数)与 `epStatus`(已看集数);集数未知时降级为“看到 N 话”或不显示。
+/// 点击整格进入条目详情。封面上叠加“看到第 N 话”进度与“已看过”角标,
+/// 数据来自收藏摘要的 `epStatus`;没有进度时不显示,保持封面干净。
 class _CollectionGridCell extends StatelessWidget {
   const _CollectionGridCell({required this.collection});
 
@@ -1091,7 +1091,7 @@ class _CollectionGridCell extends StatelessWidget {
             child: BangumiCoverTile(
               imageUrl: subject?.images.preferredListUrl,
               watched: collection.type == BangumiCollectionType.done,
-              progressLabel: _progressLabel(subject),
+              progressLabel: _progressLabel(),
             ),
           ),
           const SizedBox(height: 6),
@@ -1127,17 +1127,11 @@ class _CollectionGridCell extends StatelessWidget {
 
   /// 生成封面左下角的观看进度文字。
   ///
-  /// 有总集数时展示“已看 / 总”;总集数未知但有已看进度时降级为“看到 N 话”;
-  /// 完全没有进度信息则不展示,保持封面干净。
-  String? _progressLabel(BangumiCollectionSubject? subject) {
+  /// 统一展示“看到第 N 话”,不再使用“已看/总数”的数字比值格式。
+  String? _progressLabel() {
     final watched = collection.epStatus;
-    final total = subject?.eps ?? 0;
-
-    if (total > 0) {
-      return '$watched/$total';
-    }
     if (watched > 0) {
-      return '看到 $watched 话';
+      return '看到第 $watched 话';
     }
     return null;
   }
@@ -1251,10 +1245,7 @@ class _CollectionCard extends StatelessWidget {
     final dmhyKeyword = subject == null
         ? ''
         : normalizeBangumiDmhyKeyword(subject.displayName);
-    final metaLabel = [
-      ?typeLabel,
-      if (eps > 0) '$eps 话',
-    ].join(' · ');
+    final metaLabel = [?typeLabel, if (eps > 0) '$eps 话'].join(' · ');
 
     return InkWell(
       borderRadius: BorderRadius.circular(16),
@@ -1309,10 +1300,13 @@ class _CollectionCard extends StatelessWidget {
                     runSpacing: 6,
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
-                      _CollectionMiniChip(label: score, tone: _MiniChipTone.star),
+                      _CollectionMiniChip(
+                        label: score,
+                        tone: _MiniChipTone.star,
+                      ),
                       if (metaLabel.isNotEmpty)
                         _CollectionMiniChip(label: metaLabel),
-                      _statusChip(collection, eps),
+                      _statusChip(collection),
                     ],
                   ),
                 ],
@@ -1360,11 +1354,14 @@ class _CollectionCard extends StatelessWidget {
     );
   }
 
-  /// 状态 chip：在看→品牌软色（含进度）、看过→青绿软色，其余按状态标签用中性色。
-  Widget _statusChip(BangumiSubjectCollection collection, int eps) {
+  /// 状态 chip：在看→品牌软色（含“看到第 N 话”进度）、看过→青绿软色，
+  /// 其余按状态标签用中性色。
+  Widget _statusChip(BangumiSubjectCollection collection) {
     switch (collection.type) {
       case BangumiCollectionType.doing:
-        final label = eps > 0 ? '在看 ${collection.epStatus}/$eps' : '在看';
+        final label = collection.epStatus > 0
+            ? '看到第 ${collection.epStatus} 话'
+            : '在看';
         return _CollectionMiniChip(label: label, tone: _MiniChipTone.brand);
       case BangumiCollectionType.done:
         return const _CollectionMiniChip(label: '看过', tone: _MiniChipTone.leaf);
@@ -1545,9 +1542,7 @@ class _SearchResultSectionState extends ConsumerState<_SearchResultSection> {
         const SizedBox(height: 6),
         for (var index = 0; index < state.subjects.length; index++)
           _StaggeredSearchResult(
-            delay: Duration(
-              milliseconds: 24 * index.clamp(0, 8).toInt(),
-            ),
+            delay: Duration(milliseconds: 24 * index.clamp(0, 8).toInt()),
             child: _SubjectCard(
               subject: state.subjects[index],
               highlightKeyword: widget.request.normalizedKeyword,

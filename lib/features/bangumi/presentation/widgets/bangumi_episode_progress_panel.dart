@@ -10,13 +10,13 @@ import '../../domain/bangumi_subject.dart';
 
 /// Bangumi 条目详情页的观看进度面板。
 ///
-/// 面板承接详情页「我的收藏」卡片内的章节进度能力，本次重设计只重做视觉：
-/// - 顶部是樱粉渐变的进度仪表（动画进度条 + 已看统计 + 百分比）；
-/// - 主操作「标记下一话看过」升级为整行大按钮，下方提示下一话标题；
-/// - 章节类型从下拉框改为 ChoiceChip 组，一眼可见全部类型；
-/// - 章节列表时间线化：左侧状态圆点可直接点按在「看过/未收藏」间切换。
+/// 面板承接详情页「我的收藏 · 进度」卡片内的章节进度能力：
+/// - 顶部直接展示“看到第 N 话”和百分比，不再出现旧版数字比值文案；
+/// - 进度条使用设计稿里的樱粉填充和中性灰轨道，并保留平滑生长动画；
+/// - 默认只展示本篇章节，卡片内不再提供管理型快捷操作；
+/// - 章节列表压缩为数字格子，点击单个数字后从全宽底部抽屉里选择“标记为”状态。
 ///
-/// 所有网络写入、刷新与失效逻辑均从旧实现原样搬移，不做任何行为变更。
+/// 网络写入仍沿用原来的章节状态保存接口；本组件只收敛当前页面暴露的操作面。
 class BangumiEpisodeProgressPanel extends ConsumerStatefulWidget {
   const BangumiEpisodeProgressPanel({required this.subject, super.key});
 
@@ -26,6 +26,15 @@ class BangumiEpisodeProgressPanel extends ConsumerStatefulWidget {
   ConsumerState<BangumiEpisodeProgressPanel> createState() =>
       _BangumiEpisodeProgressPanelState();
 }
+
+/// 设计稿中单个话数格子的固定尺寸。
+///
+/// 原先使用 `GridView` 按 4 列拉伸，会把每个格子撑成大矩形；设计稿里的话数
+/// 按钮是 32px 左右的小方块，并允许一行自然排下 7 个左右，因此这里改为固定
+/// 尺寸加 `Wrap` 自动换行。
+const double _episodeTileWidth = 32;
+const double _episodeTileHeight = 31;
+const double _episodeTileSpacing = 8;
 
 class _BangumiEpisodeProgressPanelState
     extends ConsumerState<BangumiEpisodeProgressPanel> {
@@ -70,57 +79,42 @@ class _BangumiEpisodeProgressPanelState
       return const SizedBox.shrink();
     }
 
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
     final provider = bangumiSubjectEpisodeCollectionListControllerProvider(
       widget.subject.id,
     );
     final progressState = ref.watch(provider);
     final controller = ref.read(provider.notifier);
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // 面板标题行：小图标 + 「观看进度」。测试通过精确文本定位该区块，
-        // 因此标题必须保持为独立的普通 Text。
-        Row(
-          children: [
-            Icon(Icons.stairs_outlined, size: 18, color: scheme.primary),
-            const SizedBox(width: 8),
-            Text(
-              '观看进度',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (progressState.isInitialLoading)
-          const AppInlineLoading(label: '正在读取章节进度…')
-        else if (progressState.isLoggedOut)
-          const Text('登录 Bangumi 后，可以同步这部番的章节观看进度。')
-        else if (progressState.errorMessage != null &&
-            !progressState.hasEpisodes)
-          AppErrorView(
-            compact: true,
-            title: '读取章节进度失败',
-            message: progressState.errorMessage!,
-            onRetry: controller.loadFirstPage,
-          )
-        else if (!progressState.hasLoadedOnce)
-          const AppInlineLoading(label: '正在准备章节进度…')
-        else
-          _EpisodeProgressList(subject: widget.subject, state: progressState),
-      ],
-    );
+    if (progressState.isInitialLoading) {
+      return const AppInlineLoading(label: '正在读取章节进度…');
+    }
+
+    if (progressState.isLoggedOut) {
+      return const Text('登录 Bangumi 后，可以同步这部番的章节观看进度。');
+    }
+
+    if (progressState.errorMessage != null && !progressState.hasEpisodes) {
+      return AppErrorView(
+        compact: true,
+        title: '读取章节进度失败',
+        message: progressState.errorMessage!,
+        onRetry: controller.loadFirstPage,
+      );
+    }
+
+    if (!progressState.hasLoadedOnce) {
+      return const AppInlineLoading(label: '正在准备章节进度…');
+    }
+
+    return _EpisodeProgressList(subject: widget.subject, state: progressState);
   }
 }
 
 /// 章节进度主体列表。
 ///
-/// 本地 UI 状态（正在保存的章节、批量保存标记、批量目标、是否展开全部）与旧
-/// 实现保持一致；只有布局与动画被重新设计。
+/// 设计稿中的进度面板只保留“看到第 N 话”、百分比、进度条和本篇数字格子。
+/// 所有管理型操作都从当前紧凑面板移除，
+/// 单集状态修改统一从数字格子的“标记为”底部抽屉进入。
 class _EpisodeProgressList extends ConsumerStatefulWidget {
   const _EpisodeProgressList({required this.subject, required this.state});
 
@@ -134,19 +128,6 @@ class _EpisodeProgressList extends ConsumerStatefulWidget {
 
 class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
   int? _savingEpisodeId;
-  bool _isSavingBatch = false;
-  int? _selectedBatchEpisodeId;
-  bool _showAllLoadedEpisodes = false;
-
-  @override
-  void didUpdateWidget(covariant _EpisodeProgressList oldWidget) {
-    super.didUpdateWidget(oldWidget);
-
-    if (oldWidget.state.episodeType != widget.state.episodeType) {
-      _selectedBatchEpisodeId = null;
-      _showAllLoadedEpisodes = false;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -154,230 +135,56 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
     final scheme = theme.colorScheme;
     final state = widget.state;
     final page = state.loadedPage;
-    final controller = ref.read(
-      bangumiSubjectEpisodeCollectionListControllerProvider(
-        widget.subject.id,
-      ).notifier,
-    );
+    const episodeType = BangumiEpisodeType.mainStory;
     final total = page.total > 0 ? page.total : page.episodes.length;
-    final currentTypeEpisodes = page.episodesOfType(state.episodeType);
-    final nextEpisode = page.firstUnwatchedForType(state.episodeType);
+    final mainStoryEpisodes = page.episodesOfType(episodeType);
+    final nextEpisode = page.firstUnwatchedForType(episodeType);
     final isPageLoading = state.isLoading;
-    final isBusy = isPageLoading || _savingEpisodeId != null || _isSavingBatch;
-    final selectedBatchTarget = _resolveBatchTarget(
-      currentTypeEpisodes: currentTypeEpisodes,
-      nextEpisode: nextEpisode,
-    );
-    final visibleEpisodes = _showAllLoadedEpisodes
-        ? page.episodes
-        : page.episodes.take(12).toList(growable: false);
-    final hasHiddenLoadedEpisodes =
-        page.episodes.length > visibleEpisodes.length;
+    final visibleEpisodes = mainStoryEpisodes.take(12).toList(growable: false);
+    final hiddenCount = (total - visibleEpisodes.length).clamp(0, 9999).toInt();
 
-    // 当前类型没有可同步章节时，仍保留类型切换入口和一句说明。
-    if (page.episodes.isEmpty) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _EpisodeTypePicker(
-            selectedType: state.episodeType,
-            isDisabled: isBusy,
-            onChanged: controller.selectEpisodeType,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Bangumi 暂无可同步的${state.episodeType.label}章节。',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
-        ],
+    // 当前默认只展示本篇；没有本篇时直接提示，不再暴露类型切换入口。
+    if (mainStoryEpisodes.isEmpty) {
+      return Text(
+        'Bangumi 暂无可同步的本篇章节。',
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: scheme.onSurfaceVariant,
+        ),
       );
     }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 签名元素：进度仪表。已看统计文案格式与旧实现完全一致。
+        // 签名元素：进度仪表。文案固定为“看到第 N 话 / 百分比”。
         _ProgressGauge(
-          watchedCount: page.watchedCountForType(state.episodeType),
+          watchedCount: page.watchedCountForType(episodeType),
           totalCount: total,
-          typeLabel: state.episodeType.label,
         ),
         const SizedBox(height: 14),
-        // 主操作：标记下一话看过。整行大按钮 + 下一话标题提示。
-        SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: FilledButton.icon(
-            onPressed: nextEpisode == null || isBusy
-                ? null
-                : () => _saveEpisodeStatus(
-                    nextEpisode,
-                    BangumiEpisodeCollectionType.done,
-                  ),
-            icon: const Icon(Icons.done_outline, size: 20),
-            label: const Text('标记下一话看过'),
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          nextEpisode == null
-              ? '当前类型的已加载章节都看过了'
-              : '下一话：${nextEpisode.episode.sortLabel} · ${nextEpisode.episode.displayName}',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: scheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 12),
-        // 次级操作组：刷新 / 加载更多 / 批量看过 / 批量清空。
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            OutlinedButton.icon(
-              onPressed: !isBusy ? controller.refreshLoadedEpisodes : null,
-              icon: isPageLoading
-                  ? const SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.refresh_outlined, size: 16),
-              label: Text(isPageLoading ? '刷新中…' : '刷新进度'),
-              style: _compactOutlinedStyle,
-            ),
-            if (state.hasMore)
-              OutlinedButton.icon(
-                onPressed: !isBusy ? controller.loadNextPage : null,
-                icon: isPageLoading
-                    ? const SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.expand_more_outlined, size: 16),
-                label: Text(isPageLoading ? '加载中…' : '加载更多章节'),
-                style: _compactOutlinedStyle,
-              ),
-            if (currentTypeEpisodes.isNotEmpty)
-              OutlinedButton.icon(
-                onPressed: !isBusy
-                    ? () =>
-                          _saveLoadedEpisodesAs(BangumiEpisodeCollectionType.done)
-                    : null,
-                icon: const Icon(Icons.done_all_outlined, size: 16),
-                label: const Text('已加载全看过'),
-                style: _compactOutlinedStyle,
-              ),
-            if (currentTypeEpisodes.isNotEmpty)
-              OutlinedButton.icon(
-                onPressed: !isBusy
-                    ? () =>
-                          _saveLoadedEpisodesAs(BangumiEpisodeCollectionType.none)
-                    : null,
-                icon: const Icon(Icons.clear_all_outlined, size: 16),
-                label: const Text('清空已加载'),
-                style: _compactOutlinedStyle,
-              ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        _EpisodeTypePicker(
-          selectedType: state.episodeType,
-          isDisabled: isBusy,
-          onChanged: controller.selectEpisodeType,
-        ),
-        if (currentTypeEpisodes.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          _EpisodeBatchProgressControl(
-            episodes: currentTypeEpisodes,
-            selectedEpisodeId: selectedBatchTarget?.episode.id,
-            isSaving: _isSavingBatch,
-            onChanged: (episodeId) {
-              setState(() {
-                _selectedBatchEpisodeId = episodeId;
-              });
-            },
-            onSubmit: selectedBatchTarget == null || isBusy
-                ? null
-                : () => _saveEpisodesThrough(selectedBatchTarget),
-          ),
-        ],
-        const SizedBox(height: 6),
-        // 章节格子：默认展示前 12 个，点击单格打开「标记为」sheet。展开/收起
-        // 时用 AnimatedSize 平滑过渡，保留长篇条目的渐进加载体验。
+        // 章节格子：默认展示前 12 个本篇章节，点击单格打开「标记为」sheet。
         AnimatedSize(
           duration: const Duration(milliseconds: 260),
           curve: Curves.easeOutCubic,
           alignment: Alignment.topCenter,
           child: _EpisodeCompactGrid(
             episodes: visibleEpisodes,
-            hiddenCount: _showAllLoadedEpisodes
-                ? 0
-                : (page.episodes.length - visibleEpisodes.length)
-                      .clamp(0, 9999)
-                      .toInt(),
-            isPageDisabled: isPageLoading || _isSavingBatch,
+            hiddenCount: hiddenCount,
+            isPageDisabled: isPageLoading || _savingEpisodeId != null,
             savingEpisodeId: _savingEpisodeId,
+            nextEpisodeId: nextEpisode?.episode.id,
             onSetStatus: _saveEpisodeStatus,
+            onMarkThrough: _saveEpisodesThrough,
           ),
         ),
-        if (state.errorMessage != null) ...[
-          const SizedBox(height: 10),
-          _EpisodePageErrorNote(
-            message: state.errorMessage!,
-            onRetry: state.hasMore
-                ? controller.loadNextPage
-                : controller.refreshLoadedEpisodes,
-          ),
-        ],
-        if (page.episodes.length > 12) ...[
-          const SizedBox(height: 10),
-          Center(
-            child: OutlinedButton.icon(
-              onPressed: () {
-                setState(() {
-                  _showAllLoadedEpisodes = !_showAllLoadedEpisodes;
-                });
-              },
-              icon: Icon(
-                _showAllLoadedEpisodes
-                    ? Icons.unfold_less_outlined
-                    : Icons.unfold_more_outlined,
-                size: 18,
-              ),
-              label: Text(_showAllLoadedEpisodes ? '收起章节' : '展开已加载章节'),
-              style: _compactOutlinedStyle,
-            ),
-          ),
-        ],
-        if (total > visibleEpisodes.length || total > page.episodes.length) ...[
-          const SizedBox(height: 8),
-          Text(
-            _episodeProgressFootnote(
-              visibleCount: visibleEpisodes.length,
-              loadedCount: page.episodes.length,
-              totalCount: total,
-              episodeTypeLabel: state.episodeType.label,
-              hasHiddenLoadedEpisodes: hasHiddenLoadedEpisodes,
-              hasMore: state.hasMore,
-            ),
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
-        ],
       ],
     );
   }
 
   /// 保存单个章节的观看状态。
   ///
-  /// 与旧实现逐字一致：写入成功后刷新已加载章节、失效收藏与详情 Provider，
-  /// 并用 SnackBar 反馈；任何失败只提示错误，不改动本地进度。
+  /// 写入成功后刷新当前已加载章节、失效收藏与详情 Provider，并用 SnackBar
+  /// 反馈；任何失败只提示错误，不改动本地进度。
   Future<void> _saveEpisodeStatus(
     BangumiEpisodeCollection item,
     BangumiEpisodeCollectionType type,
@@ -396,7 +203,7 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
         subjectId: widget.subject.id,
         episodeIds: [item.episode.id],
         type: type,
-        episodeType: widget.state.episodeType,
+        episodeType: BangumiEpisodeType.mainStory,
       );
 
       await ref
@@ -433,50 +240,30 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
     }
   }
 
-  /// 解析「标记到」下拉框当前应指向的章节。
+  /// 将从开头到当前话之间尚未看过的本篇章节批量标记为看过。
   ///
-  /// 优先使用用户显式选择的章节；否则回落到下一话未看章节，再回落到当前类型
-  /// 的最后一条已加载章节。
-  BangumiEpisodeCollection? _resolveBatchTarget({
-    required List<BangumiEpisodeCollection> currentTypeEpisodes,
-    required BangumiEpisodeCollection? nextEpisode,
-  }) {
-    if (currentTypeEpisodes.isEmpty) {
-      return null;
-    }
-
-    final selectedEpisodeId = _selectedBatchEpisodeId;
-    if (selectedEpisodeId != null) {
-      for (final item in currentTypeEpisodes) {
-        if (item.episode.id == selectedEpisodeId) {
-          return item;
-        }
-      }
-    }
-
-    return nextEpisode ?? currentTypeEpisodes.last;
-  }
-
-  /// 把当前类型中直到目标章节为止的未看章节批量标记为看过。
+  /// 这个动作对应抽屉里的“看到”标记：用户点第 N 话的“看到”，语义就是进度
+  /// 已经看到第 N 话，因此前面所有尚未看过的本篇章节都需要一次性同步为看过。
+  /// 目标集合由领域模型按章节顺序计算，并且只包含当前已加载的本篇章节，避免
+  /// 跨章节类型或提交重复状态。
   Future<void> _saveEpisodesThrough(BangumiEpisodeCollection target) async {
-    if (_savingEpisodeId != null || _isSavingBatch) {
+    if (_savingEpisodeId != null) {
       return;
     }
 
     final targetEpisodes = widget.state.loadedPage.unwatchedEpisodesThrough(
       target,
-      episodeType: widget.state.episodeType,
+      episodeType: BangumiEpisodeType.mainStory,
     );
     if (targetEpisodes.isEmpty) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('目标范围内已全部标记为看过')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('到${target.episode.sortLabel}已经全部看过')),
+      );
       return;
     }
 
     setState(() {
-      _isSavingBatch = true;
-      _selectedBatchEpisodeId = target.episode.id;
+      _savingEpisodeId = target.episode.id;
     });
 
     try {
@@ -487,7 +274,7 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
             .map((item) => item.episode.id)
             .toList(growable: false),
         type: BangumiEpisodeCollectionType.done,
-        episodeType: widget.state.episodeType,
+        episodeType: BangumiEpisodeType.mainStory,
       );
 
       await ref
@@ -507,7 +294,7 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '已标记到${target.episode.sortLabel}看过，共 ${targetEpisodes.length} 话',
+            '已看到${target.episode.sortLabel}，同步 ${targetEpisodes.length} 话',
           ),
         ),
       );
@@ -522,114 +309,24 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
     } finally {
       if (mounted) {
         setState(() {
-          _isSavingBatch = false;
-        });
-      }
-    }
-  }
-
-  /// 将当前已加载的同类型章节批量设置为指定状态。
-  ///
-  /// 这里显式使用 `loadedPage.episodesNeedingStatus` 计算目标集合，只影响当前
-  /// 已经加载到页面内存中的章节。长篇条目尚未加载的后续分页不会被隐式修改。
-  Future<void> _saveLoadedEpisodesAs(
-    BangumiEpisodeCollectionType targetType,
-  ) async {
-    if (_savingEpisodeId != null || _isSavingBatch) {
-      return;
-    }
-
-    final targetEpisodes = widget.state.loadedPage.episodesNeedingStatus(
-      episodeType: widget.state.episodeType,
-      targetType: targetType,
-    );
-    if (targetEpisodes.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '当前已加载的${widget.state.episodeType.label}章节已全部是${targetType.label}',
-          ),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _isSavingBatch = true;
-    });
-
-    try {
-      final repository = ref.read(bangumiMyCollectionRepositoryProvider);
-      await repository.saveMySubjectEpisodeStatus(
-        subjectId: widget.subject.id,
-        episodeIds: targetEpisodes
-            .map((item) => item.episode.id)
-            .toList(growable: false),
-        type: targetType,
-        episodeType: widget.state.episodeType,
-      );
-
-      await ref
-          .read(
-            bangumiSubjectEpisodeCollectionListControllerProvider(
-              widget.subject.id,
-            ).notifier,
-          )
-          .refreshLoadedEpisodes();
-      ref.invalidate(bangumiMySubjectCollectionProvider(widget.subject.id));
-      ref.invalidate(bangumiSubjectDetailProvider(widget.subject.id));
-
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '已将 ${targetEpisodes.length} 条已加载${widget.state.episodeType.label}章节标记为${targetType.label}',
-          ),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSavingBatch = false;
+          _savingEpisodeId = null;
         });
       }
     }
   }
 }
 
-/// 次级操作按钮统一使用的紧凑外观。
-final ButtonStyle _compactOutlinedStyle = OutlinedButton.styleFrom(
-  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-  visualDensity: VisualDensity.compact,
-);
-
 /// 进度仪表：观看进度区的签名视觉元素。
 ///
-/// 贴设计稿 `.prog-head + .gauge`:上排是「已看统计 + 百分比」文案，下方是一条
+/// 贴设计稿 `.prog-head + .gauge`:上排是“看到第 N 话 + 百分比”，下方是一条
 /// 会从旧值平滑生长到新值的细进度条。仪表本身不再自带浅粉底容器——它落在
 /// 「我的收藏」白卡内，只保留一条中性灰轨 + 樱粉渐变填充,与设计稿一致。
-/// 「已看 X / Y 类型」的统计文案保持为单个普通 Text，供测试精确匹配。
+/// 这里不再展示旧版数字比值文案，避免和设计稿内的自然语言进度冲突。
 class _ProgressGauge extends StatelessWidget {
-  const _ProgressGauge({
-    required this.watchedCount,
-    required this.totalCount,
-    required this.typeLabel,
-  });
+  const _ProgressGauge({required this.watchedCount, required this.totalCount});
 
   final int watchedCount;
   final int totalCount;
-  final String typeLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -639,6 +336,12 @@ class _ProgressGauge extends StatelessWidget {
         ? (watchedCount / totalCount).clamp(0.0, 1.0)
         : 0.0;
     final percentLabel = totalCount > 0 ? '${(ratio * 100).round()}%' : '—';
+    final currentEpisode = totalCount > 0 && watchedCount > totalCount
+        ? totalCount
+        : watchedCount;
+    final progressLabel = currentEpisode > 0
+        ? '看到第 $currentEpisode 话'
+        : '还没开始看';
     final isLight = theme.brightness == Brightness.light;
     // 进度条填充：设计稿 `.gauge i` 的 sakura → #F0839F 樱粉渐变。
     const fillGradient = LinearGradient(
@@ -653,7 +356,7 @@ class _ProgressGauge extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                '已看 $watchedCount / $totalCount $typeLabel',
+                progressLabel,
                 style: theme.textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.w800,
                 ),
@@ -710,177 +413,59 @@ class _ProgressGauge extends StatelessWidget {
   }
 }
 
-/// 章节类型选择器。
-///
-/// 用一组 ChoiceChip 替代旧的下拉框，让全部类型一眼可见。「章节类型」标签
-/// 文本保持不变，供测试精确匹配。
-class _EpisodeTypePicker extends StatelessWidget {
-  const _EpisodeTypePicker({
-    required this.selectedType,
-    required this.isDisabled,
-    required this.onChanged,
-  });
-
-  final BangumiEpisodeType selectedType;
-  final bool isDisabled;
-  final ValueChanged<BangumiEpisodeType> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          '章节类型',
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: scheme.onSurfaceVariant,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final type in BangumiEpisodeType.values)
-              ChoiceChip(
-                label: Text(type.label),
-                selected: type == selectedType,
-                showCheckmark: false,
-                visualDensity: VisualDensity.compact,
-                onSelected: isDisabled
-                    ? null
-                    : (selected) {
-                        if (selected && type != selectedType) {
-                          onChanged(type);
-                        }
-                      },
-              ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-/// 「标记到第 N 话」批量控制。
-///
-/// 下拉框与「批量看过」按钮的行为保持不变，仅统一按钮高度与间距。
-class _EpisodeBatchProgressControl extends StatelessWidget {
-  const _EpisodeBatchProgressControl({
-    required this.episodes,
-    required this.selectedEpisodeId,
-    required this.isSaving,
-    required this.onChanged,
-    required this.onSubmit,
-  });
-
-  final List<BangumiEpisodeCollection> episodes;
-  final int? selectedEpisodeId;
-  final bool isSaving;
-  final ValueChanged<int?> onChanged;
-  final VoidCallback? onSubmit;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: DropdownButtonFormField<int>(
-            initialValue: selectedEpisodeId,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: '标记到',
-              contentPadding: EdgeInsets.symmetric(horizontal: 12),
-            ),
-            items: [
-              for (final item in episodes)
-                DropdownMenuItem<int>(
-                  value: item.episode.id,
-                  child: Text(
-                    '${item.episode.sortLabel} · ${item.episode.displayName}',
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-            ],
-            onChanged: isSaving ? null : onChanged,
-          ),
-        ),
-        const SizedBox(width: 8),
-        SizedBox(
-          height: 52,
-          child: FilledButton.icon(
-            onPressed: onSubmit,
-            icon: isSaving
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.done_all_outlined, size: 18),
-            label: Text(isSaving ? '同步中…' : '批量看过'),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 /// 设计稿风格的紧凑章节格子。
 ///
-/// 默认首屏只展示前 12 个已加载章节，并在尾部用「…N」提示仍有多少已加载章节
-/// 被收起。真实长篇的后续分页仍由“加载更多章节”按钮控制，避免默认一次渲染
-/// 过长列表。
+/// 默认首屏只展示前 12 个本篇章节，并在尾部用「…N」提示仍有多少章节被收起；
+/// 当前紧凑卡片不再暴露管理型按钮。
 class _EpisodeCompactGrid extends StatelessWidget {
   const _EpisodeCompactGrid({
     required this.episodes,
     required this.hiddenCount,
     required this.isPageDisabled,
     required this.savingEpisodeId,
+    required this.nextEpisodeId,
     required this.onSetStatus,
+    required this.onMarkThrough,
   });
 
   final List<BangumiEpisodeCollection> episodes;
   final int hiddenCount;
   final bool isPageDisabled;
   final int? savingEpisodeId;
+  final int? nextEpisodeId;
   final Future<void> Function(
     BangumiEpisodeCollection item,
     BangumiEpisodeCollectionType type,
-  ) onSetStatus;
+  )
+  onSetStatus;
+  final Future<void> Function(BangumiEpisodeCollection item) onMarkThrough;
 
   @override
   Widget build(BuildContext context) {
-    final itemCount = episodes.length + (hiddenCount > 0 ? 1 : 0);
-
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      padding: EdgeInsets.zero,
-      itemCount: itemCount,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 4,
-        mainAxisSpacing: 8,
-        crossAxisSpacing: 8,
-        childAspectRatio: 1.42,
-      ),
-      itemBuilder: (context, index) {
-        if (index >= episodes.length) {
-          return _EpisodeMoreTile(hiddenCount: hiddenCount);
-        }
-
-        final item = episodes[index];
-        return _EpisodeCompactTile(
-          item: item,
-          isSaving: savingEpisodeId == item.episode.id,
-          isDisabled: isPageDisabled,
-          onSetStatus: (type) => onSetStatus(item, type),
-        );
-      },
+    return Wrap(
+      spacing: _episodeTileSpacing,
+      runSpacing: _episodeTileSpacing,
+      children: [
+        for (final item in episodes)
+          SizedBox(
+            width: _episodeTileWidth,
+            height: _episodeTileHeight,
+            child: _EpisodeCompactTile(
+              item: item,
+              isSaving: savingEpisodeId == item.episode.id,
+              isDisabled: isPageDisabled,
+              isNextEpisode: nextEpisodeId == item.episode.id,
+              onSetStatus: (type) => onSetStatus(item, type),
+              onMarkThrough: () => onMarkThrough(item),
+            ),
+          ),
+        if (hiddenCount > 0)
+          SizedBox(
+            width: _episodeTileWidth,
+            height: _episodeTileHeight,
+            child: _EpisodeMoreTile(hiddenCount: hiddenCount),
+          ),
+      ],
     );
   }
 }
@@ -894,61 +479,65 @@ class _EpisodeCompactTile extends StatelessWidget {
     required this.item,
     required this.isSaving,
     required this.isDisabled,
+    required this.isNextEpisode,
     required this.onSetStatus,
+    required this.onMarkThrough,
   });
 
   final BangumiEpisodeCollection item;
   final bool isSaving;
   final bool isDisabled;
-  final ValueChanged<BangumiEpisodeCollectionType> onSetStatus;
+  final bool isNextEpisode;
+  final Future<void> Function(BangumiEpisodeCollectionType type) onSetStatus;
+  final Future<void> Function() onMarkThrough;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final isDone = item.type == BangumiEpisodeCollectionType.done;
-    final foreground = isDone ? AppColors.leaf : scheme.onSurface;
+    final foreground = isDone
+        ? AppColors.leaf
+        : isNextEpisode
+        ? AppColors.sakura
+        : scheme.onSurface;
+    final background = isDone
+        ? AppColors.leafSoft
+        : scheme.surfaceContainerHighest.withValues(alpha: 0.8);
+    final border = isNextEpisode
+        ? Border.all(color: AppColors.sakura, width: 2)
+        : null;
 
     return Material(
-      color: isDone
-          ? AppColors.leafSoft
-          : scheme.surfaceContainerHighest.withValues(alpha: 0.8),
-      borderRadius: BorderRadius.circular(12),
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(8),
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: isSaving || isDisabled ? null : () => _openStatusSheet(context),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 180),
-                child: isSaving
-                    ? const SizedBox(
-                        key: ValueKey('saving'),
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : Icon(
-                        _episodeStatusIcon(item.type),
-                        key: ValueKey(item.type),
-                        size: 17,
-                        color: _episodeStatusColor(item.type, scheme),
-                      ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                item.episode.sortLabel,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: foreground,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(8),
+          border: border,
+        ),
+        child: InkWell(
+          onTap: isSaving || isDisabled
+              ? null
+              : () => _openStatusSheet(context),
+          child: Center(
+            child: isSaving
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(
+                    _episodeGridNumber(item),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: foreground,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
           ),
         ),
       ),
@@ -957,16 +546,38 @@ class _EpisodeCompactTile extends StatelessWidget {
 
   /// 打开单集状态选择 sheet，并把选择回传给上层保存逻辑。
   Future<void> _openStatusSheet(BuildContext context) async {
-    final result = await showModalBottomSheet<BangumiEpisodeCollectionType>(
+    final result = await showModalBottomSheet<_EpisodeStatusPickerResult>(
       context: context,
       showDragHandle: true,
-      builder: (_) => _EpisodeStatusPickerSheet(item: item),
+      constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width),
+      builder: (_) => SizedBox(
+        width: double.infinity,
+        child: _EpisodeStatusPickerSheet(item: item),
+      ),
     );
 
     if (result != null) {
-      onSetStatus(result);
+      if (result.markThrough) {
+        await onMarkThrough();
+      } else {
+        await onSetStatus(result.type);
+      }
     }
   }
+}
+
+/// 章节格子只显示话数数字，不显示“第 x 话”前后缀。
+String _episodeGridNumber(BangumiEpisodeCollection item) {
+  final value = item.episode.ep > 0 ? item.episode.ep : item.episode.sort;
+  if (value <= 0) {
+    return '?';
+  }
+
+  if (value == value.roundToDouble()) {
+    return value.toInt().toString();
+  }
+
+  return value.toString();
 }
 
 /// 收起章节提示格。
@@ -980,7 +591,7 @@ class _EpisodeMoreTile extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Center(
         child: Text(
@@ -993,6 +604,21 @@ class _EpisodeMoreTile extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 单集状态抽屉返回给上层的动作结果。
+///
+/// 普通状态只改当前单集；“看到”不是 Bangumi 官方单集状态，而是 UI 层提供的
+/// 批量进度动作，因此需要用 [markThrough] 区分并交给上层执行范围计算。
+class _EpisodeStatusPickerResult {
+  const _EpisodeStatusPickerResult.single(this.type) : markThrough = false;
+
+  const _EpisodeStatusPickerResult.markThrough()
+    : type = BangumiEpisodeCollectionType.done,
+      markThrough = true;
+
+  final BangumiEpisodeCollectionType type;
+  final bool markThrough;
 }
 
 /// 单集「标记为」状态选择 sheet。
@@ -1033,12 +659,22 @@ class _EpisodeStatusPickerSheet extends StatelessWidget {
               spacing: 10,
               runSpacing: 10,
               children: [
+                ChoiceChip(
+                  label: const Text('看到'),
+                  selected: false,
+                  showCheckmark: false,
+                  onSelected: (_) => Navigator.of(
+                    context,
+                  ).pop(const _EpisodeStatusPickerResult.markThrough()),
+                ),
                 for (final type in BangumiEpisodeCollectionType.values)
                   ChoiceChip(
                     label: Text(type.label),
                     selected: item.type == type,
                     showCheckmark: false,
-                    onSelected: (_) => Navigator.of(context).pop(type),
+                    onSelected: (_) => Navigator.of(
+                      context,
+                    ).pop(_EpisodeStatusPickerResult.single(type)),
                   ),
               ],
             ),
@@ -1047,104 +683,4 @@ class _EpisodeStatusPickerSheet extends StatelessWidget {
       ),
     );
   }
-}
-
-/// 章节分页错误提示条。
-class _EpisodePageErrorNote extends StatelessWidget {
-  const _EpisodePageErrorNote({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: scheme.errorContainer,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.error_outline, color: scheme.onErrorContainer, size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                message,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onErrorContainer,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            TextButton(onPressed: onRetry, child: const Text('重试')),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// 章节状态对应的图标。看过用实心图标强化「完成感」，其余保持描边。
-IconData _episodeStatusIcon(BangumiEpisodeCollectionType type) {
-  switch (type) {
-    case BangumiEpisodeCollectionType.none:
-      return Icons.radio_button_unchecked;
-    case BangumiEpisodeCollectionType.wish:
-      return Icons.schedule_outlined;
-    case BangumiEpisodeCollectionType.done:
-      return Icons.check_circle_rounded;
-    case BangumiEpisodeCollectionType.dropped:
-      return Icons.block_outlined;
-  }
-}
-
-/// 章节状态对应的颜色：看过用青绿正向色，想看用暖橘，抛弃用错误色。
-Color _episodeStatusColor(
-  BangumiEpisodeCollectionType type,
-  ColorScheme scheme,
-) {
-  switch (type) {
-    case BangumiEpisodeCollectionType.none:
-      return scheme.outline;
-    case BangumiEpisodeCollectionType.wish:
-      return scheme.secondary;
-    case BangumiEpisodeCollectionType.done:
-      return scheme.tertiary;
-    case BangumiEpisodeCollectionType.dropped:
-      return scheme.error;
-  }
-}
-
-/// 生成章节列表底部说明。
-///
-/// 说明需要区分「只是当前收起了已加载章节」和「服务端仍有更多章节未加载」，避免
-/// 用户误以为批量操作已经覆盖了完整长篇条目。
-String _episodeProgressFootnote({
-  required int visibleCount,
-  required int loadedCount,
-  required int totalCount,
-  required String episodeTypeLabel,
-  required bool hasHiddenLoadedEpisodes,
-  required bool hasMore,
-}) {
-  final parts = <String>[];
-
-  if (hasHiddenLoadedEpisodes) {
-    parts.add('已展示前 $visibleCount / $loadedCount 条已加载章节');
-  } else {
-    parts.add('已展示 $visibleCount 条已加载章节');
-  }
-
-  if (totalCount > loadedCount) {
-    parts.add(hasMore ? '服务端共 $totalCount 条，可继续加载更多章节' : '服务端共 $totalCount 条');
-  }
-
-  parts.add('批量标记只作用于当前已加载的$episodeTypeLabel章节');
-  return '${parts.join('；')}。';
 }
