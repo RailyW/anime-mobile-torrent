@@ -8,7 +8,6 @@ import '../../../app/app_colors.dart';
 import '../../../shared/widgets/app_async_views.dart';
 import '../../../shared/widgets/app_chip.dart';
 import '../../../shared/widgets/app_filter_pill.dart';
-import '../../../shared/widgets/app_section.dart';
 import '../../../shared/widgets/app_segmented_toggle.dart';
 import '../application/bangumi_auth_providers.dart';
 import '../application/bangumi_collection_providers.dart';
@@ -17,9 +16,16 @@ import '../domain/bangumi_collection.dart';
 import '../domain/bangumi_dmhy_keyword.dart';
 import '../domain/bangumi_subject.dart';
 import 'widgets/bangumi_cover_tile.dart';
-import 'widgets/bangumi_logo_icon.dart';
 import 'widgets/bangumi_rating_line.dart';
 import 'widgets/bangumi_subject_cover.dart';
+
+/// Bangumi 条目封面 Hero 动画使用的稳定 tag。
+///
+/// 详情页会用同样的字符串包装主封面，确保从收藏网格、列表或搜索结果进入详情
+/// 时都能播放设计稿中的封面共享元素过渡。
+String _bangumiSubjectCoverHeroTag(int subjectId) {
+  return 'bangumi-subject-cover-$subjectId';
+}
 
 /// Bangumi tab。
 ///
@@ -27,7 +33,13 @@ import 'widgets/bangumi_subject_cover.dart';
 /// 进入独立的 [BangumiSearchPage]；这样主页面首屏会直接落在“我的收藏”，不会
 /// 让搜索框挤占收藏内容的扫描空间。账号登录、OAuth 配置等已移到“我的”页。
 class BangumiTab extends ConsumerStatefulWidget {
-  const BangumiTab({super.key});
+  const BangumiTab({this.onOpenSearch, super.key});
+
+  /// 打开 Bangumi 搜索子页面。
+  ///
+  /// 首页壳会传入回调，让搜索页留在 Bangumi tab 内部并保持底部导航可见。
+  /// 如果没有回调（例如旧路由或测试直接挂载该 tab），则退回到命名路由。
+  final VoidCallback? onOpenSearch;
 
   @override
   ConsumerState<BangumiTab> createState() => _BangumiTabState();
@@ -80,44 +92,96 @@ class _BangumiTabState extends ConsumerState<BangumiTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const _BangumiTitle(),
-        actions: [
-          IconButton(
-            tooltip: '搜索 Bangumi',
-            onPressed: () => context.pushNamed('bangumi-search'),
-            icon: const Icon(Icons.search_outlined),
-          ),
-        ],
-      ),
       body: SafeArea(
         top: false,
         child: ListView(
           controller: _scrollController,
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-          children: const [_MyCollectionsSection()],
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 116),
+          children: [
+            _BangumiHomeTopBar(
+              onSearch: widget.onOpenSearch ?? _openSearchRoute,
+            ),
+            const SizedBox(height: 6),
+            const _MyCollectionsSection(),
+          ],
         ),
       ),
     );
   }
+
+  /// 兼容独立挂载 Bangumi tab 时的旧搜索路由入口。
+  void _openSearchRoute() {
+    context.pushNamed('bangumi-search');
+  }
 }
 
-/// Bangumi 标题。
+/// Bangumi 首页顶栏。
 ///
-/// 使用官方 favicon SVG 图标和文字标题一起展示，强化这个 tab 已经从泛化
-/// “追番”收敛为 Bangumi 服务入口。
-class _BangumiTitle extends StatelessWidget {
-  const _BangumiTitle();
+/// 设计稿的 Bangumi 页面没有使用平台 AppBar，而是在内容流顶部放置 60px
+/// 自定义栏：左侧是品牌 wordmark，右侧是搜索入口。顶栏自己吸收状态栏高度，
+/// 所以外层 shell 不再包一层全局 SafeArea。
+class _BangumiHomeTopBar extends StatelessWidget {
+  const _BangumiHomeTopBar({required this.onSearch});
+
+  final VoidCallback onSearch;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        const BangumiLogoIcon(size: 24),
-        const SizedBox(width: 10),
-        const Text('Bangumi'),
-      ],
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: EdgeInsets.only(
+        top: MediaQuery.paddingOf(context).top + 8,
+        bottom: 10,
+      ),
+      child: SizedBox(
+        height: 52,
+        child: Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: AppColors.sakura,
+                borderRadius: BorderRadius.circular(9),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.sakura.withValues(alpha: 0.18),
+                    blurRadius: 12,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Icon(
+                  Icons.chat_bubble_outline_rounded,
+                  color: Colors.white,
+                  size: 16,
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              'Bangumi',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+                color: AppColors.ink,
+              ),
+            ),
+            const Spacer(),
+            IconButton(
+              tooltip: '搜索 Bangumi',
+              onPressed: onSearch,
+              style: IconButton.styleFrom(
+                fixedSize: const Size.square(42),
+                backgroundColor: AppColors.surface2,
+                foregroundColor: AppColors.ink,
+              ),
+              icon: const Icon(Icons.search_rounded),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -127,7 +191,10 @@ class _BangumiTitle extends StatelessWidget {
 /// 搜索从主 tab 拆到独立页面后，输入框、排序和结果分页仍复用原来的 provider
 /// 与结果卡片。页面自己的滚动控制器只负责搜索分页，不再和收藏分页混在一起。
 class BangumiSearchPage extends ConsumerStatefulWidget {
-  const BangumiSearchPage({super.key});
+  const BangumiSearchPage({this.onBack, super.key});
+
+  /// 从首页壳进入时用于回到 Bangumi 收藏页；从旧独立路由进入时为 null。
+  final VoidCallback? onBack;
 
   @override
   ConsumerState<BangumiSearchPage> createState() => _BangumiSearchPageState();
@@ -138,6 +205,28 @@ class _BangumiSearchPageState extends ConsumerState<BangumiSearchPage> {
 
   /// 距列表底部多少像素时触发搜索结果下一页加载。
   static const double _infiniteScrollThreshold = 400;
+
+  /// 搜索页打开时展示的最近关键词占位。
+  ///
+  /// 当前项目还没有持久化搜索历史；这里先按设计稿给出常用关键词入口，后续接入
+  /// 本地历史时只需要替换数据来源，不需要改搜索提交流程。
+  static const List<String> _recentKeywordFallback = [
+    '葬送的芙莉莲',
+    '孤独摇滚',
+    '迷宫饭',
+  ];
+
+  /// 搜索页待输入态展示的热门条目。
+  ///
+  /// 这些条目只承担快速填词作用，真正结果仍由 Bangumi API 返回，避免把设计稿
+  /// 静态数据伪装成服务端内容。
+  static const List<String> _hotKeywordFallback = [
+    '葬送的芙莉莲',
+    '药屋少女的呢喃',
+    '迷宫饭',
+    '败犬女主太多了！',
+    '孤独摇滚！',
+  ];
 
   final TextEditingController _keywordController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -253,6 +342,15 @@ class _BangumiSearchPageState extends ConsumerState<BangumiSearchPage> {
     });
   }
 
+  /// 使用待输入页的快捷关键词发起搜索。
+  ///
+  /// 该方法同时更新输入框和请求状态，保证用户点“最近/热门”后能继续编辑关键词。
+  void _applyQuickKeyword(String keyword) {
+    _searchDebounceTimer?.cancel();
+    _keywordController.text = keyword;
+    _applySearchKeyword(keyword);
+  }
+
   /// 更新搜索排序。
   ///
   /// 排序属于服务端搜索条件，用户切换后如果当前已有关键词，立即按新排序重新
@@ -278,26 +376,88 @@ class _BangumiSearchPageState extends ConsumerState<BangumiSearchPage> {
     final request = _searchRequest;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('搜索 Bangumi')),
       body: SafeArea(
         top: false,
         child: ListView(
           controller: _scrollController,
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 116),
           children: [
+            _BangumiSearchTopBar(
+              onBack: widget.onBack ?? () => context.pop(),
+            ),
+            const SizedBox(height: 6),
             _SearchField(
               controller: _keywordController,
-              selectedSort: _selectedSort,
               onChanged: _scheduleDebouncedSearch,
               onSubmitted: _submitSearch,
               onClear: _clearSearch,
-              onSortChanged: _handleSortChanged,
             ),
-            const SizedBox(height: 28),
-            if (request == null)
-              const _BangumiSearchEmptyState()
-            else
+            if (request == null) ...[
+              const SizedBox(height: 24),
+              _BangumiSearchEmptyState(
+                recentKeywords: _recentKeywordFallback,
+                hotKeywords: _hotKeywordFallback,
+                onKeywordSelected: _applyQuickKeyword,
+              ),
+            ] else ...[
+              const SizedBox(height: 12),
+              _SortChips(
+                selected: _selectedSort,
+                onChanged: _handleSortChanged,
+              ),
+              const SizedBox(height: 20),
               _SearchResultSection(request: request),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Bangumi 搜索页顶栏。
+///
+/// 返回按钮不是系统 AppBar 的 leading，而是设计稿中的小图标按钮；标题居中在
+/// 内容流内，右侧留一个同宽占位，确保标题不会被返回按钮挤偏。
+class _BangumiSearchTopBar extends StatelessWidget {
+  const _BangumiSearchTopBar({required this.onBack});
+
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: EdgeInsets.only(
+        top: MediaQuery.paddingOf(context).top + 8,
+        bottom: 10,
+      ),
+      child: SizedBox(
+        height: 52,
+        child: Row(
+          children: [
+            IconButton(
+              tooltip: '返回',
+              onPressed: onBack,
+              style: IconButton.styleFrom(
+                fixedSize: const Size.square(42),
+                backgroundColor: AppColors.surface2,
+                foregroundColor: AppColors.ink,
+              ),
+              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+            ),
+            Expanded(
+              child: Text(
+                '搜索 Bangumi 条目',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.ink,
+                ),
+              ),
+            ),
+            const SizedBox(width: 42),
           ],
         ),
       ),
@@ -310,16 +470,115 @@ class _BangumiSearchPageState extends ConsumerState<BangumiSearchPage> {
 /// 打开搜索页但尚未输入关键词时，用居中图标告诉用户这里专门搜索 Bangumi
 /// 条目，而不是回落展示收藏列表。
 class _BangumiSearchEmptyState extends StatelessWidget {
-  const _BangumiSearchEmptyState();
+  const _BangumiSearchEmptyState({
+    required this.recentKeywords,
+    required this.hotKeywords,
+    required this.onKeywordSelected,
+  });
+
+  final List<String> recentKeywords;
+  final List<String> hotKeywords;
+  final ValueChanged<String> onKeywordSelected;
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(top: 44),
-      child: AppEmptyView(
-        icon: Icons.manage_search_outlined,
-        title: '搜索 Bangumi 条目',
-        message: '输入动画名称或关键词，查找 Bangumi 上的条目',
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '最近搜索',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final keyword in recentKeywords)
+              ActionChip(
+                label: Text(keyword),
+                onPressed: () => onKeywordSelected(keyword),
+              ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        Text(
+          '热门条目',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 4),
+        for (var index = 0; index < hotKeywords.length; index++)
+          _HotSearchKeywordTile(
+            rank: index + 1,
+            keyword: hotKeywords[index],
+            onTap: () => onKeywordSelected(hotKeywords[index]),
+          ),
+      ],
+    );
+  }
+}
+
+/// 搜索页热门条目行。
+///
+/// 行高、分隔线和右侧箭头都固定，点击后只把关键词提交给 Bangumi API；这里不
+/// 直接构造条目详情，避免静态推荐列表和真实搜索结果产生语义混淆。
+class _HotSearchKeywordTile extends StatelessWidget {
+  const _HotSearchKeywordTile({
+    required this.rank,
+    required this.keyword,
+    required this.onTap,
+  });
+
+  final int rank;
+  final String keyword;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        height: 50,
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppColors.line)),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 28,
+              child: Text(
+                '$rank',
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: AppColors.sakura,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Text(
+                keyword,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const Icon(
+              Icons.north_east_rounded,
+              color: AppColors.muted,
+              size: 18,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -332,50 +591,40 @@ class _BangumiSearchEmptyState extends StatelessWidget {
 class _SearchField extends StatelessWidget {
   const _SearchField({
     required this.controller,
-    required this.selectedSort,
     required this.onChanged,
     required this.onSubmitted,
     required this.onClear,
-    required this.onSortChanged,
   });
 
   final TextEditingController controller;
-  final BangumiSubjectSearchSort selectedSort;
   final ValueChanged<String> onChanged;
   final VoidCallback onSubmitted;
   final VoidCallback onClear;
-  final ValueChanged<BangumiSubjectSearchSort> onSortChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        TextField(
-          controller: controller,
-          textInputAction: TextInputAction.search,
-          onChanged: onChanged,
-          onSubmitted: (_) => onSubmitted(),
-          decoration: InputDecoration(
-            hintText: '搜索动画，例如：葬送的芙莉莲',
-            prefixIcon: const Icon(Icons.search_outlined),
-            suffixIcon: ValueListenableBuilder<TextEditingValue>(
-              valueListenable: controller,
-              builder: (context, value, _) {
-                if (value.text.isEmpty) {
-                  return const SizedBox.shrink();
-                }
-                return IconButton(
-                  onPressed: onClear,
-                  tooltip: '清除',
-                  icon: const Icon(Icons.close, size: 18),
-                );
-              },
-            ),
-          ),
+    return TextField(
+      controller: controller,
+      textInputAction: TextInputAction.search,
+      onChanged: onChanged,
+      onSubmitted: (_) => onSubmitted(),
+      decoration: InputDecoration(
+        hintText: '搜索动画，例如：葬送的芙莉莲',
+        prefixIcon: const Icon(Icons.search_outlined),
+        suffixIcon: ValueListenableBuilder<TextEditingValue>(
+          valueListenable: controller,
+          builder: (context, value, _) {
+            if (value.text.isEmpty) {
+              return const SizedBox.shrink();
+            }
+            return IconButton(
+              onPressed: onClear,
+              tooltip: '清除',
+              icon: const Icon(Icons.close, size: 18),
+            );
+          },
         ),
-        const SizedBox(height: 12),
-        _SortChips(selected: selectedSort, onChanged: onSortChanged),
-      ],
+      ),
     );
   }
 }
@@ -571,16 +820,19 @@ class _CollectionsContent extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AppSectionHeader(
-          title: '我的收藏',
+        _CollectionHeadRow(
+          total: state.total,
+          currentTypeLabel: state.typeLabel,
           trailing: state.hasLoadedOnce
               ? _CollectionViewToggle(isGrid: isGrid, onChanged: onViewChanged)
               : null,
         ),
+        const SizedBox(height: 12),
         _CollectionFilterChips(
           selectedType: state.type,
           isBusy: state.isLoading,
           onTypeChanged: onTypeChanged,
+          currentCount: state.hasLoadedOnce ? state.total : null,
         ),
         const SizedBox(height: 14),
         if (state.isInitialLoading)
@@ -594,14 +846,30 @@ class _CollectionsContent extends StatelessWidget {
           )
         else if (state.isEmpty)
           _CollectionEmptyState(type: state.type)
-        else if (isGrid)
-          _CollectionGrid(collections: collections)
         else
-          ...collections.map(
-            (collection) => Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: _CollectionCard(collection: collection),
-            ),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 280),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (child, animation) {
+              final offset = Tween<Offset>(
+                begin: const Offset(0.03, 0),
+                end: Offset.zero,
+              ).animate(animation);
+              return FadeTransition(
+                opacity: animation,
+                child: SlideTransition(position: offset, child: child),
+              );
+            },
+            child: isGrid
+                ? _CollectionGrid(
+                    key: const ValueKey('collection-grid-view'),
+                    collections: collections,
+                  )
+                : _CollectionList(
+                    key: const ValueKey('collection-list-view'),
+                    collections: collections,
+                  ),
           ),
         if (state.errorMessage != null && collections.isNotEmpty) ...[
           const SizedBox(height: 8),
@@ -622,7 +890,109 @@ class _CollectionsContent extends StatelessWidget {
             ),
           ),
         ],
+        if (state.hasLoadedOnce &&
+            collections.isNotEmpty &&
+            !state.hasMore &&
+            !state.isLoading) ...[
+          const SizedBox(height: 18),
+          const _CollectionEndFooter(),
+        ],
       ],
+    );
+  }
+}
+
+/// 收藏区标题行。
+///
+/// 左侧负责“我的收藏 + 当前状态总数”语义，右侧保留网格/列表切换；相比通用
+/// section header，这个 headrow 的字号、字重和纵向间距更贴近设计稿页面顶部。
+class _CollectionHeadRow extends StatelessWidget {
+  const _CollectionHeadRow({
+    required this.total,
+    required this.currentTypeLabel,
+    this.trailing,
+  });
+
+  final int total;
+  final String currentTypeLabel;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final countLabel = total > 0 ? '$currentTypeLabel $total 部' : currentTypeLabel;
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '我的收藏',
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.ink,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                countLabel,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (trailing != null) trailing!,
+      ],
+    );
+  }
+}
+
+/// 列表视图容器。
+///
+/// 作为 [AnimatedSwitcher] 的单独子树存在，切换视图时 Flutter 可以根据 key
+/// 区分网格和列表，从而播放设计稿中的淡入/平移动画。
+class _CollectionList extends StatelessWidget {
+  const _CollectionList({required this.collections, super.key});
+
+  final List<BangumiSubjectCollection> collections;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (final collection in collections)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: _CollectionCard(collection: collection),
+          ),
+      ],
+    );
+  }
+}
+
+/// 收藏列表到底提示。
+///
+/// 和设计稿 `feedfoot.end` 一致：当服务端没有更多分页时显示一条轻量提示，
+/// 避免用户误以为自动加载失效。
+class _CollectionEndFooter extends StatelessWidget {
+  const _CollectionEndFooter();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Text(
+        '已经到底啦',
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: AppColors.muted,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 }
@@ -663,7 +1033,7 @@ class _CollectionViewToggle extends StatelessWidget {
 /// 单一 `ListView` + 滚动到底自动翻页,因此这里的 `GridView` 收起自身滚动、按
 /// 内容高度展开,把滚动权完全交给外层,避免嵌套滚动打架、也不破坏无限加载。
 class _CollectionGrid extends StatelessWidget {
-  const _CollectionGrid({required this.collections});
+  const _CollectionGrid({required this.collections, super.key});
 
   final List<BangumiSubjectCollection> collections;
 
@@ -716,10 +1086,13 @@ class _CollectionGridCell extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          BangumiCoverTile(
-            imageUrl: subject?.images.preferredListUrl,
-            watched: collection.type == BangumiCollectionType.done,
-            progressLabel: _progressLabel(subject),
+          Hero(
+            tag: _bangumiSubjectCoverHeroTag(collection.subjectId),
+            child: BangumiCoverTile(
+              imageUrl: subject?.images.preferredListUrl,
+              watched: collection.type == BangumiCollectionType.done,
+              progressLabel: _progressLabel(subject),
+            ),
           ),
           const SizedBox(height: 6),
           Text(
@@ -810,114 +1183,41 @@ class _CollectionFilterChips extends StatelessWidget {
     required this.selectedType,
     required this.isBusy,
     required this.onTypeChanged,
+    required this.currentCount,
   });
 
   final BangumiCollectionType? selectedType;
   final bool isBusy;
   final Future<void> Function(BangumiCollectionType? type) onTypeChanged;
+  final int? currentCount;
 
-  /// 直接平铺展示的三个常用分类。
-  static const List<BangumiCollectionType> _inlineTypes = [
+  /// 设计稿中横向铺开的收藏状态顺序。
+  static const List<BangumiCollectionType?> _filterTypes = [
     BangumiCollectionType.doing,
     BangumiCollectionType.wish,
     BangumiCollectionType.done,
+    BangumiCollectionType.onHold,
+    BangumiCollectionType.dropped,
+    null,
   ];
 
   @override
   Widget build(BuildContext context) {
-    final moreSelected = !_inlineTypes.contains(selectedType);
-    final moreLabel = moreSelected ? (selectedType?.label ?? '全部') : '更多';
-
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       clipBehavior: Clip.none,
       child: Row(
         children: [
-          for (final type in _inlineTypes) ...[
+          for (final type in _filterTypes) ...[
             AppFilterPill(
-              label: type.label,
+              label: type?.label ?? '全部',
               selected: selectedType == type,
               onTap: isBusy ? null : () => onTypeChanged(type),
+              count: selectedType == type ? currentCount : null,
             ),
             const SizedBox(width: 8),
           ],
-          _MoreFilterMenu(
-            label: moreLabel,
-            selected: moreSelected,
-            isBusy: isBusy,
-            onTypeChanged: onTypeChanged,
-          ),
         ],
-      ),
-    );
-  }
-}
-
-/// 收藏筛选行末尾的「更多」下拉。
-///
-/// 用一个外观贴近 ChoiceChip 的下拉按钮承载「搁置 / 抛弃 / 全部」。这里用
-/// 每个菜单项的 onTap 回传选择，避免 PopupMenuButton 把 null 选项当作取消而
-/// 不触发 onSelected 的已知陷阱（“全部”对应 null）。
-class _MoreFilterMenu extends StatelessWidget {
-  const _MoreFilterMenu({
-    required this.label,
-    required this.selected,
-    required this.isBusy,
-    required this.onTypeChanged,
-  });
-
-  final String label;
-  final bool selected;
-  final bool isBusy;
-  final Future<void> Function(BangumiCollectionType? type) onTypeChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final foreground = selected ? scheme.onPrimary : scheme.onSurfaceVariant;
-
-    return PopupMenuButton<BangumiCollectionType?>(
-      enabled: !isBusy,
-      tooltip: '更多收藏分类',
-      position: PopupMenuPosition.under,
-      itemBuilder: (context) => [
-        PopupMenuItem<BangumiCollectionType?>(
-          onTap: () => onTypeChanged(BangumiCollectionType.onHold),
-          child: const Text('搁置'),
-        ),
-        PopupMenuItem<BangumiCollectionType?>(
-          onTap: () => onTypeChanged(BangumiCollectionType.dropped),
-          child: const Text('抛弃'),
-        ),
-        PopupMenuItem<BangumiCollectionType?>(
-          onTap: () => onTypeChanged(null),
-          child: const Text('全部'),
-        ),
-      ],
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
-        decoration: ShapeDecoration(
-          color: selected ? scheme.primary : scheme.surface,
-          shape: StadiumBorder(
-            side: selected
-                ? BorderSide.none
-                : BorderSide(color: scheme.outlineVariant),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: theme.textTheme.labelLarge?.copyWith(
-                color: foreground,
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
-              ),
-            ),
-            Icon(Icons.arrow_drop_down, size: 20, color: foreground),
-          ],
-        ),
       ),
     );
   }
@@ -971,10 +1271,13 @@ class _CollectionCard extends StatelessWidget {
           children: [
             SizedBox(
               width: 62,
-              child: BangumiCoverTile(
-                imageUrl: subject?.images.preferredListUrl,
-                typeLabel: typeLabel,
-                borderRadius: 10,
+              child: Hero(
+                tag: _bangumiSubjectCoverHeroTag(collection.subjectId),
+                child: BangumiCoverTile(
+                  imageUrl: subject?.images.preferredListUrl,
+                  typeLabel: typeLabel,
+                  borderRadius: 10,
+                ),
               ),
             ),
             const SizedBox(width: 14),
@@ -1232,19 +1535,23 @@ class _SearchResultSectionState extends ConsumerState<_SearchResultSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        AppSectionHeader(
-          title: '搜索结果',
-          trailing: Text(
-            '${state.total} 部',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
+        Text(
+          '找到 ${state.total} 部',
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            color: AppColors.ink,
+            fontWeight: FontWeight.w900,
           ),
         ),
-        for (final subject in state.subjects)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _SubjectCard(subject: subject),
+        const SizedBox(height: 6),
+        for (var index = 0; index < state.subjects.length; index++)
+          _StaggeredSearchResult(
+            delay: Duration(
+              milliseconds: 24 * index.clamp(0, 8).toInt(),
+            ),
+            child: _SubjectCard(
+              subject: state.subjects[index],
+              highlightKeyword: widget.request.normalizedKeyword,
+            ),
           ),
         if (state.errorMessage != null) ...[
           const SizedBox(height: 4),
@@ -1272,18 +1579,22 @@ class _SearchResultSectionState extends ConsumerState<_SearchResultSection> {
 
 /// 单个搜索结果卡片。
 class _SubjectCard extends StatelessWidget {
-  const _SubjectCard({required this.subject});
+  const _SubjectCard({required this.subject, required this.highlightKeyword});
 
   final BangumiSubject subject;
+  final String highlightKeyword;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
-    return Card(
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.line)),
+      ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         onTap: () {
           context.pushNamed(
             'bangumi-subject-detail',
@@ -1291,36 +1602,58 @@ class _SubjectCard extends StatelessWidget {
           );
         },
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.symmetric(vertical: 11),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              BangumiSubjectCover(
-                imageUrl: subject.images.preferredListUrl,
-                width: 60,
-                height: 84,
-                borderRadius: 10,
+              Hero(
+                tag: _bangumiSubjectCoverHeroTag(subject.id),
+                child: BangumiSubjectCover(
+                  imageUrl: subject.images.preferredListUrl,
+                  width: 60,
+                  height: 84,
+                  borderRadius: 10,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      subject.displayName,
+                    Text.rich(
+                      _highlightedTextSpan(
+                        text: subject.displayName,
+                        keyword: highlightKeyword,
+                        baseStyle: theme.textTheme.titleSmall?.copyWith(
+                          color: AppColors.ink,
+                          fontWeight: FontWeight.w800,
+                        ),
+                        highlightStyle: theme.textTheme.titleSmall?.copyWith(
+                          backgroundColor: AppColors.sakuraSoft,
+                          color: AppColors.sakuraInk,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall,
                     ),
                     if (subject.subtitleName != null) ...[
                       const SizedBox(height: 2),
-                      Text(
-                        subject.subtitleName!,
+                      Text.rich(
+                        _highlightedTextSpan(
+                          text: subject.subtitleName!,
+                          keyword: highlightKeyword,
+                          baseStyle: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                          highlightStyle: theme.textTheme.bodySmall?.copyWith(
+                            backgroundColor: AppColors.sakuraSoft,
+                            color: AppColors.sakuraInk,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
                       ),
                     ],
                     const SizedBox(height: 8),
@@ -1345,4 +1678,94 @@ class _SubjectCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 搜索结果进入视口时的轻量淡入/上移动画。
+///
+/// 设计稿里结果行逐条 `fadeInUp`，Flutter 侧不依赖外部动画库，用本地
+/// [AnimationController] 复刻同样节奏；最大延迟在调用方截断，避免长列表加载
+/// 后尾部项等待过久。
+class _StaggeredSearchResult extends StatefulWidget {
+  const _StaggeredSearchResult({required this.delay, required this.child});
+
+  final Duration delay;
+  final Widget child;
+
+  @override
+  State<_StaggeredSearchResult> createState() => _StaggeredSearchResultState();
+}
+
+class _StaggeredSearchResultState extends State<_StaggeredSearchResult>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+  late final Animation<Offset> _offset;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 280),
+    );
+    _opacity = CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
+    _offset = Tween<Offset>(
+      begin: const Offset(0, 0.04),
+      end: Offset.zero,
+    ).animate(_opacity);
+
+    _timer = Timer(widget.delay, () {
+      if (mounted) {
+        _controller.forward();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: SlideTransition(position: _offset, child: widget.child),
+    );
+  }
+}
+
+/// 构造搜索关键词高亮文本。
+///
+/// Bangumi 返回的标题可能包含大小写英文、日文或中文。这里用小写字符串定位，
+/// 再按原文切片，既能处理英文大小写，也不会改变原始标题字符。
+TextSpan _highlightedTextSpan({
+  required String text,
+  required String keyword,
+  TextStyle? baseStyle,
+  TextStyle? highlightStyle,
+}) {
+  final normalizedKeyword = keyword.trim().toLowerCase();
+  if (normalizedKeyword.isEmpty) {
+    return TextSpan(text: text, style: baseStyle);
+  }
+
+  final lowerText = text.toLowerCase();
+  final start = lowerText.indexOf(normalizedKeyword);
+  if (start < 0) {
+    return TextSpan(text: text, style: baseStyle);
+  }
+
+  final end = start + normalizedKeyword.length;
+  return TextSpan(
+    style: baseStyle,
+    children: [
+      if (start > 0) TextSpan(text: text.substring(0, start)),
+      TextSpan(text: text.substring(start, end), style: highlightStyle),
+      if (end < text.length) TextSpan(text: text.substring(end)),
+    ],
+  );
 }

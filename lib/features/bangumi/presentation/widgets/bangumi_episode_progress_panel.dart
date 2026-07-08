@@ -170,7 +170,7 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
     );
     final visibleEpisodes = _showAllLoadedEpisodes
         ? page.episodes
-        : page.episodes.take(8).toList(growable: false);
+        : page.episodes.take(12).toList(growable: false);
     final hasHiddenLoadedEpisodes =
         page.episodes.length > visibleEpisodes.length;
 
@@ -307,22 +307,22 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
           ),
         ],
         const SizedBox(height: 6),
-        // 章节时间线：展开/收起时用 AnimatedSize 平滑过渡。
+        // 章节格子：默认展示前 12 个，点击单格打开「标记为」sheet。展开/收起
+        // 时用 AnimatedSize 平滑过渡，保留长篇条目的渐进加载体验。
         AnimatedSize(
           duration: const Duration(milliseconds: 260),
           curve: Curves.easeOutCubic,
           alignment: Alignment.topCenter,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (final item in visibleEpisodes)
-                _EpisodeTimelineTile(
-                  item: item,
-                  isSaving: _savingEpisodeId == item.episode.id,
-                  isDisabled: isPageLoading || _isSavingBatch,
-                  onSetStatus: (type) => _saveEpisodeStatus(item, type),
-                ),
-            ],
+          child: _EpisodeCompactGrid(
+            episodes: visibleEpisodes,
+            hiddenCount: _showAllLoadedEpisodes
+                ? 0
+                : (page.episodes.length - visibleEpisodes.length)
+                      .clamp(0, 9999)
+                      .toInt(),
+            isPageDisabled: isPageLoading || _isSavingBatch,
+            savingEpisodeId: _savingEpisodeId,
+            onSetStatus: _saveEpisodeStatus,
           ),
         ),
         if (state.errorMessage != null) ...[
@@ -334,7 +334,7 @@ class _EpisodeProgressListState extends ConsumerState<_EpisodeProgressList> {
                 : controller.refreshLoadedEpisodes,
           ),
         ],
-        if (page.episodes.length > 8) ...[
+        if (page.episodes.length > 12) ...[
           const SizedBox(height: 10),
           Center(
             child: OutlinedButton.icon(
@@ -830,12 +830,67 @@ class _EpisodeBatchProgressControl extends StatelessWidget {
   }
 }
 
-/// 时间线式章节行。
+/// 设计稿风格的紧凑章节格子。
 ///
-/// 左侧状态圆点可直接点按，在「看过」和「未收藏」之间切换；已看过的行整体
-/// 降低不透明度做视觉沉降，让未看章节更醒目。右侧仍保留四状态弹出菜单。
-class _EpisodeTimelineTile extends StatelessWidget {
-  const _EpisodeTimelineTile({
+/// 默认首屏只展示前 12 个已加载章节，并在尾部用「…N」提示仍有多少已加载章节
+/// 被收起。真实长篇的后续分页仍由“加载更多章节”按钮控制，避免默认一次渲染
+/// 过长列表。
+class _EpisodeCompactGrid extends StatelessWidget {
+  const _EpisodeCompactGrid({
+    required this.episodes,
+    required this.hiddenCount,
+    required this.isPageDisabled,
+    required this.savingEpisodeId,
+    required this.onSetStatus,
+  });
+
+  final List<BangumiEpisodeCollection> episodes;
+  final int hiddenCount;
+  final bool isPageDisabled;
+  final int? savingEpisodeId;
+  final Future<void> Function(
+    BangumiEpisodeCollection item,
+    BangumiEpisodeCollectionType type,
+  ) onSetStatus;
+
+  @override
+  Widget build(BuildContext context) {
+    final itemCount = episodes.length + (hiddenCount > 0 ? 1 : 0);
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      itemCount: itemCount,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        childAspectRatio: 1.42,
+      ),
+      itemBuilder: (context, index) {
+        if (index >= episodes.length) {
+          return _EpisodeMoreTile(hiddenCount: hiddenCount);
+        }
+
+        final item = episodes[index];
+        return _EpisodeCompactTile(
+          item: item,
+          isSaving: savingEpisodeId == item.episode.id,
+          isDisabled: isPageDisabled,
+          onSetStatus: (type) => onSetStatus(item, type),
+        );
+      },
+    );
+  }
+}
+
+/// 单个章节格子。
+///
+/// 点击格子会打开「标记为」底部 sheet，而不是在格子内塞入弹出菜单；这和设计稿
+/// 的章节格交互一致，也让手指点按区域更大。
+class _EpisodeCompactTile extends StatelessWidget {
+  const _EpisodeCompactTile({
     required this.item,
     required this.isSaving,
     required this.isDisabled,
@@ -851,183 +906,143 @@ class _EpisodeTimelineTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final episode = item.episode;
     final isDone = item.type == BangumiEpisodeCollectionType.done;
+    final foreground = isDone ? AppColors.leaf : scheme.onSurface;
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 6),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _EpisodeStatusDot(
-            type: item.type,
-            isSaving: isSaving,
-            onTap: isSaving || isDisabled
-                ? null
-                : () => onSetStatus(
-                    isDone
-                        ? BangumiEpisodeCollectionType.none
-                        : BangumiEpisodeCollectionType.done,
-                  ),
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: AnimatedOpacity(
-              duration: const Duration(milliseconds: 200),
-              opacity: isDone ? 0.62 : 1.0,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 7),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          episode.sortLabel,
-                          style: theme.textTheme.labelLarge?.copyWith(
-                            color: isDone
-                                ? scheme.onSurfaceVariant
-                                : scheme.primary,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            episode.displayName,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (episode.subtitleName != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        episode.subtitleName!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
+    return Material(
+      color: isDone
+          ? AppColors.leafSoft
+          : scheme.surfaceContainerHighest.withValues(alpha: 0.8),
+      borderRadius: BorderRadius.circular(12),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: isSaving || isDisabled ? null : () => _openStatusSheet(context),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: isSaving
+                    ? const SizedBox(
+                        key: ValueKey('saving'),
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        _episodeStatusIcon(item.type),
+                        key: ValueKey(item.type),
+                        size: 17,
+                        color: _episodeStatusColor(item.type, scheme),
                       ),
-                    ],
-                    if (episode.airDate != null ||
-                        item.type == BangumiEpisodeCollectionType.wish ||
-                        item.type == BangumiEpisodeCollectionType.dropped) ...[
-                      const SizedBox(height: 3),
-                      Row(
-                        children: [
-                          if (episode.airDate != null)
-                            Text(
-                              episode.airDate!,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: scheme.onSurfaceVariant,
-                              ),
-                            ),
-                          if (episode.airDate != null &&
-                              (item.type ==
-                                      BangumiEpisodeCollectionType.wish ||
-                                  item.type ==
-                                      BangumiEpisodeCollectionType.dropped))
-                            const SizedBox(width: 8),
-                          if (item.type == BangumiEpisodeCollectionType.wish)
-                            Text(
-                              item.type.label,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: scheme.secondary,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          if (item.type == BangumiEpisodeCollectionType.dropped)
-                            Text(
-                              item.type.label,
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: scheme.error,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ],
+              ),
+              const SizedBox(height: 3),
+              Text(
+                item.episode.sortLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: foreground,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
-            ),
+            ],
           ),
-          const SizedBox(width: 4),
-          PopupMenuButton<BangumiEpisodeCollectionType>(
-            tooltip: '修改章节状态',
-            enabled: !isSaving && !isDisabled,
-            icon: const Icon(Icons.more_horiz, size: 20),
-            onSelected: onSetStatus,
-            itemBuilder: (context) {
-              return [
-                for (final type in BangumiEpisodeCollectionType.values)
-                  PopupMenuItem(value: type, child: Text(type.label)),
-              ];
-            },
+        ),
+      ),
+    );
+  }
+
+  /// 打开单集状态选择 sheet，并把选择回传给上层保存逻辑。
+  Future<void> _openStatusSheet(BuildContext context) async {
+    final result = await showModalBottomSheet<BangumiEpisodeCollectionType>(
+      context: context,
+      showDragHandle: true,
+      builder: (_) => _EpisodeStatusPickerSheet(item: item),
+    );
+
+    if (result != null) {
+      onSetStatus(result);
+    }
+  }
+}
+
+/// 收起章节提示格。
+class _EpisodeMoreTile extends StatelessWidget {
+  const _EpisodeMoreTile({required this.hiddenCount});
+
+  final int hiddenCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Center(
+        child: Text(
+          '…$hiddenCount',
+          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+            color: AppColors.muted,
+            fontWeight: FontWeight.w900,
           ),
-        ],
+        ),
       ),
     );
   }
 }
 
-/// 时间线左侧的状态圆点按钮。
-///
-/// 用 AnimatedSwitcher 在保存态与各状态图标之间做缩放淡入切换。
-class _EpisodeStatusDot extends StatelessWidget {
-  const _EpisodeStatusDot({
-    required this.type,
-    required this.isSaving,
-    required this.onTap,
-  });
+/// 单集「标记为」状态选择 sheet。
+class _EpisodeStatusPickerSheet extends StatelessWidget {
+  const _EpisodeStatusPickerSheet({required this.item});
 
-  final BangumiEpisodeCollectionType type;
-  final bool isSaving;
-  final VoidCallback? onTap;
+  final BangumiEpisodeCollection item;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
 
-    return Material(
-      type: MaterialType.transparency,
-      child: InkWell(
-        onTap: onTap,
-        customBorder: const CircleBorder(),
-        child: SizedBox(
-          width: 40,
-          height: 40,
-          child: Center(
-            child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 200),
-              transitionBuilder: (child, animation) {
-                return ScaleTransition(
-                  scale: animation,
-                  child: FadeTransition(opacity: animation, child: child),
-                );
-              },
-              child: isSaving
-                  ? const SizedBox(
-                      key: ValueKey('saving'),
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : Icon(
-                      _episodeStatusIcon(type),
-                      key: ValueKey(type),
-                      size: 22,
-                      color: _episodeStatusColor(type, scheme),
-                    ),
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '标记为',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+              ),
             ),
-          ),
+            const SizedBox(height: 4),
+            Text(
+              '${item.episode.sortLabel} · ${item.episode.displayName}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: AppColors.muted,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                for (final type in BangumiEpisodeCollectionType.values)
+                  ChoiceChip(
+                    label: Text(type.label),
+                    selected: item.type == type,
+                    showCheckmark: false,
+                    onSelected: (_) => Navigator.of(context).pop(type),
+                  ),
+              ],
+            ),
+          ],
         ),
       ),
     );

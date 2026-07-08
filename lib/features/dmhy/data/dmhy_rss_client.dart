@@ -73,23 +73,22 @@ class DmhyRssClient {
   /// 搜索 DMHY RSS 资源。
   ///
   /// `animeOnly` 为 true 时使用 `topics/rss/sort_id/2/rss.xml`，对应 DMHY
-  /// 动画分类 RSS；false 时使用全站 RSS。空关键词由应用层拦截，但客户端
-  /// 也保持防御式返回空列表。
+  /// 动画分类 RSS；false 时使用全站 RSS。空关键词表示读取对应范围的最新
+  /// RSS，不附带 `keyword` 查询参数，用于资源页初始态直接展示最新发布。
   Future<List<DmhyResource>> searchResources({
     required String keyword,
     bool animeOnly = true,
     int limit = 30,
   }) async {
     final normalizedKeyword = keyword.trim();
-    if (normalizedKeyword.isEmpty) {
-      return const [];
-    }
 
     try {
       final response = await _rateLimitRetry.send<String>(
         () => _dio.get<String>(
           animeOnly ? '/topics/rss/sort_id/2/rss.xml' : '/topics/rss/rss.xml',
-          queryParameters: {'keyword': normalizedKeyword},
+          queryParameters: normalizedKeyword.isEmpty
+              ? null
+              : {'keyword': normalizedKeyword},
         ),
       );
 
@@ -117,20 +116,23 @@ class DmhyRssClient {
     bool animeOnly = true,
   }) async {
     final normalizedKeyword = keyword.trim();
-    if (normalizedKeyword.isEmpty) {
-      return const {};
-    }
-
     final path = animeOnly ? '/topics/list/sort_id/2' : '/topics/list';
     final listUri = Uri.parse(
       baseUrl,
-    ).replace(path: path, queryParameters: {'keyword': normalizedKeyword});
+    ).replace(
+      path: path,
+      queryParameters: normalizedKeyword.isEmpty
+          ? null
+          : {'keyword': normalizedKeyword},
+    );
 
     try {
       final response = await _rateLimitRetry.send<String>(
         () => _dio.get<String>(
           path,
-          queryParameters: {'keyword': normalizedKeyword},
+          queryParameters: normalizedKeyword.isEmpty
+              ? null
+              : {'keyword': normalizedKeyword},
           options: Options(responseType: ResponseType.plain),
         ),
       );

@@ -1,6 +1,9 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../app/app_colors.dart';
 import '../bangumi/presentation/bangumi_tab.dart';
 import '../bangumi/presentation/widgets/bangumi_logo_icon.dart';
 import '../dmhy/domain/dmhy_entry_context.dart';
@@ -74,6 +77,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   late int _selectedIndex;
+  _BangumiHomePane _bangumiPane = _BangumiHomePane.collections;
 
   @override
   void initState() {
@@ -110,6 +114,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _selectTab(int index) {
     setState(() {
       _selectedIndex = index;
+      // 设计稿里 Bangumi 搜索是 Bangumi tab 的子页面。用户切到其他 tab 后，
+      // 再回到 Bangumi 时默认回到收藏页，避免一个旧搜索状态长期占住首页入口。
+      if (index != _bangumiTabIndex) {
+        _bangumiPane = _BangumiHomePane.collections;
+      }
+    });
+  }
+
+  /// 打开 Bangumi 搜索子页面，并确保底部导航仍高亮 Bangumi。
+  void _openBangumiSearch() {
+    setState(() {
+      _selectedIndex = _bangumiTabIndex;
+      _bangumiPane = _BangumiHomePane.search;
+    });
+  }
+
+  /// 从 Bangumi 搜索子页面回到收藏首页。
+  void _closeBangumiSearch() {
+    setState(() {
+      _bangumiPane = _BangumiHomePane.collections;
     });
   }
 
@@ -157,12 +181,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bangumiChild = AnimatedSwitcher(
+      duration: const Duration(milliseconds: 280),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) {
+        final offset = Tween<Offset>(
+          begin: const Offset(0.04, 0),
+          end: Offset.zero,
+        ).animate(animation);
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(position: offset, child: child),
+        );
+      },
+      child: _bangumiPane == _BangumiHomePane.search
+          ? BangumiSearchPage(
+              key: const ValueKey('bangumi-search-pane'),
+              onBack: _closeBangumiSearch,
+            )
+          : BangumiTab(
+              key: const ValueKey('bangumi-collections-pane'),
+              onOpenSearch: _openBangumiSearch,
+            ),
+    );
     final tabs = <_HomeTab>[
-      const _HomeTab(
-        icon: BangumiLogoIcon(),
-        selectedIcon: BangumiLogoIcon(emphasis: 1.08),
+      _HomeTab(
+        icon: const BangumiLogoIcon(),
+        selectedIcon: const BangumiLogoIcon(emphasis: 1.08),
         label: 'Bangumi',
-        child: BangumiTab(),
+        child: bangumiChild,
       ),
       _HomeTab(
         icon: const Icon(Icons.inventory_2_outlined),
@@ -183,26 +231,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ];
 
     return Scaffold(
-      body: SafeArea(
-        child: IndexedStack(
-          index: _selectedIndex,
-          children: tabs.map((tab) => tab.child).toList(),
-        ),
+      extendBody: true,
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: tabs.map((tab) => tab.child).toList(),
       ),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: _HomeBottomTabBar(
+        tabs: tabs,
         selectedIndex: _selectedIndex,
-        onDestinationSelected: _selectTab,
-        destinations: tabs.map((tab) {
-          return NavigationDestination(
-            icon: tab.icon,
-            selectedIcon: tab.selectedIcon,
-            label: tab.label,
-          );
-        }).toList(),
+        onSelected: _selectTab,
       ),
     );
   }
 }
+
+/// Bangumi tab 在底部导航中的下标。
+const int _bangumiTabIndex = 0;
 
 /// “我的”tab 在底部导航中的下标。
 const int _profileTabIndex = 2;
@@ -232,4 +276,129 @@ class _HomeTab {
   final Widget selectedIcon;
   final String label;
   final Widget child;
+}
+
+/// Bangumi 首页当前展示的子页面。
+///
+/// 设计稿把搜索页归在 Bangumi tab 内部，底部导航不会因为进入搜索而消失。
+/// 这里用一个小枚举表达 shell 内部页面，而不把它提升成全局路由状态。
+enum _BangumiHomePane {
+  /// Bangumi 收藏首页。
+  collections,
+
+  /// Bangumi 条目搜索页。
+  search,
+}
+
+/// 设计稿风格的底部导航栏。
+///
+/// Flutter 默认 [NavigationBar] 会有较强的 Material 背板和高度约束，和设计稿
+/// 里 82px、半透明、顶部细线、粉色选中态的 tabbar 不一致。这个组件只负责
+/// 视觉与点击分发，页面状态仍由 [HomeScreen] 的 `IndexedStack` 保留。
+class _HomeBottomTabBar extends StatelessWidget {
+  const _HomeBottomTabBar({
+    required this.tabs,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  final List<_HomeTab> tabs;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPadding = MediaQuery.paddingOf(context).bottom;
+
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.94),
+            border: const Border(top: BorderSide(color: AppColors.line)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x14000000),
+                blurRadius: 24,
+                offset: Offset(0, -8),
+              ),
+            ],
+          ),
+          child: SafeArea(
+            top: false,
+            child: SizedBox(
+              height: 82 - bottomPadding.clamp(0, 22).toDouble(),
+              child: Row(
+                children: [
+                  for (var index = 0; index < tabs.length; index++)
+                    Expanded(
+                      child: _HomeBottomTabButton(
+                        tab: tabs[index],
+                        selected: selectedIndex == index,
+                        onTap: () => onSelected(index),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 底部导航中的单个按钮。
+///
+/// 按钮尺寸固定，图标和文字只改变颜色/字重，避免选中态导致导航栏高度或相邻
+/// 项目抖动。语义标签仍保留，方便系统无障碍读出当前 tab 名称。
+class _HomeBottomTabButton extends StatelessWidget {
+  const _HomeBottomTabButton({
+    required this.tab,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final _HomeTab tab;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = selected ? AppColors.sakura : AppColors.ink2;
+
+    return Semantics(
+      selected: selected,
+      button: true,
+      label: tab.label,
+      child: InkResponse(
+        onTap: onTap,
+        radius: 34,
+        child: SizedBox(
+          height: 70,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconTheme(
+                data: IconThemeData(color: color, size: 25),
+                child: selected ? tab.selectedIcon : tab.icon,
+              ),
+              const SizedBox(height: 4),
+              AnimatedDefaultTextStyle(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOutCubic,
+                style: theme.textTheme.labelSmall!.copyWith(
+                  color: color,
+                  fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                ),
+                child: Text(tab.label),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

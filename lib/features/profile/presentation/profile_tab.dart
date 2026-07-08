@@ -566,21 +566,88 @@ class _ToolsSection extends StatelessWidget {
 /// 目前只接入 dmhy.org 一个真实来源，这里先给出纯展示型说明，为未来接入更多
 /// 来源预留设置入口位置。
 Future<void> _showResourceSourceInfo(BuildContext context) {
-  return showDialog<void>(
+  return showModalBottomSheet<void>(
     context: context,
-    builder: (context) {
-      return AlertDialog(
-        title: const Text('资源来源'),
-        content: const Text('当前仅支持 dmhy.org，更多来源开发中。'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('知道了'),
-          ),
-        ],
-      );
-    },
+    showDragHandle: true,
+    builder: (context) => const _ResourceSourceSheet(),
   );
+}
+
+/// 资源来源底部说明 sheet。
+///
+/// 当前版本只有 dmhy.org 一个真实资源源，因此这里是只读信息面板；使用 sheet
+/// 而不是 dialog，是为了和资源页筛选、详情页状态选择等设计稿交互保持一致。
+class _ResourceSourceSheet extends StatelessWidget {
+  const _ResourceSourceSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '资源来源',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 12),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Row(
+                  children: [
+                    Icon(Icons.dns_outlined, color: scheme.primary),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'dmhy.org',
+                            style: theme.textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '当前启用的 DMHY RSS 资源源',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.check_circle, color: Colors.green),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '当前仅支持 dmhy.org，更多来源开发中。',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// 图片缓存入口行。

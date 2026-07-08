@@ -171,15 +171,11 @@ final dmhyRepositoryProvider = Provider<DmhyRepository>((ref) {
 
 /// DMHY RSS 搜索 Provider。
 ///
-/// 空关键词直接返回空列表，避免首页初始状态访问 DMHY。RSS 结果没有
-/// 官方 total 字段，因此当前只返回资源列表。
+/// 空关键词会读取 DMHY 对应范围的最新 RSS，让资源页初始态直接展示最新发布；
+/// RSS 结果没有官方 total 字段，因此当前只返回资源列表。
 final dmhySearchProvider = FutureProvider.autoDispose
     .family<List<DmhyResource>, DmhySearchRequest>((ref, request) {
       final normalizedKeyword = request.normalizedKeyword;
-      if (normalizedKeyword.isEmpty) {
-        return Future.value(const []);
-      }
-
       final repository = ref.watch(dmhyRepositoryProvider);
       return repository.searchResources(
         DmhySearchRequest(

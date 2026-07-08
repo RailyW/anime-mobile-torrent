@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -50,6 +52,8 @@ class DmhyTab extends ConsumerStatefulWidget {
 }
 
 class _DmhyTabState extends ConsumerState<DmhyTab> {
+  static const Duration _searchDebounceDuration = Duration(milliseconds: 520);
+
   final TextEditingController _keywordController = TextEditingController();
 
   DmhySearchRequest? _searchRequest;
@@ -57,6 +61,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
   DmhyResourceSort _sort = DmhyResourceSort.publishedDesc;
   DmhyResourceFilter _filter = const DmhyResourceFilter.empty();
   DmhyEntryContext _entryContext = DmhyEntryContext.normal;
+  Timer? _searchDebounceTimer;
 
   @override
   void initState() {
@@ -85,6 +90,7 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
 
   @override
   void dispose() {
+    _searchDebounceTimer?.cancel();
     _keywordController.dispose();
     super.dispose();
   }
@@ -127,18 +133,36 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
   /// 空关键词不访问 DMHY，避免用户误触导致无意义请求。搜索默认限制在动画
   /// 分类，用户可以通过范围 chip 切到全站 RSS。
   void _submitSearch() {
+    _searchDebounceTimer?.cancel();
     final keyword = _keywordController.text.trim();
-    if (keyword.isEmpty) {
-      setState(() {
-        _searchRequest = null;
-        _entryContext = DmhyEntryContext.normal;
-      });
-      return;
-    }
 
     setState(() {
       _searchRequest = DmhySearchRequest(
         keyword: keyword,
+        animeOnly: _animeOnly,
+        sort: _sort,
+      );
+      _entryContext = DmhyEntryContext.normal;
+      _filter = const DmhyResourceFilter.empty();
+    });
+  }
+
+  /// 输入变化后的防抖搜索。
+  ///
+  /// 设计稿资源页搜索框是 live refresh 体验。这里延迟半秒提交，既能在用户停顿
+  /// 后自动刷新，也避免每个字符都请求 DMHY。
+  void _scheduleSearch(String value) {
+    _searchDebounceTimer?.cancel();
+    _searchDebounceTimer = Timer(_searchDebounceDuration, _submitSearch);
+  }
+
+  /// 清空资源关键词并回到最新资源流。
+  void _clearKeyword() {
+    _searchDebounceTimer?.cancel();
+    _keywordController.clear();
+    setState(() {
+      _searchRequest = DmhySearchRequest(
+        keyword: '',
         animeOnly: _animeOnly,
         sort: _sort,
       );
@@ -159,9 +183,11 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
       _animeOnly = value;
       _entryContext = DmhyEntryContext.normal;
       final keyword = _keywordController.text.trim();
-      _searchRequest = keyword.isEmpty
-          ? null
-          : DmhySearchRequest(keyword: keyword, animeOnly: value, sort: _sort);
+      _searchRequest = DmhySearchRequest(
+        keyword: keyword,
+        animeOnly: value,
+        sort: _sort,
+      );
       _filter = const DmhyResourceFilter.empty();
     });
   }
@@ -178,13 +204,11 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
     setState(() {
       _sort = value;
       final keyword = _keywordController.text.trim();
-      _searchRequest = keyword.isEmpty
-          ? null
-          : DmhySearchRequest(
-              keyword: keyword,
-              animeOnly: _animeOnly,
-              sort: value,
-            );
+      _searchRequest = DmhySearchRequest(
+        keyword: keyword,
+        animeOnly: _animeOnly,
+        sort: value,
+      );
     });
   }
 
@@ -207,37 +231,136 @@ class _DmhyTabState extends ConsumerState<DmhyTab> {
 
   @override
   Widget build(BuildContext context) {
-    final request = _searchRequest;
+    final request =
+        _searchRequest ??
+        DmhySearchRequest(keyword: '', animeOnly: _animeOnly, sort: _sort);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('资源')),
       body: SafeArea(
         top: false,
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 116),
           children: [
+            const _DmhyTopBar(),
+            const SizedBox(height: 6),
             _DmhySearchBar(
               controller: _keywordController,
               animeOnly: _animeOnly,
               selectedSort: _sort,
               onAnimeOnlyChanged: _setAnimeOnly,
               onSortChanged: _setSort,
+              onChanged: _scheduleSearch,
               onSubmitted: _submitSearch,
+              onClear: _clearKeyword,
             ),
             const SizedBox(height: 16),
-            if (request != null && _entryContext.isBackgroundSubscription) ...[
+            if (_entryContext.isBackgroundSubscription) ...[
               _DmhyEntryContextBanner(entryContext: _entryContext),
               const SizedBox(height: 16),
             ],
-            if (request == null)
-              const _DmhyEmptyState()
-            else
-              _DmhySearchResult(
-                request: request,
-                filter: _filter,
-                onFilterChanged: _setFilter,
-                onFilterCleared: _clearFilter,
+            _DmhySearchResult(
+              request: request,
+              filter: _filter,
+              onFilterChanged: _setFilter,
+              onFilterCleared: _clearFilter,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 资源页顶栏。
+///
+/// 与设计稿一致，左侧是强调资源属性的 ember 图标和「资源」标题，右侧显示
+/// 当前源标签。页面不再依赖系统 AppBar，因此顶栏自己吸收状态栏高度。
+class _DmhyTopBar extends StatelessWidget {
+  const _DmhyTopBar();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Padding(
+      padding: EdgeInsets.only(
+        top: MediaQuery.paddingOf(context).top + 8,
+        bottom: 10,
+      ),
+      child: SizedBox(
+        height: 52,
+        child: Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: AppColors.ember,
+                borderRadius: BorderRadius.circular(9),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.ember.withValues(alpha: 0.18),
+                    blurRadius: 12,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
               ),
+              child: const Icon(
+                Icons.local_fire_department_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              '资源',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+                color: AppColors.ink,
+              ),
+            ),
+            const Spacer(),
+            const _DmhySourceTag(),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 资源页右上角的来源标签。
+class _DmhySourceTag extends StatelessWidget {
+  const _DmhySourceTag();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.ember.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppColors.ember.withValues(alpha: 0.18)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: const BoxDecoration(
+                color: AppColors.ember,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'DMHY',
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: AppColors.ember,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
           ],
         ),
       ),
@@ -323,7 +446,9 @@ class _DmhySearchBar extends StatelessWidget {
     required this.selectedSort,
     required this.onAnimeOnlyChanged,
     required this.onSortChanged,
+    required this.onChanged,
     required this.onSubmitted,
+    required this.onClear,
   });
 
   final TextEditingController controller;
@@ -331,7 +456,9 @@ class _DmhySearchBar extends StatelessWidget {
   final DmhyResourceSort selectedSort;
   final ValueChanged<bool> onAnimeOnlyChanged;
   final ValueChanged<DmhyResourceSort> onSortChanged;
+  final ValueChanged<String> onChanged;
   final VoidCallback onSubmitted;
+  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
@@ -341,14 +468,38 @@ class _DmhySearchBar extends StatelessWidget {
         TextField(
           controller: controller,
           textInputAction: TextInputAction.search,
+          onChanged: onChanged,
           onSubmitted: (_) => onSubmitted(),
           decoration: InputDecoration(
-            hintText: '搜索资源，例如：葬送的芙莉莲 1080',
+            hintText: '搜索资源，留空显示最新发布',
             prefixIcon: const Icon(Icons.search_outlined),
-            suffixIcon: IconButton(
-              onPressed: onSubmitted,
-              tooltip: '搜索',
-              icon: const Icon(Icons.arrow_forward),
+            suffixIcon: ValueListenableBuilder<TextEditingValue>(
+              valueListenable: controller,
+              builder: (context, value, _) {
+                if (value.text.isEmpty) {
+                  return IconButton(
+                    onPressed: onSubmitted,
+                    tooltip: '刷新最新资源',
+                    icon: const Icon(Icons.refresh_outlined),
+                  );
+                }
+
+                return Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      onPressed: onClear,
+                      tooltip: '清除',
+                      icon: const Icon(Icons.close, size: 18),
+                    ),
+                    IconButton(
+                      onPressed: onSubmitted,
+                      tooltip: '搜索',
+                      icon: const Icon(Icons.arrow_forward),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
@@ -379,25 +530,6 @@ class _DmhySearchBar extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// 搜索前的空态。
-///
-/// 不再罗列“当前能力”，而是给一个轻量引导，告诉用户输入关键词即可开始。
-class _DmhyEmptyState extends StatelessWidget {
-  const _DmhyEmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.only(top: 48),
-      child: AppEmptyView(
-        icon: Icons.travel_explore_outlined,
-        title: '搜索动画资源',
-        message: '输入番剧名称或关键词，查找字幕组发布的资源',
-      ),
     );
   }
 }
@@ -437,11 +569,12 @@ class _DmhySearchResult extends ConsumerWidget {
       ),
       data: (resources) {
         if (resources.isEmpty) {
-          return const AppEmptyView(
+          final isLatest = request.normalizedKeyword.isEmpty;
+          return AppEmptyView(
             compact: true,
             icon: Icons.search_off_outlined,
-            title: '没有找到资源',
-            message: '换一个关键词，或切换到“全站”试试',
+            title: isLatest ? '暂时没有最新资源' : '没有找到资源',
+            message: isLatest ? '稍后刷新，或输入关键词搜索' : '换一个关键词，或切换到“全站”试试',
           );
         }
 
@@ -468,6 +601,7 @@ class _DmhySearchResult extends ConsumerWidget {
               _DmhyFilterControls(
                 filter: filter,
                 options: filterOptions,
+                resources: resources,
                 onChanged: onFilterChanged,
                 onClear: onFilterCleared,
               ),
@@ -495,6 +629,10 @@ class _DmhySearchResult extends ConsumerWidget {
     BuildContext context,
     WidgetRef ref,
   ) async {
+    if (request.normalizedKeyword.isEmpty) {
+      return;
+    }
+
     final messenger = ScaffoldMessenger.of(context);
     await ref
         .read(dmhySubscriptionControllerProvider.notifier)
@@ -540,9 +678,11 @@ class _ResultSummary extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final scope = animeOnly ? '动画' : '全站';
+    final isLatest = keyword.trim().isEmpty;
     final detail = hasActiveFilter
         ? '$scope · ${sort.label} · 显示 $visibleCount/$count'
         : '$scope · ${sort.label} · 共 $count 条';
+    final title = isLatest ? '最新资源' : '“$keyword”';
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
@@ -552,7 +692,7 @@ class _ResultSummary extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '“$keyword”',
+                title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.titleMedium,
@@ -568,17 +708,18 @@ class _ResultSummary extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        OutlinedButton.icon(
-          onPressed: isSubscriptionBusy ? null : onSubscribe,
-          icon: isSubscriptionBusy
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.notifications_none_outlined, size: 18),
-          label: const Text('订阅'),
-        ),
+        if (!isLatest)
+          OutlinedButton.icon(
+            onPressed: isSubscriptionBusy ? null : onSubscribe,
+            icon: isSubscriptionBusy
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.notifications_none_outlined, size: 18),
+            label: const Text('订阅'),
+          ),
       ],
     );
   }
@@ -593,12 +734,14 @@ class _DmhyFilterControls extends StatelessWidget {
   const _DmhyFilterControls({
     required this.filter,
     required this.options,
+    required this.resources,
     required this.onChanged,
     required this.onClear,
   });
 
   final DmhyResourceFilter filter;
   final DmhyResourceFilterOptions options;
+  final List<DmhyResource> resources;
   final ValueChanged<DmhyResourceFilter> onChanged;
   final VoidCallback onClear;
 
@@ -744,7 +887,11 @@ class _DmhyFilterControls extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _DmhyFilterSheet(initialFilter: filter, options: options),
+      builder: (_) => _DmhyFilterSheet(
+        initialFilter: filter,
+        options: options,
+        resources: resources,
+      ),
     );
 
     if (result != null) {
@@ -759,10 +906,15 @@ class _DmhyFilterControls extends StatelessWidget {
 /// 维护一份草稿，点“应用”才回传给列表，点“清除”把草稿重置为空，避免边选边刷新
 /// 造成的跳动。
 class _DmhyFilterSheet extends StatefulWidget {
-  const _DmhyFilterSheet({required this.initialFilter, required this.options});
+  const _DmhyFilterSheet({
+    required this.initialFilter,
+    required this.options,
+    required this.resources,
+  });
 
   final DmhyResourceFilter initialFilter;
   final DmhyResourceFilterOptions options;
+  final List<DmhyResource> resources;
 
   @override
   State<_DmhyFilterSheet> createState() => _DmhyFilterSheetState();
@@ -783,13 +935,24 @@ class _DmhyFilterSheetState extends State<_DmhyFilterSheet> {
     _excludeController = TextEditingController(
       text: _draft.excludedKeywords ?? '',
     );
+    _minSeedController.addListener(_handleTextFilterChanged);
+    _excludeController.addListener(_handleTextFilterChanged);
   }
 
   @override
   void dispose() {
+    _minSeedController.removeListener(_handleTextFilterChanged);
+    _excludeController.removeListener(_handleTextFilterChanged);
     _minSeedController.dispose();
     _excludeController.dispose();
     super.dispose();
+  }
+
+  /// 输入框草稿变化时只刷新抽屉内部的实时命中数。
+  void _handleTextFilterChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   /// 重置草稿到空筛选。
@@ -803,19 +966,35 @@ class _DmhyFilterSheetState extends State<_DmhyFilterSheet> {
 
   /// 把文本输入折叠进草稿并回传。
   void _apply() {
-    final result = _draft.copyWith(
+    Navigator.of(context).pop(_draftWithTextInputs());
+  }
+
+  /// 把两个文本输入框合并进当前草稿。
+  ///
+  /// 抽屉里的 chip 选择会直接写入 [_draft]；最小种子数和排除关键词来自
+  /// TextEditingController，因此实时计数和最终应用都必须经过这个方法。
+  DmhyResourceFilter _draftWithTextInputs() {
+    return _draft.copyWith(
       minSeedCount: DmhyFilterValue(_parseMinSeedCount(_minSeedController.text)),
       excludedKeywords: DmhyFilterValue(
         _normalizeExcludedKeywords(_excludeController.text),
       ),
     );
-    Navigator.of(context).pop(result);
+  }
+
+  /// 选择设计稿提供的最小种子快捷阈值。
+  ///
+  /// `null` 表示全部；其它值会同步写入输入框，让用户仍可在快捷值基础上微调。
+  void _setMinSeedPreset(int? value) {
+    _minSeedController.text = value == null ? '' : value.toString();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final options = widget.options;
+    final previewFilter = _draftWithTextInputs();
+    final previewCount = previewFilter.apply(widget.resources).length;
 
     return Padding(
       padding: EdgeInsets.only(
@@ -831,10 +1010,23 @@ class _DmhyFilterSheetState extends State<_DmhyFilterSheet> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text('筛选', style: theme.textTheme.titleLarge),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('筛选', style: theme.textTheme.titleLarge),
+                        const SizedBox(height: 2),
+                        Text(
+                          '显示 $previewCount 条结果',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: AppColors.muted,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                   TextButton(
-                    onPressed: _draft.isEmpty ? null : _reset,
+                    onPressed: previewFilter.isEmpty ? null : _reset,
                     child: const Text('清除'),
                   ),
                 ],
@@ -978,17 +1170,44 @@ class _DmhyFilterSheetState extends State<_DmhyFilterSheet> {
                   if (options.hasSeedCount)
                     _FilterSection(
                       title: '最小种子数',
-                      child: TextField(
-                        key: const Key('dmhy-filter-min-seed-count'),
-                        controller: _minSeedController,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final int? preset in const <int?>[
+                                null,
+                                50,
+                                200,
+                                500,
+                              ])
+                                ChoiceChip(
+                                  label: Text(preset == null ? '全部' : '$preset'),
+                                  selected:
+                                      _parseMinSeedCount(
+                                        _minSeedController.text,
+                                      ) ==
+                                      preset,
+                                  onSelected: (_) => _setMinSeedPreset(preset),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            key: const Key('dmhy-filter-min-seed-count'),
+                            controller: _minSeedController,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            decoration: const InputDecoration(
+                              hintText: '自定义最小种子数',
+                              isDense: true,
+                            ),
+                          ),
                         ],
-                        decoration: const InputDecoration(
-                          hintText: '全部',
-                          isDense: true,
-                        ),
                       ),
                     ),
                   if (options.hasKeywordContent)
@@ -1128,17 +1347,19 @@ class _DmhyResourceCardState extends ConsumerState<_DmhyResourceCard> {
 
     // 底部左侧的种子 / 下载统计,对应设计稿 `.r-stats` 的一排轻量指标。
     final stats = <Widget>[
-      if (resource.stats.seedCount != null)
-        _ResourceStat(
-          icon: Icons.cloud_upload_outlined,
-          label: '种子 ${resource.stats.seedCount}',
-          emphasize: true,
-        ),
-      if (resource.stats.downloadCount != null)
-        _ResourceStat(
-          icon: Icons.cloud_download_outlined,
-          label: '下载 ${resource.stats.downloadCount}',
-        ),
+      _ResourceStat(
+        icon: Icons.cloud_upload_outlined,
+        label: '种子 ${resource.stats.seedCount?.toString() ?? '—'}',
+        emphasize: resource.stats.seedCount != null,
+      ),
+      _ResourceStat(
+        icon: Icons.cloud_download_outlined,
+        label: '下载 ${resource.stats.downloadCount?.toString() ?? '—'}',
+      ),
+      _ResourceStat(
+        icon: Icons.task_alt_outlined,
+        label: '完成 ${resource.stats.completedCount?.toString() ?? '—'}',
+      ),
     ];
 
     return Card(

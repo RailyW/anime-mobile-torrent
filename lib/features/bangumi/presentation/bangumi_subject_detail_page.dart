@@ -2,6 +2,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../../app/app_colors.dart';
 import '../../../shared/image_cache/app_image_cache.dart';
@@ -16,6 +17,44 @@ import '../domain/bangumi_subject.dart';
 import 'widgets/bangumi_collection_editor_sheet.dart';
 import 'widgets/bangumi_episode_progress_panel.dart';
 import 'widgets/bangumi_subject_cover.dart';
+
+/// Bangumi 条目封面 Hero 动画使用的稳定 tag。
+///
+/// 收藏页和搜索页会用同样字符串包装入口封面；详情页主封面接住该 tag，形成
+/// 设计稿中的封面 FLIP / shared-element 过渡。
+String _bangumiSubjectCoverHeroTag(int subjectId) {
+  return 'bangumi-subject-cover-$subjectId';
+}
+
+/// 调起系统分享面板分享 Bangumi 条目。
+///
+/// `share_plus` 13 使用 `SharePlus.instance.share(ShareParams(...))`。这里用
+/// text 分享标题和公开 URL，避免同时传 `uri` 与 `text` 触发插件参数互斥。
+Future<void> _shareBangumiSubject(
+  BuildContext context,
+  BangumiSubject subject,
+) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final subjectUri = Uri.https('bgm.tv', '/subject/${subject.id}');
+
+  try {
+    await SharePlus.instance.share(
+      ShareParams(
+        title: subject.displayName,
+        subject: subject.displayName,
+        text: '${subject.displayName}\n$subjectUri',
+      ),
+    );
+  } catch (error) {
+    if (!context.mounted) {
+      return;
+    }
+
+    messenger.showSnackBar(
+      SnackBar(content: Text('分享失败：$error')),
+    );
+  }
+}
 
 /// 沉浸式头部完全展开时的高度（不含状态栏）。
 ///
@@ -240,13 +279,16 @@ class _SubjectHeroAppBar extends StatelessWidget {
                               ),
                             ],
                           ),
-                          child: BangumiSubjectCover(
-                            imageUrl:
-                                subject.images.large ??
-                                subject.images.preferredListUrl,
-                            width: 112,
-                            height: 158,
-                            borderRadius: 14,
+                          child: Hero(
+                            tag: _bangumiSubjectCoverHeroTag(subject.id),
+                            child: BangumiSubjectCover(
+                              imageUrl:
+                                  subject.images.large ??
+                                  subject.images.preferredListUrl,
+                              width: 112,
+                              height: 158,
+                              borderRadius: 14,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -323,6 +365,13 @@ class _SubjectHeroAppBar extends StatelessWidget {
                         },
                       ),
                     ],
+                    const SizedBox(width: 6),
+                    _HeroRoundButton(
+                      icon: Icons.ios_share_outlined,
+                      tooltip: '分享条目',
+                      solidProgress: barSolid,
+                      onPressed: () => _shareBangumiSubject(context, subject),
+                    ),
                   ],
                 ),
               ),
@@ -591,9 +640,8 @@ class _MyCollectionSection extends ConsumerWidget {
           trailing: currentCollection != null
               ? _CollectionStatusPill(
                   label: currentCollection.type.label,
-                  onTap: () => showBangumiCollectionEditorSheet(
+                  onTap: () => showBangumiCollectionStatusSheet(
                     context: context,
-                    ref: ref,
                     subject: subject,
                     collection: currentCollection,
                   ),
@@ -896,6 +944,159 @@ class _CollectionStatusPill extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// 打开详情页标题右侧的轻量收藏状态抽屉。
+///
+/// 该抽屉只负责快速切换收藏状态；评分、短评、私密设置仍保留在完整编辑抽屉中。
+/// 保存时会把原收藏里的附加字段原样带回，避免一次状态切换清空用户已有内容。
+Future<void> showBangumiCollectionStatusSheet({
+  required BuildContext context,
+  required BangumiSubject subject,
+  required BangumiSubjectCollection collection,
+}) {
+  return showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (_) => _CollectionStatusSheet(
+      subject: subject,
+      collection: collection,
+    ),
+  );
+}
+
+/// 收藏状态快速切换抽屉。
+///
+/// 设计稿详情页点击“在看 ›”只弹出状态选择，而不是完整表单；这个组件专门承载
+/// 五个 Bangumi 收藏状态，并在保存后失效详情页相关 provider 让 UI 重新同步。
+class _CollectionStatusSheet extends ConsumerStatefulWidget {
+  const _CollectionStatusSheet({
+    required this.subject,
+    required this.collection,
+  });
+
+  final BangumiSubject subject;
+  final BangumiSubjectCollection collection;
+
+  @override
+  ConsumerState<_CollectionStatusSheet> createState() =>
+      _CollectionStatusSheetState();
+}
+
+class _CollectionStatusSheetState
+    extends ConsumerState<_CollectionStatusSheet> {
+  /// 抽屉里的状态顺序与设计稿状态筛选保持一致。
+  static const List<BangumiCollectionType> _statusTypes = [
+    BangumiCollectionType.doing,
+    BangumiCollectionType.wish,
+    BangumiCollectionType.done,
+    BangumiCollectionType.onHold,
+    BangumiCollectionType.dropped,
+  ];
+
+  late BangumiCollectionType _selectedType;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedType = widget.collection.type;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 4, 20, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '收藏状态',
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                for (final type in _statusTypes)
+                  ChoiceChip(
+                    label: Text(type.label),
+                    selected: _selectedType == type,
+                    showCheckmark: false,
+                    onSelected: _isSaving
+                        ? null
+                        : (selected) {
+                            if (selected) {
+                              setState(() => _selectedType = type);
+                            }
+                          },
+                  ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: _isSaving ? null : _saveStatus,
+                child: _isSaving
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('保存状态'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 保存状态选择并保留原收藏附加字段。
+  Future<void> _saveStatus() async {
+    setState(() => _isSaving = true);
+    final messenger = ScaffoldMessenger.maybeOf(context);
+
+    try {
+      final repository = ref.read(bangumiMyCollectionRepositoryProvider);
+      await repository.saveMySubjectCollection(
+        subjectId: widget.subject.id,
+        update: BangumiSubjectCollectionUpdate(
+          type: _selectedType,
+          rate: widget.collection.rate,
+          comment: widget.collection.comment,
+          isPrivate: widget.collection.isPrivate,
+        ),
+      );
+      ref.invalidate(bangumiMySubjectCollectionProvider(widget.subject.id));
+      ref.invalidate(bangumiSubjectDetailProvider(widget.subject.id));
+
+      if (!mounted) {
+        return;
+      }
+
+      Navigator.of(context).pop();
+      messenger?.showSnackBar(
+        SnackBar(content: Text('已更新为「${_selectedType.label}」')),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      messenger?.showSnackBar(SnackBar(content: Text(error.toString())));
+      setState(() => _isSaving = false);
+    }
   }
 }
 
@@ -1283,7 +1484,7 @@ class _RevealState extends State<_Reveal> with SingleTickerProviderStateMixin {
   void initState() {
     super.initState();
     // 交错延迟折算进总时长，实际动画段通过 Interval 推后启动。
-    final delayMs = widget.order.clamp(0, 8) * _stepMs;
+    final delayMs = widget.order.clamp(0, 8).toInt() * _stepMs;
     final totalMs = _baseMs + delayMs;
     _controller = AnimationController(
       vsync: this,

@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -84,11 +85,32 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/bangumi/subjects/:subjectId',
         name: 'bangumi-subject-detail',
-        builder: (context, state) {
+        pageBuilder: (context, state) {
           final rawSubjectId = state.pathParameters['subjectId'];
           final subjectId = int.tryParse(rawSubjectId ?? '') ?? 0;
 
-          return BangumiSubjectDetailPage(subjectId: subjectId);
+          return CustomTransitionPage<void>(
+            key: state.pageKey,
+            child: BangumiSubjectDetailPage(subjectId: subjectId),
+            transitionsBuilder:
+                (context, animation, secondaryAnimation, child) {
+                  final curved = CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOutCubic,
+                    reverseCurve: Curves.easeInCubic,
+                  );
+                  return FadeTransition(
+                    opacity: curved,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, 0.035),
+                        end: Offset.zero,
+                      ).animate(curved),
+                      child: child,
+                    ),
+                  );
+                },
+          );
         },
       ),
     ],
